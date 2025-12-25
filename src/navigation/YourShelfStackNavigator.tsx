@@ -1,0 +1,36 @@
+import React from 'react';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { colors } from '../config/theme';
+import YourShelfScreen from '../screens/YourShelfScreen';
+import BookDetailScreen from '../screens/BookDetailScreen';
+
+export type YourShelfStackParamList = {
+  YourShelfMain: undefined;
+  BookDetail: { book: any }; // Enriched book data
+};
+
+const Stack = createNativeStackNavigator<YourShelfStackParamList>();
+
+export default function YourShelfStackNavigator() {
+  return (
+    <Stack.Navigator
+      screenOptions={{
+        headerShown: false,
+        contentStyle: {
+          backgroundColor: colors.creamBackground,
+        },
+      }}
+    >
+      <Stack.Screen name="YourShelfMain" component={YourShelfScreen} />
+      <Stack.Screen
+        name="BookDetail"
+        component={BookDetailScreen}
+        options={{
+          presentation: 'card',
+          animation: 'slide_from_right',
+        }}
+      />
+    </Stack.Navigator>
+  );
+}
+
