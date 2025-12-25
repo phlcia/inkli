@@ -1,0 +1,51 @@
+import React from 'react';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { colors } from '../config/theme';
+import SearchScreen from '../screens/SearchScreen';
+import BookDetailScreen from '../screens/BookDetailScreen';
+import BookRankingScreen from '../screens/BookRankingScreen';
+
+export type SearchStackParamList = {
+  SearchMain: undefined;
+  BookDetail: { book: any }; // Enriched book data
+  BookRanking: {
+    book: any;
+    userBookId: string;
+    initialStatus: 'read' | 'currently_reading' | 'want_to_read';
+    previousStatus?: 'read' | 'currently_reading' | 'want_to_read' | null;
+    wasNewBook?: boolean;
+  };
+};
+
+const Stack = createNativeStackNavigator<SearchStackParamList>();
+
+export default function SearchStackNavigator() {
+  return (
+    <Stack.Navigator
+      screenOptions={{
+        headerShown: false,
+        contentStyle: {
+          backgroundColor: colors.creamBackground,
+        },
+      }}
+    >
+      <Stack.Screen name="SearchMain" component={SearchScreen} />
+      <Stack.Screen
+        name="BookDetail"
+        component={BookDetailScreen}
+        options={{
+          presentation: 'card',
+          animation: 'slide_from_right',
+        }}
+      />
+      <Stack.Screen
+        name="BookRanking"
+        component={BookRankingScreen}
+        options={{
+          presentation: 'card',
+          animation: 'slide_from_right',
+        }}
+      />
+    </Stack.Navigator>
+  );
+}
