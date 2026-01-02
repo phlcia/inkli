@@ -23,37 +23,6 @@ export interface CreateUserProfileData {
 }
 
 /**
- * Save user profile data after account creation
- */
-export async function saveUserProfile(
-  data: CreateUserProfileData
-): Promise<{ profile: UserProfile | null; error: any }> {
-  try {
-    const { data: profile, error } = await supabase
-      .from('user_profiles')
-      .insert({
-        user_id: data.userId,
-        first_name: data.firstName,
-        last_name: data.lastName,
-        username: data.username,
-        reading_interests: data.readingInterests,
-      })
-      .select()
-      .single();
-
-    if (error) {
-      console.error('Error saving user profile:', error);
-      return { profile: null, error };
-    }
-
-    return { profile: profile as UserProfile, error: null };
-  } catch (error) {
-    console.error('Exception saving user profile:', error);
-    return { profile: null, error };
-  }
-}
-
-/**
  * Get user profile by user ID
  */
 export async function getUserProfile(
@@ -378,33 +347,6 @@ export async function searchMembers(
   } catch (error) {
     console.error('Exception searching members:', error);
     return { members: [], error };
-  }
-}
-
-/**
- * Check if a user follows another user
- */
-export async function checkFollowStatus(
-  followerId: string,
-  followingId: string
-): Promise<{ isFollowing: boolean; error: any }> {
-  try {
-    const { data, error } = await supabase
-      .from('user_follows')
-      .select('id')
-      .eq('follower_id', followerId)
-      .eq('following_id', followingId)
-      .single();
-
-    if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
-      console.error('Error checking follow status:', error);
-      return { isFollowing: false, error };
-    }
-
-    return { isFollowing: !!data, error: null };
-  } catch (error) {
-    console.error('Exception checking follow status:', error);
-    return { isFollowing: false, error };
   }
 }
 

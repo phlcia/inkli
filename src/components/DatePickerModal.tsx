@@ -5,8 +5,6 @@ import {
   StyleSheet,
   Modal,
   TouchableOpacity,
-  ScrollView,
-  Platform,
 } from 'react-native';
 import { Calendar, DateData } from 'react-native-calendars';
 import { colors, typography } from '../config/theme';
