@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   Alert,
-  Linking,
 } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { useAuth } from '../contexts/AuthContext';
