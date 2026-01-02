@@ -71,3 +71,5 @@ SELECT recalculate_all_ranks();
 
 This is safe to run multiple times and will update all users' ranks based on their current `books_read_count`.
 
+
+

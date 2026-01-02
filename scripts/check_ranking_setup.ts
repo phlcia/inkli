@@ -149,3 +149,5 @@ async function checkRankingSetup() {
 
 checkRankingSetup().catch(console.error);
 
+
+

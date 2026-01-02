@@ -8,7 +8,6 @@ import {
   getCurrentComparison as getCurrentComparisonUtil,
   isRankingComplete,
   getFinalResult,
-  getDefaultScoreForRating,
 } from '../utils/bookRanking';
 
 /**
@@ -43,9 +42,8 @@ export function useBookRanking(initialBooks: RankedBook[] = []) {
    * Start the insertion process for a new book
    */
   const startInserting = useCallback(
-    (newBook: Omit<RankedBook, 'score'>, rating: 'liked' | 'fine' | 'disliked') => {
-      const defaultScore = getDefaultScoreForRating(rating);
-      setRankingState((state) => startInsertion(state, newBook, defaultScore));
+    (newBook: Omit<RankedBook, 'score'>, tier: 'liked' | 'fine' | 'disliked') => {
+      setRankingState((state) => startInsertion(state, newBook, tier));
     },
     []
   );

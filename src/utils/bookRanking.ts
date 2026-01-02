@@ -1,38 +1,62 @@
 /**
- * Binary Search-Based Book Ranking System
+ * Tier-Based Binary Search Book Ranking System
  * 
- * This module implements a binary search algorithm for ranking books through
- * pairwise comparisons. It minimizes the number of comparisons needed (O(log n))
- * by using binary search to find the correct position for a new book.
+ * This module implements a binary search algorithm for ranking books within
+ * tier categories (disliked/fine/liked). After insertion, it redistributes
+ * all scores in the tier to maintain even spacing and prevent boundary violations.
  */
+
+export type BookTier = 'disliked' | 'fine' | 'liked';
 
 export interface RankedBook {
   id: string;
   title: string;
   authors?: string[];
   cover_url?: string | null;
-  score: number; // Numerical score (higher = better rank)
+  tier: BookTier;
+  score: number;
 }
 
 export interface ComparisonState {
-  // The two books currently being compared
   bookA: RankedBook | null;
   bookB: RankedBook | null;
-  
-  // Binary search state
-  left: number;      // Left boundary of search range
-  right: number;     // Right boundary of search range
-  middle: number;    // Current middle index being compared
-  
-  // Status
-  isComplete: boolean;  // Whether the binary search is complete
-  finalPosition: number | null; // Final insertion position (when complete)
-  finalScore: number | null;     // Final calculated score (when complete)
+  left: number;
+  right: number;
+  middle: number;
+  isComplete: boolean;
+  finalPosition: number | null;
+  needsRedistribution?: boolean;
 }
 
 export interface RankingState {
-  books: RankedBook[]; // Sorted by score (highest first)
+  books: RankedBook[];
   comparisonState: ComparisonState | null;
+}
+
+/**
+ * Tier score boundaries
+ * disliked: [0, 3.5]
+ * fine: (3.5, 7.0]
+ * liked: (7.0, 10.0]
+ */
+const TIER_BOUNDARIES = {
+  disliked: { min: 0, max: 3.5 },
+  fine: { min: 3.5, max: 6.5 },
+  liked: { min: 6.5, max: 10.0 },
+} as const;
+
+/**
+ * Round score to 3 decimal places
+ */
+function roundScore(score: number): number {
+  return Math.round(score * 1000) / 1000;
+}
+
+/**
+ * Get books in a specific tier, sorted by score (highest first)
+ */
+function getBooksInTier(books: RankedBook[], tier: BookTier): RankedBook[] {
+  return books.filter(book => book.tier === tier);
 }
 
 /**
@@ -40,27 +64,11 @@ export interface RankingState {
  * Books should be sorted by score (highest first)
  */
 export function initializeRanking(existingBooks: RankedBook[]): RankingState {
-  // Ensure books are sorted by score (highest first)
   const sortedBooks = [...existingBooks].sort((a, b) => b.score - a.score);
-  
   return {
     books: sortedBooks,
     comparisonState: null,
   };
-}
-
-/**
- * Get default score based on rating category
- */
-export function getDefaultScoreForRating(rating: 'liked' | 'fine' | 'disliked'): number {
-  switch (rating) {
-    case 'liked':
-      return 10.0; // Max score for liked books
-    case 'fine':
-      return 6.0;
-    case 'disliked':
-      return 4.0;
-  }
 }
 
 /**
@@ -70,37 +78,41 @@ export function getDefaultScoreForRating(rating: 'liked' | 'fine' | 'disliked'):
 export function startInsertion(
   rankingState: RankingState,
   newBook: Omit<RankedBook, 'score'>,
-  defaultScore: number
+  tier: BookTier
 ): RankingState {
   const { books } = rankingState;
+  const tierBooks = getBooksInTier(books, tier);
   
-  // If list is empty, add book with default score for this rating category
-  if (books.length === 0) {
+  // If tier is empty, add book at max score for this tier
+  if (tierBooks.length === 0) {
+    const maxScore = TIER_BOUNDARIES[tier].max;
     const newRankedBook: RankedBook = {
       ...newBook,
-      score: defaultScore,
+      tier,
+      score: roundScore(maxScore),
     };
     
+    const allBooks = [...books, newRankedBook].sort((a, b) => b.score - a.score);
+    
     return {
-      books: [newRankedBook],
+      books: allBooks,
       comparisonState: {
-        bookA: null,
+        // Keep reference to the inserted book so getFinalResult can find it
+        bookA: newRankedBook,
         bookB: null,
         left: 0,
         right: 0,
         middle: 0,
         isComplete: true,
         finalPosition: 0,
-        finalScore: defaultScore,
+        needsRedistribution: false,
       },
     };
   }
   
-  // Initialize binary search
-  // We're searching for where to insert the new book
-  // left and right represent indices in the sorted array (highest score first)
+  // Initialize binary search within this tier
   const left = 0;
-  const right = books.length - 1;
+  const right = tierBooks.length - 1;
   const middle = Math.floor((left + right) / 2);
   
   return {
@@ -108,15 +120,174 @@ export function startInsertion(
     comparisonState: {
       bookA: {
         ...newBook,
+        tier,
         score: 0, // Temporary, will be calculated
       },
-      bookB: books[middle],
+      bookB: tierBooks[middle],
       left,
       right,
       middle,
       isComplete: false,
       finalPosition: null,
-      finalScore: null,
+      needsRedistribution: false,
+    },
+  };
+}
+
+/**
+ * Calculate score for a book based on its insertion position
+ */
+function calculateScore(
+  tierBooks: RankedBook[],
+  referenceIndex: number,
+  position: 'before' | 'after',
+  tier: BookTier
+): number {
+  const { min, max } = TIER_BOUNDARIES[tier];
+  
+  if (position === 'before') {
+    if (referenceIndex === 0) {
+      // Inserting at top
+      return Math.min(tierBooks[0].score + 0.1, max);
+    }
+    // Midpoint between book above and book at referenceIndex
+    const upperScore = tierBooks[referenceIndex - 1].score;
+    const lowerScore = tierBooks[referenceIndex].score;
+    return (upperScore + lowerScore) / 2;
+  } else {
+    if (referenceIndex === tierBooks.length - 1) {
+      // Inserting at bottom
+      const lastScore = tierBooks[referenceIndex].score;
+      return Math.max(lastScore - 0.1, min + 0.001);
+    }
+    // Midpoint between book at referenceIndex and book below
+    const upperScore = tierBooks[referenceIndex].score;
+    const lowerScore = tierBooks[referenceIndex + 1].score;
+    return (upperScore + lowerScore) / 2;
+  }
+}
+
+/**
+ * Check if redistribution is needed
+ */
+function shouldRedistribute(
+  tierBooks: RankedBook[],
+  position: number
+): boolean {
+  // Periodic: redistribute every 10th book (after insertion)
+  if ((tierBooks.length + 1) % 10 === 0) return true;
+  
+  // Gap check: if inserting between books, check gap
+  if (position > 0 && position < tierBooks.length) {
+    const gap = Math.abs(tierBooks[position - 1].score - tierBooks[position].score);
+    return gap < 0.01;
+  }
+  
+  return false;
+}
+
+/**
+ * Insert book at the specified position with the calculated score
+ */
+function insertBookAtPosition(
+  rankingState: RankingState,
+  newBook: Omit<RankedBook, 'score'> & { tier: BookTier },
+  position: number,
+  score: number
+): RankingState {
+  const { books } = rankingState;
+  const tierBooks = getBooksInTier(books, newBook.tier);
+  
+  const rankedBook: RankedBook = { ...newBook, score: roundScore(score) };
+  
+  // Insert into tier books
+  const updatedTierBooks = [...tierBooks];
+  updatedTierBooks.splice(position, 0, rankedBook);
+  
+  // Merge with other tiers and sort
+  const otherTierBooks = books.filter(b => b.tier !== newBook.tier);
+  const allBooks = [...otherTierBooks, ...updatedTierBooks].sort((a, b) => b.score - a.score);
+  
+  return {
+    books: allBooks,
+    comparisonState: {
+      // Preserve the inserted book (with its computed score) for getFinalResult
+      bookA: rankedBook,
+      bookB: null,
+      left: position,
+      right: position,
+      middle: position,
+      isComplete: true,
+      finalPosition: position,
+      needsRedistribution: false, // Fast path - no redistribution
+    },
+  };
+}
+
+/**
+ * Redistribute scores evenly across a tier's books
+ * Maintains the order but spaces scores evenly between min and max
+ */
+function redistributeTierScores(
+  tierBooks: RankedBook[],
+  tier: BookTier
+): RankedBook[] {
+  if (tierBooks.length === 0) return [];
+  
+  const { min, max } = TIER_BOUNDARIES[tier];
+  const n = tierBooks.length;
+  
+  if (n === 1) {
+    return [{ ...tierBooks[0], score: roundScore(max) }];
+  }
+  
+  const range = max - min;
+  
+  // Distribute as: range*(n)/n + min, range*(n-1)/n + min, ..., range*1/n + min
+  return tierBooks.map((book, index) => ({
+    ...book,
+    score: roundScore(range * (n - index) / n + min),
+  }));
+}
+
+/**
+ * Insert book at position within its tier and redistribute all tier scores
+ */
+function insertBookInTierWithRedistribution(
+  rankingState: RankingState,
+  newBook: Omit<RankedBook, 'score'> & { tier: BookTier },
+  position: number
+): RankingState {
+  const { books } = rankingState;
+  const tierBooks = getBooksInTier(books, newBook.tier);
+  
+  // Insert new book at position
+  const updatedTierBooks = [...tierBooks];
+  updatedTierBooks.splice(position, 0, {
+    ...newBook,
+    score: 0, // Temporary, will be redistributed
+  });
+  
+  // Redistribute all scores
+  const redistributed = redistributeTierScores(updatedTierBooks, newBook.tier);
+  const insertedBook = redistributed[position];
+  
+  // Update all books
+  const otherTierBooks = books.filter(b => b.tier !== newBook.tier);
+  const allBooks = [...otherTierBooks, ...redistributed].sort((a, b) => b.score - a.score);
+  
+  return {
+    books: allBooks,
+    comparisonState: {
+      // Keep the inserted book with its redistributed score
+      bookA: insertedBook,
+      bookB: null,
+      left: position,
+      right: position,
+      middle: position,
+      isComplete: true,
+      finalPosition: position,
+      needsRedistribution: true, // Set flag to indicate redistribution happened
     },
   };
 }
@@ -127,7 +298,7 @@ export function startInsertion(
  */
 export function processComparison(
   rankingState: RankingState,
-  userPrefersNewBook: boolean // true if user prefers new book over the comparison book
+  userPrefersNewBook: boolean
 ): RankingState {
   const { books, comparisonState } = rankingState;
   
@@ -137,133 +308,103 @@ export function processComparison(
   
   const { left, right, middle } = comparisonState;
   const newBook = comparisonState.bookA!;
+  const tierBooks = getBooksInTier(books, newBook.tier);
+  const { min, max } = TIER_BOUNDARIES[newBook.tier];
   
-  // Binary search logic
+  let position: number;
+  
+  // Binary search logic to find insertion position
   if (userPrefersNewBook) {
-    // New book is better than middle book
-    // Search in the top half (left to middle-1)
-    // Since array is sorted highest first, "better" means lower index
     if (middle === 0) {
-      // New book is better than the best book
-      // Insert at position 0 with score = topBook.score + 0.1
-      const topScore = books[0].score;
-      const finalScore = topScore + 0.1;
-      
-      return insertBookAtPosition(rankingState, newBook, 0, finalScore);
+      position = 0;
+    } else {
+      const newRight = middle - 1;
+      if (left > newRight) {
+        position = middle;
+      } else {
+        const newMiddle = Math.floor((left + newRight) / 2);
+        return {
+          books,
+          comparisonState: {
+            ...comparisonState,
+            bookB: tierBooks[newMiddle],
+            right: newRight,
+            middle: newMiddle,
+          },
+        };
+      }
     }
-    
-    const newRight = middle - 1;
-    if (left > newRight) {
-      // Found position: insert at middle (before the book at middle)
-      const finalScore = calculateScore(books, middle, 'before');
-      return insertBookAtPosition(rankingState, newBook, middle, finalScore);
-    }
-    
-    const newMiddle = Math.floor((left + newRight) / 2);
-    return {
-      books,
-      comparisonState: {
-        ...comparisonState,
-        bookB: books[newMiddle],
-        right: newRight,
-        middle: newMiddle,
-      },
-    };
   } else {
-    // New book is worse than middle book
-    // Search in the bottom half (middle+1 to right)
-    if (middle === books.length - 1) {
-      // New book is worse than the worst book
-      // Insert at the end with score = bottomBook.score - 0.1
-      const bottomScore = books[books.length - 1].score;
-      const finalScore = bottomScore - 0.1;
-      
-      return insertBookAtPosition(rankingState, newBook, books.length, finalScore);
+    if (middle === tierBooks.length - 1) {
+      position = tierBooks.length;
+    } else {
+      const newLeft = middle + 1;
+      if (newLeft > right) {
+        position = middle + 1;
+      } else {
+        const newMiddle = Math.floor((newLeft + right) / 2);
+        return {
+          books,
+          comparisonState: {
+            ...comparisonState,
+            bookB: tierBooks[newMiddle],
+            left: newLeft,
+            middle: newMiddle,
+          },
+        };
+      }
     }
-    
-    const newLeft = middle + 1;
-    if (newLeft > right) {
-      // Found position: insert at middle+1 (after the book at middle)
-      const finalScore = calculateScore(books, middle, 'after');
-      return insertBookAtPosition(rankingState, newBook, middle + 1, finalScore);
-    }
-    
-    const newMiddle = Math.floor((newLeft + right) / 2);
-    return {
-      books,
-      comparisonState: {
-        ...comparisonState,
-        bookB: books[newMiddle],
-        left: newLeft,
-        middle: newMiddle,
-      },
-    };
   }
-}
-
-/**
- * Calculate score for a book based on its insertion position
- */
-function calculateScore(
-  books: RankedBook[],
-  referenceIndex: number,
-  position: 'before' | 'after'
-): number {
-  if (position === 'before') {
-    // Inserting before referenceIndex
-    if (referenceIndex === 0) {
-      // Inserting at top
-      return books[0].score + 0.1;
+  
+  // NEW CODE - Add boundary collision checks
+  // If we're inserting at the very top and the current top is already near/at max,
+  // force redistribution to avoid duplicate scores at the boundary.
+  if (position === 0 && tierBooks.length > 0) {
+    const topBookScore = tierBooks[0].score;
+    if (topBookScore >= max - 0.1) {
+      return insertBookInTierWithRedistribution(rankingState, newBook, position);
     }
-    // Average of book above and book at referenceIndex
-    const scoreAbove = books[referenceIndex - 1].score;
-    const scoreBelow = books[referenceIndex].score;
-    return (scoreAbove + scoreBelow) / 2;
+  }
+  // Likewise, if inserting at the bottom when the bottom book is at/near min,
+  // redistribute to keep spacing without collisions.
+  if (position === tierBooks.length && tierBooks.length > 0) {
+    const bottomBookScore = tierBooks[tierBooks.length - 1].score;
+    if (bottomBookScore <= min + 0.1) {
+      return insertBookInTierWithRedistribution(rankingState, newBook, position);
+    }
+  }
+  
+  // Check if redistribution needed
+  const needsRedistribution = shouldRedistribute(tierBooks, position);
+  
+  if (needsRedistribution) {
+    return insertBookInTierWithRedistribution(rankingState, newBook, position);
   } else {
-    // Inserting after referenceIndex
-    if (referenceIndex === books.length - 1) {
-      // Inserting at bottom
-      return books[books.length - 1].score - 0.1;
+    // FAST PATH: Calculate midpoint score
+    let positionType: 'before' | 'after';
+    let refIndex: number;
+    
+    if (position === 0) {
+      positionType = 'before';
+      refIndex = 0;
+    } else if (position === tierBooks.length) {
+      positionType = 'after';
+      refIndex = tierBooks.length - 1;
+    } else {
+      positionType = 'before';
+      refIndex = position;
     }
-    // Average of book at referenceIndex and book below
-    const scoreAbove = books[referenceIndex].score;
-    const scoreBelow = books[referenceIndex + 1].score;
-    return (scoreAbove + scoreBelow) / 2;
+    
+    const score = calculateScore(tierBooks, refIndex, positionType, newBook.tier);
+    
+    // CRITICAL: Check if score would violate boundaries
+    if (score > max || score < min) {
+      // Force redistribution to stay in bounds
+      return insertBookInTierWithRedistribution(rankingState, newBook, position);
+    }
+    
+    return insertBookAtPosition(rankingState, newBook, position, score);
   }
-}
-
-/**
- * Insert book at the specified position with the calculated score
- */
-function insertBookAtPosition(
-  rankingState: RankingState,
-  newBook: Omit<RankedBook, 'score'>,
-  position: number,
-  score: number
-): RankingState {
-  const { books } = rankingState;
-  const rankedBook: RankedBook = {
-    ...newBook,
-    score,
-  };
-  
-  // Insert at position
-  const newBooks = [...books];
-  newBooks.splice(position, 0, rankedBook);
-  
-  return {
-    books: newBooks,
-    comparisonState: {
-      bookA: null,
-      bookB: null,
-      left: position,
-      right: position,
-      middle: position,
-      isComplete: true,
-      finalPosition: position,
-      finalScore: score,
-    },
-  };
 }
 
 /**
@@ -302,8 +443,9 @@ export function isRankingComplete(rankingState: RankingState): boolean {
 export function getFinalResult(rankingState: RankingState): {
   books: RankedBook[];
   insertedBook: RankedBook;
-  position: number;
+  positionInTier: number;
   score: number;
+  updatedTierBooks?: RankedBook[];
 } | null {
   const { books, comparisonState } = rankingState;
   
@@ -311,16 +453,38 @@ export function getFinalResult(rankingState: RankingState): {
     return null;
   }
   
-  if (comparisonState.finalPosition === null || comparisonState.finalScore === null) {
+  if (comparisonState.finalPosition === null) {
     return null;
   }
   
-  const insertedBook = books[comparisonState.finalPosition];
+  const bookA = comparisonState.bookA;
+  if (!bookA) return null;
   
-  return {
+  const insertedBook = books.find(
+    b => b.id === bookA.id && b.tier === bookA.tier
+  );
+  
+  if (!insertedBook) return null;
+  
+  const tierBooks = getBooksInTier(books, insertedBook.tier);
+  
+  const result: {
+    books: RankedBook[];
+    insertedBook: RankedBook;
+    positionInTier: number;
+    score: number;
+    updatedTierBooks?: RankedBook[];
+  } = {
     books,
     insertedBook,
-    position: comparisonState.finalPosition,
-    score: comparisonState.finalScore,
+    positionInTier: comparisonState.finalPosition,
+    score: insertedBook.score,
   };
+  
+  // Use flag to determine if redistribution happened
+  if (comparisonState.needsRedistribution) {
+    result.updatedTierBooks = tierBooks;
+  }
+  
+  return result;
 }
