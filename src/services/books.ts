@@ -1012,244 +1012,58 @@ export function formatRankScore(score: number | null): string {
 }
 
 /**
- * Update rank_score for a single book based on its position in the category
- * Uses high-precision fractional scores (5+ decimal places) without renormalizing other books
- * Only updates the new book - does NOT update updated_at to avoid showing in recent activity
+ * Batch update rank_score for multiple books in a tier
+ * Used when redistribution happens
  */
-export async function updateBookRankScore(
+export async function updateTierScoresBatch(
   userId: string,
-  rating: 'liked' | 'fine' | 'disliked',
-  newBookUserBookId: string,
-  position: number
-): Promise<number> {
+  tier: 'liked' | 'fine' | 'disliked',
+  updatedBooks: { id: string; score: number }[]
+): Promise<void> {
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/41ad2e02-a6eb-49a5-925b-c7ac80e7e179',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'books.ts:1015',message:'updateTierScoresBatch called',data:{userId,tier,booksCount:updatedBooks.length,bookIds:updatedBooks.map(b=>b.id)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+  // #endregion
   try {
-    console.log('=== RANKING: updateBookRankScore ===');
-    console.log('User ID:', userId);
-    console.log('Rating:', rating);
-    console.log('New book userBookId:', newBookUserBookId);
-    console.log('Position:', position);
-
-    // Get books in category that already have rank_score (we'll filter out the new book in JavaScript)
-    // Only include books with non-null rank_score for comparison
-    const { data: allCategoryBooks, error: fetchError } = await supabase
+    // Verify all books belong to this user
+    const { data: existingBooks, error: fetchError } = await supabase
       .from('user_books')
-      .select('id, rank_score')
+      .select('id')
       .eq('user_id', userId)
-      .eq('rating', rating)
-      .not('rank_score', 'is', null)
-      .order('rank_score', { ascending: false });
+      .in('id', updatedBooks.map(u => u.id))
+      .eq('rating', tier);
     
     if (fetchError) throw fetchError;
-
-    // Filter out the new book (in case it somehow got included)
-    const categoryBooks = (allCategoryBooks || []).filter(
-      (book: { id: string; rank_score: number | null }) => book.id !== newBookUserBookId && book.rank_score !== null
+    
+    if (!existingBooks || existingBooks.length !== updatedBooks.length) {
+      throw new Error('Not all books belong to user or tier');
+    }
+    
+    // Update each book in parallel
+    const updatePromises = updatedBooks.map(book =>
+      supabase
+        .from('user_books')
+        .update({ rank_score: book.score })
+        .eq('id', book.id)
+        .eq('user_id', userId)
     );
-
-    console.log('=== RANKING: Fetched books ===');
-    console.log('Total books in category (excluding new):', categoryBooks.length);
-    categoryBooks.forEach((book: { id: string; rank_score: number | null }, idx: number) => {
-      console.log(`  ${idx}: ${book.id} (score: ${book.rank_score})`);
-    });
-
-    // Define score ranges by category
-    // Note: NUMERIC(4,2) constraint allows values up to 99.99
-    const maxScore = rating === 'liked' ? 10.0 : rating === 'fine' ? 6.99 : 4.99;
-    const minScore = rating === 'liked' ? 8.0 : rating === 'fine' ? 5.0 : 1.0;
-
-    let newScore: number;
-
-    if (!categoryBooks || categoryBooks.length === 0) {
-      // First book in category - use default
-      newScore = rating === 'liked' ? 9.0 : rating === 'fine' ? 5.5 : 3.0;
-      console.log('=== RANKING: First book in category, using default ===');
-      console.log('Default score:', newScore);
-    } else if (position === 0) {
-      // Better than current best
-      const topScore = categoryBooks[0].rank_score;
-      newScore = topScore + 0.1;
-      
-      // If top book is already at or very close to maxScore, allow going slightly above
-      // to ensure the new book appears above (not tied)
-      if (topScore >= maxScore - 0.0001) {
-        // Use a tiny increment above maxScore to ensure it's above
-        newScore = maxScore + 0.00001;
-        console.log('=== RANKING: Better than best (at max boundary) ===');
-        console.log('Top score:', topScore);
-        console.log('New score (above max):', newScore);
-      } else {
-        // Cap at category max if we're not at the boundary
-        newScore = Math.min(newScore, maxScore);
-        console.log('=== RANKING: Better than best ===');
-        console.log('Top score:', topScore);
-        console.log('New score:', newScore);
-      }
-    } else if (position >= categoryBooks.length) {
-      // Worse than current worst
-      const bottomScore = categoryBooks[categoryBooks.length - 1].rank_score;
-      newScore = bottomScore - 0.1;
-      
-      // If bottom book is already at or very close to minScore, allow going slightly below
-      // to ensure the new book appears below (not tied)
-      if (bottomScore <= minScore + 0.0001) {
-        // Use a tiny decrement below minScore to ensure it's below
-        newScore = minScore - 0.00001;
-        console.log('=== RANKING: Worse than worst (at min boundary) ===');
-        console.log('Bottom score:', bottomScore);
-        console.log('New score (below min):', newScore);
-      } else {
-        // Floor at category min if we're not at the boundary
-        newScore = Math.max(newScore, minScore);
-        console.log('=== RANKING: Worse than worst ===');
-        console.log('Bottom score:', bottomScore);
-        console.log('New score:', newScore);
-      }
-    } else {
-      // Between two books - use precise midpoint
-      const upperScore = categoryBooks[position - 1].rank_score;
-      const lowerScore = categoryBooks[position].rank_score;
-      const gap = upperScore - lowerScore;
-      
-      // Use high-precision midpoint for even distribution
-      // This gives us ~100,000 possible values between any two scores
-      newScore = (upperScore + lowerScore) / 2;
-      
-      // If gap is getting too small (less than 0.00002), we're running out of room
-      // This would only happen after 50,000+ rankings between two books (unrealistic)
-      if (gap < 0.00002) {
-        console.warn('=== RANKING: WARNING - Scores getting very close, consider renormalization ===', {
-          upperScore,
-          lowerScore,
-          gap
-        });
-        // Still place it, just with minimum precision
-        newScore = lowerScore + 0.00001;
-      }
-      
-      console.log('=== RANKING: Between two books ===');
-      console.log('Upper score:', upperScore);
-      console.log('Lower score:', lowerScore);
-      console.log('Gap:', gap);
-      console.log('New score (midpoint):', newScore);
-    }
-
-    // Calculate precision for logging
-    const precision = newScore.toString().split('.')[1]?.length || 0;
     
-    // Log precision tracking
-    console.log('=== RANKING: Score precision check ===');
-    console.log('Score:', newScore);
-    console.log('Decimals:', precision);
-    console.log('Formatted:', formatRankScore(newScore));
-    console.log('Category:', rating);
-    console.log('Position:', position);
-
-    // Store with full precision (no rounding) - database supports arbitrary precision
-    // JavaScript uses IEEE 754 double precision, which handles 5+ decimal places fine
-
-    // Update ONLY the new book
-    // IMPORTANT: Do NOT update updated_at - we don't want rank_score updates in recent activity
-    const { data: updateData, error: updateError } = await supabase
-      .from('user_books')
-      .update({ 
-        rank_score: newScore
-        // Note: updated_at is NOT updated - this prevents rank_score changes from appearing in recent activity
-      })
-      .eq('id', newBookUserBookId)
-      .select('id, rank_score')
-      .single();
-
-    if (updateError) {
-      console.error('=== RANKING: ERROR updating book ===', updateError);
-      throw updateError;
+    const results = await Promise.all(updatePromises);
+    const errors = results.filter(r => r.error).map(r => r.error);
+    
+    if (errors.length > 0) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/41ad2e02-a6eb-49a5-925b-c7ac80e7e179',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'books.ts:1050',message:'Batch update errors detected',data:{errorsCount:errors.length,errors:errors.map(e=>e?.message)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
+      throw new Error(`Batch update failed: ${errors.map(e => e?.message).join(', ')}`);
     }
-
-    // Verify the update worked
-    if (!updateData) {
-      console.error('=== RANKING: ERROR - No data returned from update ===');
-      throw new Error('Update returned no data');
-    }
-
-    if (updateData.rank_score !== newScore) {
-      console.error('=== RANKING: ERROR - Score mismatch after update ===');
-      console.error('Expected score:', newScore);
-      console.error('Actual score in DB:', updateData.rank_score);
-      throw new Error(`Score mismatch: expected ${newScore}, got ${updateData.rank_score}`);
-    }
-
-    console.log('=== RANKING: Complete ===');
-    console.log('New book score:', newScore);
-    console.log('Precision:', precision, 'decimal places');
-    console.log('Updated only the new book (no renormalization)');
-    console.log('Verified: rank_score in database matches expected value');
-
-    return newScore;
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/41ad2e02-a6eb-49a5-925b-c7ac80e7e179',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'books.ts:1053',message:'Batch update completed successfully',data:{booksUpdated:updatedBooks.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+    // #endregion
   } catch (error) {
-    console.error('=== RANKING: ERROR ===', error);
-    throw error;
-  }
-}
-
-/**
- * Update the rank_score of a book in user's shelf (legacy function)
- * @deprecated Use updateBookRankScore(userId, rating, userBookId, position) instead
- */
-export async function updateBookRankScoreLegacy(
-  userBookId: string,
-  rankScore: number
-): Promise<void> {
-  try {
-    console.log('=== RANKING DEBUG: updateBookRankScore ===');
-    console.log('Function called with:', { userBookId, rankScore });
-    console.log('RankScore type:', typeof rankScore);
-    console.log('RankScore value:', rankScore);
-    console.log('RankScore is valid?', typeof rankScore === 'number' && !isNaN(rankScore));
-    
-    if (rankScore === null || rankScore === undefined || isNaN(rankScore)) {
-      console.error('=== RANKING DEBUG: ERROR - Invalid rankScore ===', rankScore);
-      throw new Error(`Invalid rankScore: ${rankScore}`);
-    }
-    
-    console.log('Updating database...');
-    const updateData = { 
-      rank_score: rankScore, 
-      updated_at: new Date().toISOString() 
-    };
-    console.log('Update data:', updateData);
-    
-    const { data, error } = await supabase
-      .from('user_books')
-      .update(updateData)
-      .eq('id', userBookId)
-      .select('id, rank_score, rating')
-      .single();
-
-    if (error) {
-      console.error('=== RANKING DEBUG: Database error ===');
-      console.error('Error code:', error.code);
-      console.error('Error message:', error.message);
-      console.error('Error details:', error);
-      throw error;
-    }
-    
-    console.log('=== RANKING DEBUG: Database update successful ===');
-    console.log('Returned data:', data);
-    console.log('Updated rank_score:', data?.rank_score);
-    console.log('Updated rating:', data?.rating);
-    
-    if (data?.rank_score !== rankScore) {
-      console.error('=== RANKING DEBUG: WARNING - Score mismatch after update ===');
-      console.error('Expected:', rankScore);
-      console.error('Got:', data?.rank_score);
-    } else {
-      console.log('=== RANKING DEBUG: SUCCESS - Score matches expected value ===');
-    }
-  } catch (error) {
-    console.error('=== RANKING DEBUG: ERROR in updateBookRankScore ===');
-    const err = error as any;
-    console.error('Error type:', err?.constructor?.name);
-    console.error('Error message:', err?.message);
-    console.error('Full error:', error);
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/41ad2e02-a6eb-49a5-925b-c7ac80e7e179',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'books.ts:1056',message:'updateTierScoresBatch error caught',data:{error:error?.message,errorStack:error?.stack},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
+    console.error('Error updating tier scores batch:', error);
     throw error;
   }
 }
@@ -1278,16 +1092,16 @@ export async function updateBookStatus(
 }
 
 /**
- * Get default score for a rating category
+ * Get default score for a rating category (max score for tier)
  */
 function getDefaultScoreForRating(rating: 'liked' | 'fine' | 'disliked'): number {
   switch (rating) {
     case 'liked':
       return 10.0;
     case 'fine':
-      return 6.0;
+      return 7.0;
     case 'disliked':
-      return 4.0;
+      return 3.5;
   }
 }
 
