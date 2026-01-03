@@ -492,11 +492,7 @@ export default function ProfileScreen() {
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.logoContainer}>
-          <Text style={styles.logo}>
-            {userProfile?.first_name && userProfile?.last_name
-              ? `${userProfile.first_name} ${userProfile.last_name}`
-              : userProfile?.first_name || userProfile?.username || 'Profile'}
-          </Text>
+          <Text style={styles.logo}>@{getDisplayUsername()}</Text>
         </View>
         <View style={styles.headerRight}>
           <TouchableOpacity style={styles.signoutButton} onPress={handleSignOut}>
@@ -529,12 +525,12 @@ export default function ProfileScreen() {
             ) : (
               <View style={styles.avatar}>
                 <Text style={styles.avatarText}>
-                  {getUsername().charAt(0).toUpperCase()}
+                  {getDisplayUsername().charAt(0).toUpperCase()}
                 </Text>
               </View>
             )}
           </View>
-          <Text style={styles.username}>@{getDisplayUsername()}</Text>
+          <Text style={styles.username}>{userProfile?.first_name} {userProfile?.last_name}</Text>
           <Text style={styles.memberSince}>Member since {getJoinDate()}</Text>
           {userProfile?.bio && (
             <Text style={styles.bio}>{userProfile.bio}</Text>
@@ -592,7 +588,11 @@ export default function ProfileScreen() {
             bookCounts.want_to_read,
             () => (navigation as any).navigate('Your Shelf', { screen: 'YourShelfMain', params: { initialTab: 'want_to_read' } })
           )}
-          {/* {renderShelfSection('❤️', 'Recommended for You', 0)} */}
+          {renderShelfSection(
+            require('../../assets/heart.png'), 
+            'Recommended for You', 
+            0
+          )}
         </View>
 
         {/* Stats Cards */}
