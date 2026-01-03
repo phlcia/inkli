@@ -1123,9 +1123,6 @@ export async function updateTierScoresBatch(
   tier: 'liked' | 'fine' | 'disliked',
   updatedBooks: { id: string; score: number }[]
 ): Promise<void> {
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/41ad2e02-a6eb-49a5-925b-c7ac80e7e179',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'books.ts:1015',message:'updateTierScoresBatch called',data:{userId,tier,booksCount:updatedBooks.length,bookIds:updatedBooks.map(b=>b.id)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-  // #endregion
   try {
     // Verify all books belong to this user
     const { data: existingBooks, error: fetchError } = await supabase
@@ -1141,11 +1138,12 @@ export async function updateTierScoresBatch(
       throw new Error('Not all books belong to user or tier');
     }
     
-    // Update each book in parallel
     const updatePromises = updatedBooks.map(book =>
       supabase
         .from('user_books')
-        .update({ rank_score: book.score })
+        .update({ 
+          rank_score: book.score,
+        })
         .eq('id', book.id)
         .eq('user_id', userId)
     );
@@ -1154,18 +1152,9 @@ export async function updateTierScoresBatch(
     const errors = results.filter(r => r.error).map(r => r.error);
     
     if (errors.length > 0) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/41ad2e02-a6eb-49a5-925b-c7ac80e7e179',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'books.ts:1050',message:'Batch update errors detected',data:{errorsCount:errors.length,errors:errors.map(e=>e?.message)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-      // #endregion
       throw new Error(`Batch update failed: ${errors.map(e => e?.message).join(', ')}`);
     }
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/41ad2e02-a6eb-49a5-925b-c7ac80e7e179',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'books.ts:1053',message:'Batch update completed successfully',data:{booksUpdated:updatedBooks.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-    // #endregion
   } catch (error) {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/41ad2e02-a6eb-49a5-925b-c7ac80e7e179',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'books.ts:1056',message:'updateTierScoresBatch error caught',data:{error:error?.message,errorStack:error?.stack},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-    // #endregion
     console.error('Error updating tier scores batch:', error);
     throw error;
   }
