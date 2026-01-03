@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, StatusBar, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, StatusBar, Alert, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography } from '../config/theme';
 
@@ -40,7 +40,11 @@ export default function CreateAccountScreen({
           }}
           disabled={oauthLoading !== null}
         >
-          <Text style={styles.appleIcon}>🍎</Text>
+          <Image
+            source={require('../../assets/apple.png')}
+            style={[styles.oauthIcon, styles.appleIcon]}
+            resizeMode="contain"
+          />
           <Text style={styles.appleButtonText}>
             {oauthLoading === 'apple' ? 'Signing in...' : 'Continue with Apple'}
           </Text>
@@ -63,7 +67,11 @@ export default function CreateAccountScreen({
           }}
           disabled={oauthLoading !== null}
         >
-          <Text style={styles.googleIcon}>G</Text>
+          <Image
+            source={require('../../assets/google.png')}
+            style={styles.oauthIcon}
+            resizeMode="contain"
+          />
           <Text style={styles.googleButtonText}>
             {oauthLoading === 'google' ? 'Signing in...' : 'Continue with Google'}
           </Text>
@@ -78,7 +86,11 @@ export default function CreateAccountScreen({
 
         {/* Email Sign Up */}
         <TouchableOpacity style={styles.emailButton} onPress={onEmailSignUp}>
-          <Text style={styles.emailIcon}>✉</Text>
+          <Image
+            source={require('../../assets/email.png')}
+            style={styles.oauthIcon}
+            resizeMode="contain"
+          />
           <Text style={styles.emailButtonText}>Sign up with Email</Text>
         </TouchableOpacity>
       </View>
@@ -115,9 +127,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 16,
   },
-  appleIcon: {
-    fontSize: 20,
+  oauthIcon: {
+    width: 20,
+    height: 20,
     marginRight: 12,
+  },
+  appleIcon: {
+    tintColor: colors.white,
   },
   appleButtonText: {
     color: colors.white,
@@ -135,16 +151,6 @@ const styles = StyleSheet.create({
     marginBottom: 24,
     borderWidth: 1,
     borderColor: colors.brownText,
-  },
-  googleIcon: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#4285F4',
-    marginRight: 12,
-    width: 24,
-    height: 24,
-    textAlign: 'center',
-    lineHeight: 24,
   },
   googleButtonText: {
     color: colors.brownText,
@@ -180,11 +186,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: colors.brownText,
-  },
-  emailIcon: {
-    fontSize: 20,
-    marginRight: 12,
-    color: colors.brownText,
   },
   emailButtonText: {
     color: colors.brownText,
