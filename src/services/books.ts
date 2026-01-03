@@ -133,6 +133,7 @@ export function clearGoogleBooksCache(): void {
 
 /**
  * String similarity for matching books between Open Library and Google Books
+ * Enhanced with fuzzy matching tolerance
  */
 function similarity(s1: string, s2: string): number {
   const longer = s1.length > s2.length ? s1 : s2;
@@ -167,7 +168,83 @@ function levenshteinDistance(str1: string, str2: string): number {
 }
 
 /**
+ * Calculate relevance score for search results
+ * Higher score = more relevant to the query
+ */
+function calculateRelevanceScore(book: any, query: string): number {
+  const normalizedQuery = query.toLowerCase().trim();
+  let score = 0;
+  
+  const bookTitle = (book.title || '').toLowerCase();
+  const bookAuthors = book.author_name || [];
+  const bookISBNs = book.isbn || [];
+  
+  // 1. Title similarity (most important - weight: 100)
+  const titleSim = similarity(normalizedQuery, bookTitle);
+  score += titleSim * 100;
+  
+  // 2. Prefix match bonus (search query matches start of title - weight: 30)
+  if (bookTitle.startsWith(normalizedQuery)) {
+    score += 30;
+  }
+  
+  // 3. Exact title match (case-insensitive - weight: 50)
+  if (bookTitle === normalizedQuery) {
+    score += 50;
+  }
+  
+  // 4. Title contains query as whole word (weight: 20)
+  const titleWords = bookTitle.split(/\s+/);
+  if (titleWords.some(word => word === normalizedQuery)) {
+    score += 20;
+  }
+  
+  // 5. Author match (weight: 50 for good match)
+  const authorMatch = bookAuthors.some((author: string) => {
+    const authorLower = author.toLowerCase();
+    const authorSim = similarity(normalizedQuery, authorLower);
+    
+    // Check if query matches author's last name
+    const authorParts = authorLower.split(/\s+/);
+    const lastName = authorParts[authorParts.length - 1];
+    
+    return authorSim > 0.7 || 
+           authorLower.includes(normalizedQuery) ||
+           (lastName && lastName.startsWith(normalizedQuery));
+  });
+  if (authorMatch) score += 50;
+  
+  // 6. ISBN exact match (perfect indicator - weight: 200)
+  if (bookISBNs.some((isbn: string) => isbn === query.replace(/[-\s]/g, ''))) {
+    score += 200;
+  }
+  
+  // 7. Has cover image (quality signal - weight: 5)
+  if (book.cover_i) score += 5;
+  
+  // 8. Publication recency (slight boost for newer books - weight: 0-10)
+  if (book.first_publish_year) {
+    const currentYear = new Date().getFullYear();
+    const bookAge = currentYear - book.first_publish_year;
+    if (bookAge < 5) score += 10;
+    else if (bookAge < 20) score += 5;
+  }
+  
+  // 9. Fuzzy author last name match (catches typos in author search)
+  bookAuthors.forEach((author: string) => {
+    const authorParts = author.toLowerCase().split(/\s+/);
+    const lastName = authorParts[authorParts.length - 1];
+    if (lastName && similarity(normalizedQuery, lastName) > 0.75) {
+      score += 25;
+    }
+  });
+  
+  return score;
+}
+
+/**
  * Find best Google Books match for an Open Library book
+ * Enhanced with better fuzzy matching
  */
 function findBestMatch(olBook: any, gbItems: any[] = []): any | null {
   if (!gbItems || gbItems.length === 0) return null;
@@ -183,14 +260,24 @@ function findBestMatch(olBook: any, gbItems: any[] = []): any | null {
     );
     score += titleMatch * 10;
     
-    // Author match
+    // Fuzzy title match with higher threshold
+    if (titleMatch > 0.85) score += 5;
+    
+    // Author match with fuzzy matching
     const olAuthor = olBook.author_name?.[0]?.toLowerCase() || '';
     const gbAuthor = book.authors?.[0]?.toLowerCase() || '';
     if (olAuthor && gbAuthor) {
+      const authorSim = similarity(olAuthor, gbAuthor);
+      if (authorSim > 0.7) {
+        score += 5 * authorSim;
+      }
+      
+      // Last name matching
       const olLastName = olAuthor.split(' ').pop() || '';
       const gbLastName = gbAuthor.split(' ').pop() || '';
       if (olLastName && gbLastName && 
-          (olLastName.includes(gbLastName) || gbLastName.includes(olLastName))) {
+          (olLastName.includes(gbLastName) || gbLastName.includes(olLastName) ||
+           similarity(olLastName, gbLastName) > 0.8)) {
         score += 5;
       }
     }
@@ -291,12 +378,16 @@ function resolvePublishedDate(olBook: any, gbBook: any): string | null {
 
 /**
  * Search books using Open Library API (returns deduplicated results)
+ * Enhanced with relevance scoring and better fuzzy matching
  */
 export async function searchBooks(query: string): Promise<any[]> {
   try {
+    const normalizedQuery = query.trim();
+    
     // Use Open Library for search (deduplicated results)
+    // Fetch more results to have better selection after scoring
     const response = await fetch(
-      `https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&limit=20`
+      `https://openlibrary.org/search.json?q=${encodeURIComponent(normalizedQuery)}&limit=30`
     );
     
     if (!response.ok) {
@@ -305,20 +396,31 @@ export async function searchBooks(query: string): Promise<any[]> {
     
     const data = await response.json();
     
-    const books = data.docs.map((book: any) => ({
-      open_library_id: book.key, // e.g., "/works/OL45804W"
-      title: book.title,
-      authors: book.author_name || [],
-      cover_url: book.cover_i 
-        ? `https://covers.openlibrary.org/b/id/${book.cover_i}-L.jpg`
-        : null,
-      first_publish_year: book.first_publish_year,
-      isbn: book.isbn?.[0],
-      _raw: book // Keep raw data for enrichment
-    }));
+    const books = data.docs.map((book: any) => {
+      // Calculate relevance score for each result
+      const relevanceScore = calculateRelevanceScore(book, normalizedQuery);
+      
+      return {
+        open_library_id: book.key, // e.g., "/works/OL45804W"
+        title: book.title,
+        authors: book.author_name || [],
+        cover_url: book.cover_i 
+          ? `https://covers.openlibrary.org/b/id/${book.cover_i}-L.jpg`
+          : null,
+        first_publish_year: book.first_publish_year,
+        isbn: book.isbn?.[0],
+        relevanceScore, // Add relevance score
+        _raw: book // Keep raw data for enrichment
+      };
+    });
     
-    console.log(`Found ${books.length} books from Open Library`);
-    return books;
+    // Sort by relevance score (highest first) and return top 20
+    const sortedBooks = books
+      .sort((a, b) => b.relevanceScore - a.relevanceScore)
+      .slice(0, 20);
+    
+    console.log(`Found ${sortedBooks.length} books from Open Library, sorted by relevance`);
+    return sortedBooks;
     
   } catch (error) {
     console.error('Open Library search error:', error);
@@ -329,10 +431,11 @@ export async function searchBooks(query: string): Promise<any[]> {
 /**
  * Search books with stats (average score and member count)
  * Uses pre-calculated community statistics from the books table (updated via triggers)
+ * Enhanced with relevance scoring
  */
 export async function searchBooksWithStats(query: string): Promise<any[]> {
   try {
-    // First, search Open Library
+    // First, search Open Library (now returns relevance-sorted results)
     const books = await searchBooks(query);
     
     // For each book, check if it exists in database and get pre-calculated stats
