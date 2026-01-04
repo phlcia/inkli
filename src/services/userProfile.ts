@@ -14,14 +14,6 @@ export interface UserProfile {
   updated_at: string;
 }
 
-export interface CreateUserProfileData {
-  userId: string;
-  firstName: string;
-  lastName: string;
-  username: string;
-  readingInterests: string[];
-}
-
 /**
  * Get user profile by user ID
  */
