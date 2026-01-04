@@ -76,6 +76,24 @@ export async function checkUsernameAvailability(
   }
 }
 
+export async function checkIfFollowing(
+  followerId: string,
+  followingId: string
+): Promise<boolean> {
+  try {
+    const { data, error } = await supabase
+      .from('user_follows')
+      .select('id')
+      .eq('follower_id', followerId)
+      .eq('following_id', followingId)
+      .single();
+
+    return !!data && !error;
+  } catch (error) {
+    return false;
+  }
+}
+
 /**
  * Update user profile
  */

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,9 +10,8 @@ import {
   Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { ProfileStackParamList } from '../navigation/ProfileStackNavigator';
 import { colors, typography } from '../config/theme';
 import { useAuth } from '../contexts/AuthContext';
 import {
@@ -20,19 +19,28 @@ import {
   getRecentUserBooks,
   UserBook,
 } from '../services/books';
-import { getFollowerCount, getFollowingCount } from '../services/userProfile';
+import { 
+  getFollowerCount, 
+  getFollowingCount,
+  followUser,
+  unfollowUser,
+  checkIfFollowing,
+} from '../services/userProfile';
 import RecentActivityCard from '../components/RecentActivityCard';
 import { supabase } from '../config/supabase';
 
-type ProfileScreenNavigationProp = StackNavigationProp<
-  ProfileStackParamList,
-  'ProfileMain'
->;
+// Add this to your navigation type definitions
+type UserProfileRouteParams = {
+  userId: string;
+  username?: string; // Optional - for display while loading
+};
 
-export default function ProfileScreen() {
-  const { user, signOut } = useAuth();
-  const navigation = useNavigation<ProfileScreenNavigationProp>();
-  const route = useRoute();
+export default function UserProfileScreen() {
+  const { user: currentUser } = useAuth();
+  const navigation = useNavigation();
+  const route = useRoute<RouteProp<{ params: UserProfileRouteParams }, 'params'>>();
+  const { userId, username: initialUsername } = route.params;
+
   const [bookCounts, setBookCounts] = useState({
     read: 0,
     currently_reading: 0,
@@ -54,120 +62,84 @@ export default function ProfileScreen() {
   } | null>(null);
   const [followerCount, setFollowerCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [followLoading, setFollowLoading] = useState(false);
 
-  const fetchUserProfile = async (userId: string) => {
+  useEffect(() => {
+    loadUserProfile();
+  }, [userId]);
+
+  const loadUserProfile = async () => {
     try {
-      const { data, error } = await supabase
+      setLoading(true);
+
+      // Fetch user profile
+      const { data: profile, error: profileError } = await supabase
         .from('user_profiles')
         .select('username, first_name, last_name, books_read_count, weekly_streak, global_rank, member_since, profile_photo_url, bio')
         .eq('user_id', userId)
         .single();
-      
-      if (error) {
-        console.warn('Profile not found for user, showing placeholder');
-        // Return placeholder profile if not found
-        return {
-          username: 'New User',
-          first_name: 'New',
-          last_name: 'User',
-          books_read_count: 0,
-          weekly_streak: 0,
-          global_rank: null,
-          member_since: user?.created_at || new Date().toISOString(),
-          profile_photo_url: null,
-          bio: null,
-        };
+
+      if (profileError) {
+        console.error('Error fetching user profile:', profileError);
+        Alert.alert('Error', 'Could not load user profile');
+        navigation.goBack();
+        return;
       }
-      
-      console.log('Profile fetched:', {
-        username: data?.username,
-        profile_photo_url: data?.profile_photo_url,
-        hasPhoto: !!data?.profile_photo_url,
-      });
-      return data;
-    } catch (error) {
-      console.error('Error fetching user profile:', error);
-      // Return placeholder profile on error
-        return {
-          username: 'New User',
-          first_name: 'New',
-          last_name: 'User',
-          books_read_count: 0,
-          weekly_streak: 0,
-          global_rank: null,
-          member_since: user?.created_at || new Date().toISOString(),
-          profile_photo_url: null,
-          bio: null,
-        };
-    }
-  };
 
-  const loadProfileData = async () => {
-    if (!user) {
-      setLoading(false);
-      return;
-    }
+      setUserProfile(profile);
 
-    try {
-      setLoading(true);
-      console.log('=== ProfileScreen: Loading profile data ===');
-      const [counts, recent, profile, followers, following] = await Promise.all([
-        getUserBookCounts(user.id),
-        getRecentUserBooks(user.id, 20),
-        fetchUserProfile(user.id),
-        getFollowerCount(user.id),
-        getFollowingCount(user.id),
+      // Fetch counts and recent activity in parallel
+      const [counts, recent, followers, following] = await Promise.all([
+        getUserBookCounts(userId),
+        getRecentUserBooks(userId, 20),
+        getFollowerCount(userId),
+        getFollowingCount(userId),
       ]);
-      console.log('=== ProfileScreen: Data loaded ===');
-      console.log('Recent books count:', recent.length);
-      recent.forEach((book, idx) => {
-        console.log(`  ${idx}: ${book.book?.title} - rank_score: ${book.rank_score}, rating: ${book.rating}`);
-      });
+
       setBookCounts(counts);
       setRecentBooks(recent);
       setFollowerCount(followers.count);
       setFollowingCount(following.count);
-      // Always set profile (even if placeholder) to prevent errors
-      setUserProfile(profile || {
-        username: 'New User',
-        first_name: 'New User',
-        last_name: '',
-        books_read_count: 0,
-        weekly_streak: 0,
-        global_rank: null,
-        member_since: user?.created_at || new Date().toISOString(),
-        profile_photo_url: null,
-        bio: null,
-      });
+
+      // Check if current user is following this user
+      if (currentUser?.id && currentUser.id !== userId) {
+        const following = await checkIfFollowing(currentUser.id, userId);
+        setIsFollowing(following);
+      }
+
     } catch (error) {
-      console.error('Error loading profile data:', error);
+      console.error('Error loading user profile:', error);
       Alert.alert('Error', 'Failed to load profile data');
     } finally {
       setLoading(false);
     }
   };
 
-  useFocusEffect(
-    React.useCallback(() => {
-      console.log('=== ProfileScreen: useFocusEffect - loading data ===');
-      loadProfileData();
-    }, [user])
-  );
+  const handleFollowToggle = async () => {
+    if (!currentUser?.id || currentUser.id === userId) return;
 
-  // Listen for route params changes (triggered when ranking completes)
-  React.useEffect(() => {
-    const params = (route.params as any);
-    if (params?.refresh) {
-      console.log('=== ProfileScreen: Refresh triggered by route param ===');
-      loadProfileData();
-      // Clear the param to avoid repeated refreshes
-      (navigation as any).setParams({ refresh: undefined });
+    setFollowLoading(true);
+    try {
+      if (isFollowing) {
+        const { error } = await unfollowUser(currentUser.id, userId);
+        if (!error) {
+          setIsFollowing(false);
+          setFollowerCount(prev => Math.max(0, prev - 1));
+        }
+      } else {
+        const { error } = await followUser(currentUser.id, userId);
+        if (!error) {
+          setIsFollowing(true);
+          setFollowerCount(prev => prev + 1);
+        }
+      }
+    } catch (error) {
+      console.error('Error toggling follow:', error);
+      Alert.alert('Error', 'Failed to update follow status');
+    } finally {
+      setFollowLoading(false);
     }
-  }, [route.params, navigation, user]);
-
-  const getUsername = () => {
-    if (!user?.email) return 'user';
-    return user.email.split('@')[0];
   };
 
   const getJoinDate = () => {
@@ -177,43 +149,7 @@ export default function ProfileScreen() {
       const year = date.getFullYear();
       return `${month} ${year}`;
     }
-    if (!user?.created_at) return 'Unknown';
-    const date = new Date(user.created_at);
-    const month = date.toLocaleString('default', { month: 'long' });
-    const year = date.getFullYear();
-    return `${month} ${year}`;
-  };
-
-  // Get username from profile or fallback to email
-  const getDisplayUsername = () => {
-    if (userProfile?.username) {
-      return userProfile.username;
-    }
-    return getUsername();
-  };
-
-  // Get user rank from profile
-  const userRank = userProfile?.global_rank || null;
-
-  const handleSignOut = async () => {
-    Alert.alert(
-      'Sign Out',
-      'Are you sure you want to sign out?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Sign Out',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await signOut();
-            } catch (error: any) {
-              Alert.alert('Error', error.message || 'Failed to sign out');
-            }
-          },
-        },
-      ]
-    );
+    return 'Unknown';
   };
 
   const renderShelfSection = (
@@ -222,12 +158,7 @@ export default function ProfileScreen() {
     count: number,
     onPress?: () => void
   ) => (
-    <TouchableOpacity
-      style={styles.shelfCard}
-      onPress={onPress}
-      activeOpacity={0.7}
-      disabled={!onPress}
-    >
+    <TouchableOpacity style={styles.shelfCard} onPress={onPress} activeOpacity={0.7}>
       <Image
         source={iconSource}
         style={styles.shelfCardIcon}
@@ -251,15 +182,16 @@ export default function ProfileScreen() {
   );
 
   const getActionText = (status: string) => {
+    const firstName = userProfile?.first_name || 'User';
     switch (status) {
       case 'read':
-        return 'You finished';
+        return `${firstName} finished`;
       case 'currently_reading':
-        return 'You started reading';
+        return `${firstName} started reading`;
       case 'want_to_read':
-        return 'You bookmarked';
+        return `${firstName} bookmarked`;
       default:
-        return 'You added';
+        return `${firstName} added`;
     }
   };
 
@@ -270,8 +202,7 @@ export default function ProfileScreen() {
   };
 
   const formatDateForDisplay = (dateString: string): string => {
-    // dateString is in YYYY-MM-DD format, parse it as local date to avoid timezone issues
-    const date = new Date(dateString + 'T00:00:00'); // Add time to avoid timezone shift
+    const date = new Date(dateString + 'T00:00:00');
     return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
   };
 
@@ -290,10 +221,9 @@ export default function ProfileScreen() {
   };
 
   const handleBookPress = async (userBook: UserBook) => {
-    if (!user || !userBook.book) return;
+    if (!userBook.book) return;
 
     try {
-      // Fetch full book details from database
       const { data: fullBook, error } = await supabase
         .from('books')
         .select('*')
@@ -302,19 +232,26 @@ export default function ProfileScreen() {
 
       if (error) throw error;
 
-      // Check if user already has this book
-      const { data: userBookData } = await supabase
-        .from('user_books')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('book_id', fullBook.id)
-        .single();
+      // Check if current user has this book
+      let userBookData = null;
+      if (currentUser?.id) {
+        const { data } = await supabase
+          .from('user_books')
+          .select('*')
+          .eq('user_id', currentUser.id)
+          .eq('book_id', fullBook.id)
+          .single();
+        userBookData = data;
+      }
 
-      // Navigate to BookDetailScreen with book data
-      navigation.navigate('BookDetail', {
-        book: {
-          ...fullBook,
-          userBook: userBookData || null, // Include user's status, rating, etc.
+      // Navigate to BookDetailScreen
+      (navigation as any).navigate('Search', {
+        screen: 'BookDetail',
+        params: {
+          book: {
+            ...fullBook,
+            userBook: userBookData || null,
+          },
         },
       });
     } catch (error) {
@@ -329,7 +266,7 @@ export default function ProfileScreen() {
       userBook={userBook}
       actionText={getActionText(userBook.status)}
       avatarUrl={userProfile?.profile_photo_url}
-      avatarFallback={getUsername().charAt(0).toUpperCase()}
+      avatarFallback={userProfile?.username?.charAt(0).toUpperCase() || 'U'}
       onPressBook={handleBookPress}
       formatDateRange={formatDateRange}
       formatDayOfWeek={formatDayOfWeek}
@@ -338,24 +275,30 @@ export default function ProfileScreen() {
 
   if (loading) {
     return (
-      <View style={styles.container}>
-        <ActivityIndicator size="large" color={colors.primaryBlue} />
-      </View>
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primaryBlue} />
+        </View>
+      </SafeAreaView>
     );
   }
+
+  const isOwnProfile = currentUser?.id === userId;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Text style={styles.backButtonText}>←</Text>
+        </TouchableOpacity>
         <View style={styles.logoContainer}>
-          <Text style={styles.logo}>@{getDisplayUsername()}</Text>
+          <Text style={styles.logo}>@{userProfile?.username || initialUsername}</Text>
         </View>
-        <View style={styles.headerRight}>
-          <TouchableOpacity style={styles.signoutButton} onPress={handleSignOut}>
-            <Text style={styles.signoutButtonText}>Sign Out</Text>
-          </TouchableOpacity>
-        </View>
+        <View style={styles.headerRight} />
       </View>
 
       <ScrollView
@@ -371,23 +314,18 @@ export default function ProfileScreen() {
                 source={{ uri: userProfile.profile_photo_url }}
                 style={styles.avatarImage}
                 resizeMode="cover"
-                onError={(e) => {
-                  console.error('Error loading profile photo:', e.nativeEvent.error);
-                  console.log('Photo URL:', userProfile.profile_photo_url);
-                }}
-                onLoad={() => {
-                  console.log('Profile photo loaded successfully:', userProfile.profile_photo_url);
-                }}
               />
             ) : (
               <View style={styles.avatar}>
                 <Text style={styles.avatarText}>
-                  {getDisplayUsername().charAt(0).toUpperCase()}
+                  {userProfile?.username?.charAt(0).toUpperCase() || 'U'}
                 </Text>
               </View>
             )}
           </View>
-          <Text style={styles.username}>{userProfile?.first_name} {userProfile?.last_name}</Text>
+          <Text style={styles.username}>
+            {userProfile?.first_name} {userProfile?.last_name}
+          </Text>
           <Text style={styles.memberSince}>Member since {getJoinDate()}</Text>
           {userProfile?.bio && (
             <Text style={styles.bio}>{userProfile.bio}</Text>
@@ -405,57 +343,87 @@ export default function ProfileScreen() {
             </View>
             <View style={styles.statBox}>
               <Text style={styles.statBoxValue}>
-                {userRank ? `#${userRank}` : '--'}
+                {userProfile?.global_rank ? `#${userProfile.global_rank}` : '--'}
               </Text>
               <Text style={styles.statBoxLabel}>Rank</Text>
             </View>
           </View>
 
           {/* Action Buttons */}
-          <View style={styles.actionButtons}>
-            <TouchableOpacity
-              style={styles.outlinedButton}
-              onPress={() => navigation.navigate('EditProfile')}
-            >
-              <Text style={styles.outlinedButtonText}>Edit profile</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.outlinedButton}>
-              <Text style={styles.outlinedButtonText}>Share profile</Text>
-            </TouchableOpacity>
-          </View>
+          {!isOwnProfile && (
+            <View style={styles.actionButtons}>
+              <TouchableOpacity
+                style={[
+                  styles.followButton,
+                  isFollowing && styles.followingButton
+                ]}
+                onPress={handleFollowToggle}
+                disabled={followLoading}
+              >
+                {followLoading ? (
+                  <ActivityIndicator size="small" color={isFollowing ? colors.brownText : colors.white} />
+                ) : (
+                  <Text style={[
+                    styles.followButtonText,
+                    isFollowing && styles.followingButtonText
+                  ]}>
+                    {isFollowing ? 'Following' : 'Follow'}
+                  </Text>
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.outlinedButton}>
+                <Text style={styles.outlinedButtonText}>Message</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
 
         {/* Shelf Sections */}
         <View style={styles.shelfCardsContainer}>
           {renderShelfSection(
-            require('../../assets/add.png'), 
-            'Read', 
+            require('../../assets/add.png'),
+            'Read',
             bookCounts.read,
-            () => (navigation as any).navigate('Your Shelf', { screen: 'YourShelfMain', params: { initialTab: 'read' } })
+            () => (navigation as any).navigate('UserShelf', {
+              userId,
+              username: userProfile?.username,
+              initialTab: 'read',
+            })
           )}
           {renderShelfSection(
-            require('../../assets/reading.png'), 
-            'Currently Reading', 
+            require('../../assets/reading.png'),
+            'Currently Reading',
             bookCounts.currently_reading,
-            () => (navigation as any).navigate('Your Shelf', { screen: 'YourShelfMain', params: { initialTab: 'currently_reading' } })
+            () => (navigation as any).navigate('UserShelf', {
+              userId,
+              username: userProfile?.username,
+              initialTab: 'currently_reading',
+            })
           )}
           {renderShelfSection(
-            require('../../assets/bookmark.png'), 
-            'Want to Read', 
+            require('../../assets/bookmark.png'),
+            'Want to Read',
             bookCounts.want_to_read,
-            () => (navigation as any).navigate('Your Shelf', { screen: 'YourShelfMain', params: { initialTab: 'want_to_read' } })
-          )}
-          {renderShelfSection(
-            require('../../assets/heart.png'), 
-            'Recommended for You', 
-            0
+            () => (navigation as any).navigate('UserShelf', {
+              userId,
+              username: userProfile?.username,
+              initialTab: 'want_to_read',
+            })
           )}
         </View>
 
         {/* Stats Cards */}
         <View style={styles.statsCardsRow}>
-          {renderStatCard(require('../../assets/rank.png'), 'Rank on Inkli', userRank ? `#${userRank}` : '--')}
-          {renderStatCard(require('../../assets/fire.png'), 'Weekly Streak', `${userProfile?.weekly_streak ?? 0} weeks`)}
+          {renderStatCard(
+            require('../../assets/rank.png'),
+            'Rank on Inkli',
+            userProfile?.global_rank ? `#${userProfile.global_rank}` : '--'
+          )}
+          {renderStatCard(
+            require('../../assets/fire.png'),
+            'Weekly Streak',
+            `${userProfile?.weekly_streak ?? 0} weeks`
+          )}
         </View>
 
         {/* Tabs */}
@@ -485,7 +453,7 @@ export default function ProfileScreen() {
             >
               Taste Profile
             </Text>
-      </TouchableOpacity>
+          </TouchableOpacity>
         </View>
 
         {/* Tab Content */}
@@ -505,15 +473,21 @@ export default function ProfileScreen() {
             </View>
           )}
         </View>
-    </ScrollView>
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
+// Copy all styles from ProfileScreen.tsx and add these new ones:
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.creamBackground,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   header: {
     flexDirection: 'row',
@@ -522,36 +496,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 16,
   },
-  logoContainer: {
-    flex: 1,
-    flexShrink: 1,
-    marginRight: 16,
-  },
-  logo: {
-    fontSize: 32,
-    fontFamily: typography.logo,
-    color: colors.primaryBlue,
-    lineHeight: 40,
-    includeFontPadding: false,
-  },
-  headerRight: {
-    flexDirection: 'row',
-    gap: 16,
-    flexShrink: 0,
-  },
-  signoutButton: {
-    backgroundColor: colors.primaryBlue,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
+  backButton: {
+    width: 40,
+    height: 40,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  signoutButtonText: {
-    fontSize: 14,
-    fontFamily: typography.button,
-    color: colors.white,
-    fontWeight: '600',
+  backButtonText: {
+    fontSize: 28,
+    color: colors.primaryBlue,
+  },
+  logoContainer: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  logo: {
+    fontSize: 24,
+    fontFamily: typography.logo,
+    color: colors.primaryBlue,
+  },
+  headerRight: {
+    width: 40,
   },
   scrollView: {
     flex: 1,
@@ -563,7 +528,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 24,
     borderBottomWidth: 1,
-    borderBottomColor: `${colors.brownText}1A`, // 1A = 10% opacity in hex
+    borderBottomColor: `${colors.brownText}1A`,
   },
   avatarContainer: {
     marginBottom: 12,
@@ -634,23 +599,32 @@ const styles = StyleSheet.create({
     color: colors.brownText,
     opacity: 0.7,
   },
-  statItem: {
-    fontSize: 14,
-    fontFamily: typography.body,
-    color: colors.brownText,
-  },
-  statDivider: {
-    fontSize: 14,
-    fontFamily: typography.body,
-    color: colors.brownText,
-    opacity: 0.3,
-    marginHorizontal: 8,
-  },
   actionButtons: {
     flexDirection: 'row',
     gap: 12,
     width: '100%',
     paddingHorizontal: 16,
+  },
+  followButton: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: colors.primaryBlue,
+    alignItems: 'center',
+  },
+  followingButton: {
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.brownText,
+  },
+  followButtonText: {
+    fontSize: 14,
+    fontFamily: typography.button,
+    color: colors.white,
+    fontWeight: '600',
+  },
+  followingButtonText: {
+    color: colors.brownText,
   },
   outlinedButton: {
     flex: 1,
@@ -666,12 +640,13 @@ const styles = StyleSheet.create({
     color: colors.primaryBlue,
     fontWeight: '600',
   },
+  // ... copy all other styles from ProfileScreen.tsx ...
   shelfCardsContainer: {
     gap: 12,
     paddingHorizontal: 16,
     paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: `${colors.brownText}1A`, // 1A = 10% opacity in hex
+    borderBottomColor: `${colors.brownText}1A`,
   },
   shelfCard: {
     flexDirection: 'row',
@@ -705,7 +680,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: `${colors.brownText}1A`, // 1A = 10% opacity in hex
+    borderBottomColor: `${colors.brownText}1A`,
   },
   statCard: {
     flex: 1,
@@ -740,7 +715,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 16,
     borderBottomWidth: 1,
-    borderBottomColor: `${colors.brownText}1A`, // 1A = 10% opacity in hex
+    borderBottomColor: `${colors.brownText}1A`,
   },
   tab: {
     flex: 1,
@@ -837,27 +812,6 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontWeight: '700',
   },
-  cardBookDetails: {
-    marginBottom: 12,
-  },
-  cardAuthor: {
-    fontSize: 14,
-    fontFamily: typography.body,
-    color: colors.brownText,
-    marginBottom: 4,
-  },
-  cardMetadata: {
-    fontSize: 12,
-    fontFamily: typography.body,
-    color: colors.brownText,
-    opacity: 0.6,
-  },
-  cardCoverImage: {
-    width: '100%',
-    aspectRatio: 2/3,
-    borderRadius: 8,
-    marginBottom: 12,
-  },
   bookInfoSection: {
     flexDirection: 'row',
     backgroundColor: colors.white,
@@ -927,40 +881,6 @@ const styles = StyleSheet.create({
     fontFamily: typography.body,
     color: colors.brownText,
     opacity: 0.8,
-  },
-  cardFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: `${colors.brownText}1A`, // 1A = 10% opacity in hex
-    marginBottom: 8,
-  },
-  cardFooterLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-  },
-  cardFooterRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  cardFooterIcon: {
-    width: 32,
-    height: 32,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  cardFooterIconText: {
-    fontSize: 18,
-    color: colors.brownText,
-  },
-  cardFooterIconImage: {
-    width: 18,
-    height: 18,
-    tintColor: colors.brownText,
   },
   cardTimestamp: {
     fontSize: 12,
