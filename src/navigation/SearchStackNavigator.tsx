@@ -4,6 +4,8 @@ import { colors } from '../config/theme';
 import SearchScreen from '../screens/SearchScreen';
 import BookDetailScreen from '../screens/BookDetailScreen';
 import BookRankingScreen from '../screens/BookRankingScreen';
+import UserProfileScreen from '../screens/UserProfileScreen';
+import UserShelfScreen from '../screens/UserShelfScreen';
 
 export type SearchStackParamList = {
   SearchMain: undefined;
@@ -14,6 +16,12 @@ export type SearchStackParamList = {
     initialStatus: 'read' | 'currently_reading' | 'want_to_read';
     previousStatus?: 'read' | 'currently_reading' | 'want_to_read' | null;
     wasNewBook?: boolean;
+  };
+  UserProfile: { userId: string; username?: string };
+  UserShelf: {
+    userId: string;
+    username?: string;
+    initialTab?: 'read' | 'currently_reading' | 'want_to_read';
   };
 };
 
@@ -45,6 +53,16 @@ export default function SearchStackNavigator() {
           presentation: 'card',
           animation: 'slide_from_right',
         }}
+      />
+      <Stack.Screen 
+        name="UserProfile" 
+        component={UserProfileScreen} 
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen 
+        name="UserShelf" 
+        component={UserShelfScreen} 
+        options={{ headerShown: false }}
       />
     </Stack.Navigator>
   );
