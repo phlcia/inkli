@@ -395,14 +395,36 @@ export default function ProfileScreen() {
 
           {/* Stats Row */}
           <View style={styles.statsRow}>
-            <View style={styles.statBox}>
+            <TouchableOpacity
+              style={styles.statBox}
+              onPress={() =>
+                user?.id &&
+                navigation.navigate('FollowersFollowing', {
+                  userId: user.id,
+                  username: userProfile?.username,
+                  initialTab: 'followers',
+                })
+              }
+              activeOpacity={0.7}
+            >
               <Text style={styles.statBoxValue}>{followerCount}</Text>
               <Text style={styles.statBoxLabel}>Followers</Text>
-            </View>
-            <View style={styles.statBox}>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.statBox}
+              onPress={() =>
+                user?.id &&
+                navigation.navigate('FollowersFollowing', {
+                  userId: user.id,
+                  username: userProfile?.username,
+                  initialTab: 'following',
+                })
+              }
+              activeOpacity={0.7}
+            >
               <Text style={styles.statBoxValue}>{followingCount}</Text>
               <Text style={styles.statBoxLabel}>Following</Text>
-            </View>
+            </TouchableOpacity>
             <View style={styles.statBox}>
               <Text style={styles.statBoxValue}>
                 {userRank ? `#${userRank}` : '--'}

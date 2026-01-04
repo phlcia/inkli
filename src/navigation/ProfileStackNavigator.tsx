@@ -4,11 +4,16 @@ import { colors } from '../config/theme';
 import ProfileScreen from '../screens/ProfileScreen';
 import EditProfileScreen from '../screens/EditProfileScreen';
 import BookDetailScreen from '../screens/BookDetailScreen';
+import FollowersFollowingScreen from '../screens/FollowersFollowingScreen';
+import UserProfileScreen from '../screens/UserProfileScreen';
+import { FollowersFollowingParams } from './types';
 
 export type ProfileStackParamList = {
   ProfileMain: undefined;
   EditProfile: undefined;
   BookDetail: { book: any }; // Enriched book data
+  FollowersFollowing: FollowersFollowingParams;
+  UserProfile: { userId: string; username?: string };
 };
 
 const Stack = createNativeStackNavigator<ProfileStackParamList>();
@@ -35,6 +40,22 @@ export default function ProfileStackNavigator() {
       <Stack.Screen
         name="BookDetail"
         component={BookDetailScreen}
+        options={{
+          presentation: 'card',
+          animation: 'slide_from_right',
+        }}
+      />
+      <Stack.Screen
+        name="FollowersFollowing"
+        component={FollowersFollowingScreen}
+        options={{
+          presentation: 'card',
+          animation: 'slide_from_right',
+        }}
+      />
+      <Stack.Screen
+        name="UserProfile"
+        component={UserProfileScreen}
         options={{
           presentation: 'card',
           animation: 'slide_from_right',

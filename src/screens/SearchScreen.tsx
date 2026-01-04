@@ -703,9 +703,6 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     height: 44,
-    borderWidth: 1,
-    borderColor: colors.brownText,
-    borderRadius: 8,
     paddingHorizontal: 12,
     fontFamily: typography.body,
     fontSize: 16,

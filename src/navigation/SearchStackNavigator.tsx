@@ -6,6 +6,8 @@ import BookDetailScreen from '../screens/BookDetailScreen';
 import BookRankingScreen from '../screens/BookRankingScreen';
 import UserProfileScreen from '../screens/UserProfileScreen';
 import UserShelfScreen from '../screens/UserShelfScreen';
+import FollowersFollowingScreen from '../screens/FollowersFollowingScreen';
+import { FollowersFollowingParams } from './types';
 
 export type SearchStackParamList = {
   SearchMain: undefined;
@@ -23,6 +25,7 @@ export type SearchStackParamList = {
     username?: string;
     initialTab?: 'read' | 'currently_reading' | 'want_to_read';
   };
+  FollowersFollowing: FollowersFollowingParams;
 };
 
 const Stack = createNativeStackNavigator<SearchStackParamList>();
@@ -63,6 +66,15 @@ export default function SearchStackNavigator() {
         name="UserShelf" 
         component={UserShelfScreen} 
         options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="FollowersFollowing"
+        component={FollowersFollowingScreen}
+        options={{
+          presentation: 'card',
+          animation: 'slide_from_right',
+          headerShown: false,
+        }}
       />
     </Stack.Navigator>
   );

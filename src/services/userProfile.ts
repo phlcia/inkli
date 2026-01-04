@@ -14,6 +14,14 @@ export interface UserProfile {
   updated_at: string;
 }
 
+export interface UserSummary {
+  user_id: string;
+  username: string;
+  first_name: string;
+  last_name: string;
+  profile_photo_url: string | null;
+}
+
 /**
  * Get user profile by user ID
  */
@@ -436,6 +444,104 @@ export async function getFollowingIds(
   } catch (error) {
     console.error('Exception fetching following IDs:', error);
     return { followingIds: [], error };
+  }
+}
+
+/**
+ * Get list of user IDs that follow the current user
+ */
+export async function getFollowerIds(
+  userId: string
+): Promise<{ followerIds: string[]; error: any }> {
+  try {
+    const { data, error } = await supabase
+      .from('user_follows')
+      .select('follower_id')
+      .eq('following_id', userId);
+
+    if (error) {
+      console.error('Error fetching follower IDs:', error);
+      return { followerIds: [], error };
+    }
+
+    const followerIds = (data || []).map((row: any) => row.follower_id);
+    return { followerIds, error: null };
+  } catch (error) {
+    console.error('Exception fetching follower IDs:', error);
+    return { followerIds: [], error };
+  }
+}
+
+const fetchProfilesByIds = async (
+  userIds: string[]
+): Promise<UserSummary[]> => {
+  if (userIds.length === 0) return [];
+
+  const { data, error } = await supabase
+    .from('user_profiles')
+    .select('user_id, username, first_name, last_name, profile_photo_url')
+    .in('user_id', userIds);
+
+  if (error) {
+    console.error('Error fetching profiles:', error);
+    return [];
+  }
+
+  const map = new Map((data || []).map((row: any) => [row.user_id, row]));
+  return userIds.map((id) => map.get(id)).filter(Boolean) as UserSummary[];
+};
+
+/**
+ * Get followers list with profile data
+ */
+export async function getFollowersList(
+  userId: string
+): Promise<{ followers: UserSummary[]; error: any }> {
+  try {
+    const { data, error } = await supabase
+      .from('user_follows')
+      .select('follower_id, created_at')
+      .eq('following_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching followers list:', error);
+      return { followers: [], error };
+    }
+
+    const followerIds = (data || []).map((row: any) => row.follower_id);
+    const followers = await fetchProfilesByIds(followerIds);
+    return { followers, error: null };
+  } catch (error) {
+    console.error('Exception fetching followers list:', error);
+    return { followers: [], error };
+  }
+}
+
+/**
+ * Get following list with profile data
+ */
+export async function getFollowingList(
+  userId: string
+): Promise<{ following: UserSummary[]; error: any }> {
+  try {
+    const { data, error } = await supabase
+      .from('user_follows')
+      .select('following_id, created_at')
+      .eq('follower_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching following list:', error);
+      return { following: [], error };
+    }
+
+    const followingIds = (data || []).map((row: any) => row.following_id);
+    const following = await fetchProfilesByIds(followingIds);
+    return { following, error: null };
+  } catch (error) {
+    console.error('Exception fetching following list:', error);
+    return { following: [], error };
   }
 }
 
