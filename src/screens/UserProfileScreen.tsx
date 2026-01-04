@@ -17,6 +17,8 @@ import {
   getUserBookCounts,
   getRecentUserBooks,
   UserBook,
+  addBookToShelf,
+  removeBookFromShelf,
 } from '../services/books';
 import { 
   getFollowerCount, 
@@ -48,6 +50,7 @@ export default function UserProfileScreen() {
   const [recentBooks, setRecentBooks] = useState<UserBook[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'activity' | 'profile'>('activity');
+  const [viewerShelfMap, setViewerShelfMap] = useState<Record<string, { id: string; status: UserBook['status'] }>>({});
   const [userProfile, setUserProfile] = useState<{
     username: string;
     first_name: string;
@@ -101,6 +104,26 @@ export default function UserProfileScreen() {
       setRecentBooks(recent);
       setFollowerCount(followers.count);
       setFollowingCount(following.count);
+
+      if (currentUser?.id && recent.length > 0) {
+        const bookIds = Array.from(new Set(recent.map((item) => item.book_id).filter(Boolean)));
+        if (bookIds.length > 0) {
+          const { data } = await supabase
+            .from('user_books')
+            .select('id, book_id, status')
+            .eq('user_id', currentUser.id)
+            .in('book_id', bookIds);
+          const map: Record<string, { id: string; status: UserBook['status'] }> = {};
+          (data || []).forEach((item: any) => {
+            map[item.book_id] = { id: item.id, status: item.status };
+          });
+          setViewerShelfMap(map);
+        } else {
+          setViewerShelfMap({});
+        }
+      } else {
+        setViewerShelfMap({});
+      }
 
       // Check if current user is following this user
       if (currentUser?.id && currentUser.id !== userId) {
@@ -270,8 +293,33 @@ export default function UserProfileScreen() {
       onPressBook={handleBookPress}
       formatDateRange={formatDateRange}
       formatDayOfWeek={formatDayOfWeek}
+      viewerStatus={viewerShelfMap[userBook.book_id]?.status || null}
+      onToggleWantToRead={
+        currentUser?.id ? () => handleToggleWantToRead(userBook) : undefined
+      }
     />
   );
+
+  const handleToggleWantToRead = async (userBook: UserBook) => {
+    if (!currentUser?.id || !userBook.book || !userBook.book_id) return;
+    const existing = viewerShelfMap[userBook.book_id];
+    if (existing?.status === 'want_to_read') {
+      await removeBookFromShelf(existing.id);
+      setViewerShelfMap((prev) => {
+        const next = { ...prev };
+        delete next[userBook.book_id];
+        return next;
+      });
+      return;
+    }
+    if (!existing) {
+      const result = await addBookToShelf(userBook.book, 'want_to_read', currentUser.id);
+      setViewerShelfMap((prev) => ({
+        ...prev,
+        [userBook.book_id]: { id: result.userBookId, status: 'want_to_read' },
+      }));
+    }
+  };
 
   if (loading) {
     return (
