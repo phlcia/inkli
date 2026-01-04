@@ -63,6 +63,7 @@ export default function UserProfileScreen() {
   const [followingCount, setFollowingCount] = useState(0);
   const [isFollowing, setIsFollowing] = useState(false);
   const [followLoading, setFollowLoading] = useState(false);
+  const [messageActive, setMessageActive] = useState(false);
 
   useEffect(() => {
     loadUserProfile();
@@ -332,14 +333,34 @@ export default function UserProfileScreen() {
 
           {/* Stats Row */}
           <View style={styles.statsRow}>
-            <View style={styles.statBox}>
+            <TouchableOpacity
+              style={styles.statBox}
+              onPress={() =>
+                (navigation as any).navigate('FollowersFollowing', {
+                  userId,
+                  username: userProfile?.username || initialUsername,
+                  initialTab: 'followers',
+                })
+              }
+              activeOpacity={0.7}
+            >
               <Text style={styles.statBoxValue}>{followerCount}</Text>
               <Text style={styles.statBoxLabel}>Followers</Text>
-            </View>
-            <View style={styles.statBox}>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.statBox}
+              onPress={() =>
+                (navigation as any).navigate('FollowersFollowing', {
+                  userId,
+                  username: userProfile?.username || initialUsername,
+                  initialTab: 'following',
+                })
+              }
+              activeOpacity={0.7}
+            >
               <Text style={styles.statBoxValue}>{followingCount}</Text>
               <Text style={styles.statBoxLabel}>Following</Text>
-            </View>
+            </TouchableOpacity>
             <View style={styles.statBox}>
               <Text style={styles.statBoxValue}>
                 {userProfile?.global_rank ? `#${userProfile.global_rank}` : '--'}
@@ -370,8 +391,20 @@ export default function UserProfileScreen() {
                   </Text>
                 )}
               </TouchableOpacity>
-              <TouchableOpacity style={styles.outlinedButton}>
-                <Text style={styles.outlinedButtonText}>Message</Text>
+              <TouchableOpacity
+                style={[
+                  styles.followButton,
+                  messageActive && styles.followingButton
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.followButtonText,
+                    messageActive && styles.followingButtonText
+                  ]}
+                >
+                  Message
+                </Text>
               </TouchableOpacity>
             </View>
           )}
@@ -612,9 +645,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   followingButton: {
-    backgroundColor: colors.white,
+    backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: colors.brownText,
+    borderColor: colors.primaryBlue,
   },
   followButtonText: {
     fontSize: 14,
@@ -623,21 +656,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   followingButtonText: {
-    color: colors.brownText,
-  },
-  outlinedButton: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.primaryBlue,
-    alignItems: 'center',
-  },
-  outlinedButtonText: {
-    fontSize: 14,
-    fontFamily: typography.button,
     color: colors.primaryBlue,
-    fontWeight: '600',
   },
   // ... copy all other styles from ProfileScreen.tsx ...
   shelfCardsContainer: {
