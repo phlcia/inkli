@@ -12,6 +12,8 @@ type RecentActivityCardProps = {
   onPressBook: (userBook: UserBook) => void;
   formatDateRange: (startDate: string | null, endDate: string | null) => string | null;
   formatDayOfWeek: (dateString: string) => string;
+  viewerStatus?: 'read' | 'currently_reading' | 'want_to_read' | null;
+  onToggleWantToRead?: () => void;
 };
 
 export default function RecentActivityCard({
@@ -22,9 +24,15 @@ export default function RecentActivityCard({
   onPressBook,
   formatDateRange,
   formatDayOfWeek,
+  viewerStatus = null,
+  onToggleWantToRead,
 }: RecentActivityCardProps) {
   const book = userBook.book;
   if (!book) return null;
+  const isRead = viewerStatus === 'read';
+  const isCurrentlyReading = viewerStatus === 'currently_reading';
+  const isWantToRead = viewerStatus === 'want_to_read';
+  const actionTint = getScoreColor(10);
 
   return (
     <View style={styles.activityCard}>
@@ -141,27 +149,39 @@ export default function RecentActivityCard({
           </TouchableOpacity>
         </View>
         <View style={styles.cardFooterRight}>
-          <TouchableOpacity style={styles.cardFooterIcon}>
-            <Image
-              source={require('../../assets/add.png')}
-              style={styles.cardFooterIconImage}
-              resizeMode="contain"
-            />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.cardFooterIcon}>
-            <Image
-              source={require('../../assets/reading.png')}
-              style={styles.cardFooterIconImage}
-              resizeMode="contain"
-            />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.cardFooterIcon}>
-            <Image
-              source={require('../../assets/bookmark.png')}
-              style={styles.cardFooterIconImage}
-              resizeMode="contain"
-            />
-          </TouchableOpacity>
+          {isRead ? (
+            <View style={styles.cardFooterIcon}>
+              <Image
+                source={require('../../assets/check.png')}
+                style={[styles.cardFooterIconImage, { tintColor: actionTint }]}
+                resizeMode="contain"
+              />
+            </View>
+          ) : isCurrentlyReading ? (
+            <View style={styles.cardFooterIcon}>
+              <Image
+                source={require('../../assets/reading.png')}
+                style={[styles.cardFooterIconImage, { tintColor: actionTint }]}
+                resizeMode="contain"
+              />
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={styles.cardFooterIcon}
+              onPress={onToggleWantToRead}
+              disabled={!onToggleWantToRead}
+            >
+              <Image
+                source={
+                  isWantToRead
+                    ? require('../../assets/shadedbookmark.png')
+                    : require('../../assets/bookmark.png')
+                }
+                style={styles.cardFooterIconImage}
+                resizeMode="contain"
+              />
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
