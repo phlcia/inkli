@@ -7,6 +7,7 @@ import { UserBook } from '../services/books';
 import { getScoreColor, formatScore } from '../utils/rankScoreColors';
 import { useAuth } from '../contexts/AuthContext';
 import { checkUserLiked, getLikesCount, toggleLike } from '../services/activityLikes';
+import { getCommentsCount } from '../services/activityComments';
 import { ProfileStackParamList } from '../navigation/ProfileStackNavigator';
 import { SearchStackParamList } from '../navigation/SearchStackNavigator';
 
@@ -20,6 +21,8 @@ type RecentActivityCardProps = {
   formatDayOfWeek: (dateString: string) => string;
   viewerStatus?: 'read' | 'currently_reading' | 'want_to_read' | null;
   onToggleWantToRead?: () => void;
+  showCommentsLink?: boolean;
+  showCommentIcon?: boolean;
 };
 
 export default function RecentActivityCard({
@@ -32,6 +35,8 @@ export default function RecentActivityCard({
   formatDayOfWeek,
   viewerStatus = null,
   onToggleWantToRead,
+  showCommentsLink = true,
+  showCommentIcon = true,
 }: RecentActivityCardProps) {
   const book = userBook.book;
   if (!book) return null;
@@ -40,18 +45,25 @@ export default function RecentActivityCard({
   const isWantToRead = viewerStatus === 'want_to_read';
   const actionTint = getScoreColor(10);
   const { user } = useAuth();
-  type ActivityLikesNavigation = CompositeNavigationProp<
-    StackNavigationProp<ProfileStackParamList, 'ActivityLikes'>,
-    StackNavigationProp<SearchStackParamList, 'ActivityLikes'>
+  type ActivityNavigation = CompositeNavigationProp<
+    StackNavigationProp<ProfileStackParamList>,
+    StackNavigationProp<SearchStackParamList>
   >;
-  const navigation = useNavigation<ActivityLikesNavigation>();
+  const navigation = useNavigation<ActivityNavigation>();
   const [liked, setLiked] = useState(false);
   const [likesCount, setLikesCount] = useState(userBook.likes_count ?? 0);
+  const [commentsCount, setCommentsCount] = useState(userBook.comments_count ?? 0);
   const [likeLoading, setLikeLoading] = useState(false);
+  const shouldShowCommentsLink = showCommentsLink && commentsCount > 0;
+  const shouldShowLikesRow = likesCount > 0 || shouldShowCommentsLink;
 
   useEffect(() => {
     setLikesCount(userBook.likes_count ?? 0);
   }, [userBook.likes_count]);
+
+  useEffect(() => {
+    setCommentsCount(userBook.comments_count ?? 0);
+  }, [userBook.comments_count]);
 
   useEffect(() => {
     let isActive = true;
@@ -92,6 +104,25 @@ export default function RecentActivityCard({
     };
   }, [userBook.id]);
 
+  useEffect(() => {
+    let isActive = true;
+
+    const loadCommentsCount = async () => {
+      try {
+        const count = await getCommentsCount(userBook.id);
+        if (isActive) setCommentsCount(count);
+      } catch (error) {
+        console.error('Error loading comments count:', error);
+      }
+    };
+
+    loadCommentsCount();
+
+    return () => {
+      isActive = false;
+    };
+  }, [userBook.id]);
+
   const handleToggleLike = async () => {
     if (!user?.id || likeLoading) return;
     setLikeLoading(true);
@@ -110,6 +141,17 @@ export default function RecentActivityCard({
 
   const handlePressLikes = () => {
     navigation.navigate('ActivityLikes', { userBookId: userBook.id });
+  };
+
+  const handlePressComments = () => {
+    navigation.navigate('ActivityComments', {
+      userBookId: userBook.id,
+      userBook,
+      actionText,
+      avatarUrl,
+      avatarFallback,
+      viewerStatus,
+    });
   };
 
   return (
@@ -201,14 +243,26 @@ export default function RecentActivityCard({
         </View>
       )}
 
-      {likesCount > 0 && (
+      {shouldShowLikesRow && (
         <>
+          <View style={styles.likesDivider} />
           <View style={styles.likesRow}>
-            <TouchableOpacity onPress={handlePressLikes} activeOpacity={0.7}>
-              <Text style={styles.likesText}>
-                {likesCount} {likesCount === 1 ? 'like' : 'likes'}
-              </Text>
-            </TouchableOpacity>
+            {likesCount > 0 ? (
+              <TouchableOpacity onPress={handlePressLikes} activeOpacity={0.7}>
+                <Text style={styles.likesText}>
+                  {likesCount} {likesCount === 1 ? 'like' : 'likes'}
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <View />
+            )}
+            {shouldShowCommentsLink && (
+              <TouchableOpacity onPress={handlePressComments} activeOpacity={0.7}>
+                <Text style={styles.commentsLinkText}>
+                  View {commentsCount} {commentsCount === 1 ? 'comment' : 'comments'}
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
         </>
       )}
@@ -231,13 +285,15 @@ export default function RecentActivityCard({
               resizeMode="contain"
             />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.cardFooterIcon}>
-            <Image
-              source={require('../../assets/comment.png')}
-              style={styles.cardFooterIconImage}
-              resizeMode="contain"
-            />
-          </TouchableOpacity>
+          {showCommentIcon && (
+            <TouchableOpacity style={styles.cardFooterIcon} onPress={handlePressComments}>
+              <Image
+                source={require('../../assets/comment.png')}
+                style={styles.cardFooterIconImage}
+                resizeMode="contain"
+              />
+            </TouchableOpacity>
+          )}
           <TouchableOpacity style={styles.cardFooterIcon}>
             <Image
               source={require('../../assets/share.png')}
@@ -431,6 +487,8 @@ const styles = StyleSheet.create({
     opacity: 0.8,
   },
   likesRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     marginTop: 8,
     marginBottom: 8,
     alignItems: 'flex-start',
@@ -440,6 +498,17 @@ const styles = StyleSheet.create({
     fontFamily: typography.body,
     color: colors.brownText,
     fontWeight: '600',
+  },
+  commentsLinkText: {
+    fontSize: 14,
+    fontFamily: typography.body,
+    color: colors.brownText,
+    fontWeight: '600',
+  },
+  likesDivider: {
+    borderTopWidth: 1,
+    borderTopColor: `${colors.brownText}1A`,
+    marginTop: 12,
   },
   cardFooter: {
     flexDirection: 'row',

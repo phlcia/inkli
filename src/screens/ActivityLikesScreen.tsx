@@ -23,7 +23,7 @@ import { ProfileStackParamList } from '../navigation/ProfileStackNavigator';
 import { SearchStackParamList } from '../navigation/SearchStackNavigator';
 import { ActivityLikesParams } from '../navigation/types';
 import { getActivityLikes } from '../services/activityLikes';
-import { ActivityLike } from '../types/activityLikes';
+import { getCommentLikesList } from '../services/activityCommentLikes';
 import {
   followUser,
   unfollowUser,
@@ -45,9 +45,11 @@ export default function ActivityLikesScreen() {
 
   const navigation = useNavigation<ActivityLikesNavigation>();
   const route = useRoute<ActivityLikesRoute>();
-  const { userBookId } = route.params;
+  const { userBookId, commentId } = route.params;
 
-  const [likes, setLikes] = useState<ActivityLike[]>([]);
+  const [likes, setLikes] = useState<
+    { user_id: string; username: string; avatar_url?: string }[]
+  >([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [followingIds, setFollowingIds] = useState<Set<string>>(new Set());
@@ -57,8 +59,20 @@ export default function ActivityLikesScreen() {
   const loadLikes = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await getActivityLikes(userBookId);
-      setLikes(data);
+      if (commentId) {
+        const data = await getCommentLikesList(commentId);
+        setLikes(data);
+      } else if (userBookId) {
+        const data = await getActivityLikes(userBookId);
+        const mapped = data.map((item) => ({
+          user_id: item.user_id,
+          username: item.user?.username || 'user',
+          avatar_url: item.user?.avatar_url,
+        }));
+        setLikes(mapped);
+      } else {
+        setLikes([]);
+      }
 
       if (currentUser?.id) {
         const [followingIdsRes, followerIdsRes] = await Promise.all([
@@ -71,7 +85,7 @@ export default function ActivityLikesScreen() {
     } finally {
       setLoading(false);
     }
-  }, [currentUser?.id, userBookId]);
+  }, [commentId, currentUser?.id, userBookId]);
 
   React.useEffect(() => {
     loadLikes();
@@ -81,7 +95,7 @@ export default function ActivityLikesScreen() {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return likes;
     return likes.filter((item) => {
-      const username = item.user?.username?.toLowerCase() || '';
+      const username = item.username?.toLowerCase() || '';
       return username.includes(q) || `@${username}`.includes(q);
     });
   }, [likes, searchQuery]);
@@ -116,9 +130,13 @@ export default function ActivityLikesScreen() {
     }
   };
 
-  const renderItem = ({ item }: { item: ActivityLike }) => {
-    const username = item.user?.username || 'user';
-    const avatarUrl = item.user?.avatar_url || null;
+  const renderItem = ({
+    item,
+  }: {
+    item: { user_id: string; username: string; avatar_url?: string };
+  }) => {
+    const username = item.username || 'user';
+    const avatarUrl = item.avatar_url || null;
     const isFollowing = followingIds.has(item.user_id);
     const isLoading = followLoading.has(item.user_id);
     const followsYou = followerIds.has(item.user_id);

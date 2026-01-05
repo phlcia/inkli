@@ -1,3 +1,5 @@
+import type { UserBook } from '../services/books';
+
 export type FollowersFollowingParams = {
   userId: string;
   username?: string;
@@ -5,5 +7,15 @@ export type FollowersFollowingParams = {
 };
 
 export type ActivityLikesParams = {
+  userBookId?: string;
+  commentId?: string;
+};
+
+export type ActivityCommentsParams = {
   userBookId: string;
+  userBook?: UserBook;
+  actionText?: string;
+  avatarUrl?: string | null;
+  avatarFallback?: string;
+  viewerStatus?: 'read' | 'currently_reading' | 'want_to_read' | null;
 };

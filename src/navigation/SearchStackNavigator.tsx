@@ -8,7 +8,12 @@ import UserProfileScreen from '../screens/UserProfileScreen';
 import UserShelfScreen from '../screens/UserShelfScreen';
 import FollowersFollowingScreen from '../screens/FollowersFollowingScreen';
 import ActivityLikesScreen from '../screens/ActivityLikesScreen';
-import { FollowersFollowingParams, ActivityLikesParams } from './types';
+import ActivityCommentsScreen from '../screens/ActivityCommentsScreen';
+import {
+  FollowersFollowingParams,
+  ActivityLikesParams,
+  ActivityCommentsParams,
+} from './types';
 
 export type SearchStackParamList = {
   SearchMain: undefined;
@@ -28,6 +33,7 @@ export type SearchStackParamList = {
   };
   FollowersFollowing: FollowersFollowingParams;
   ActivityLikes: ActivityLikesParams;
+  ActivityComments: ActivityCommentsParams;
 };
 
 const Stack = createNativeStackNavigator<SearchStackParamList>();
@@ -81,6 +87,15 @@ export default function SearchStackNavigator() {
       <Stack.Screen
         name="ActivityLikes"
         component={ActivityLikesScreen}
+        options={{
+          presentation: 'card',
+          animation: 'slide_from_right',
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="ActivityComments"
+        component={ActivityCommentsScreen}
         options={{
           presentation: 'card',
           animation: 'slide_from_right',

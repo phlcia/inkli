@@ -100,6 +100,7 @@ export interface UserBook {
   started_date?: string | null;
   finished_date?: string | null;
   likes_count?: number | null;
+  comments_count?: number | null;
   created_at: string;
   updated_at: string;
   book?: Book;

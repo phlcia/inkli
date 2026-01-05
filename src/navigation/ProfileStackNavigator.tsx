@@ -6,8 +6,13 @@ import EditProfileScreen from '../screens/EditProfileScreen';
 import BookDetailScreen from '../screens/BookDetailScreen';
 import FollowersFollowingScreen from '../screens/FollowersFollowingScreen';
 import ActivityLikesScreen from '../screens/ActivityLikesScreen';
+import ActivityCommentsScreen from '../screens/ActivityCommentsScreen';
 import UserProfileScreen from '../screens/UserProfileScreen';
-import { FollowersFollowingParams, ActivityLikesParams } from './types';
+import {
+  FollowersFollowingParams,
+  ActivityLikesParams,
+  ActivityCommentsParams,
+} from './types';
 
 export type ProfileStackParamList = {
   ProfileMain: undefined;
@@ -15,6 +20,7 @@ export type ProfileStackParamList = {
   BookDetail: { book: any }; // Enriched book data
   FollowersFollowing: FollowersFollowingParams;
   ActivityLikes: ActivityLikesParams;
+  ActivityComments: ActivityCommentsParams;
   UserProfile: { userId: string; username?: string };
 };
 
@@ -58,6 +64,14 @@ export default function ProfileStackNavigator() {
       <Stack.Screen
         name="ActivityLikes"
         component={ActivityLikesScreen}
+        options={{
+          presentation: 'card',
+          animation: 'slide_from_right',
+        }}
+      />
+      <Stack.Screen
+        name="ActivityComments"
+        component={ActivityCommentsScreen}
         options={{
           presentation: 'card',
           animation: 'slide_from_right',
