@@ -273,12 +273,6 @@ export default function ProfileScreen() {
     }
   };
 
-  const formatDayOfWeek = (dateString: string) => {
-    const date = new Date(dateString);
-    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    return days[date.getDay()];
-  };
-
   const formatDateForDisplay = (dateString: string): string => {
     // dateString is in YYYY-MM-DD format, parse it as local date to avoid timezone issues
     const date = new Date(dateString + 'T00:00:00'); // Add time to avoid timezone shift
@@ -342,7 +336,6 @@ export default function ProfileScreen() {
       avatarFallback={getUsername().charAt(0).toUpperCase()}
       onPressBook={handleBookPress}
       formatDateRange={formatDateRange}
-      formatDayOfWeek={formatDayOfWeek}
       viewerStatus={viewerShelfMap[userBook.book_id]?.status || null}
       onToggleWantToRead={() => handleToggleWantToRead(userBook)}
     />

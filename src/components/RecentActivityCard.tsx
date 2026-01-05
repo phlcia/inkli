@@ -10,6 +10,7 @@ import { checkUserLiked, getLikesCount, toggleLike } from '../services/activityL
 import { getCommentsCount } from '../services/activityComments';
 import { ProfileStackParamList } from '../navigation/ProfileStackNavigator';
 import { SearchStackParamList } from '../navigation/SearchStackNavigator';
+import { formatActivityTimestamp } from '../utils/dateUtils';
 
 type RecentActivityCardProps = {
   userBook: UserBook;
@@ -18,7 +19,6 @@ type RecentActivityCardProps = {
   avatarFallback: string;
   onPressBook: (userBook: UserBook) => void;
   formatDateRange: (startDate: string | null, endDate: string | null) => string | null;
-  formatDayOfWeek: (dateString: string) => string;
   viewerStatus?: 'read' | 'currently_reading' | 'want_to_read' | null;
   onToggleWantToRead?: () => void;
   showCommentsLink?: boolean;
@@ -32,7 +32,6 @@ export default function RecentActivityCard({
   avatarFallback,
   onPressBook,
   formatDateRange,
-  formatDayOfWeek,
   viewerStatus = null,
   onToggleWantToRead,
   showCommentsLink = true,
@@ -341,7 +340,7 @@ export default function RecentActivityCard({
 
       {/* Timestamp */}
       <Text style={styles.cardTimestamp}>
-        {formatDayOfWeek(userBook.updated_at)}
+        {formatActivityTimestamp(userBook.updated_at)}
       </Text>
     </View>
   );

@@ -218,12 +218,6 @@ export default function UserProfileScreen() {
     }
   };
 
-  const formatDayOfWeek = (dateString: string) => {
-    const date = new Date(dateString);
-    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    return days[date.getDay()];
-  };
-
   const formatDateForDisplay = (dateString: string): string => {
     const date = new Date(dateString + 'T00:00:00');
     return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
@@ -292,7 +286,6 @@ export default function UserProfileScreen() {
       avatarFallback={userProfile?.username?.charAt(0).toUpperCase() || 'U'}
       onPressBook={handleBookPress}
       formatDateRange={formatDateRange}
-      formatDayOfWeek={formatDayOfWeek}
       viewerStatus={viewerShelfMap[userBook.book_id]?.status || null}
       onToggleWantToRead={
         currentUser?.id ? () => handleToggleWantToRead(userBook) : undefined
