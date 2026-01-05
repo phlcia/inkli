@@ -308,25 +308,6 @@ export default function BookDetailScreen() {
             />
           </TouchableOpacity>
 
-          {/* Want to Read */}
-          <TouchableOpacity
-            style={[
-              styles.actionIcon,
-              isIconActive('want_to_read') && styles.actionIconActive,
-            ]}
-            onPress={() => handleIconPress('want_to_read')}
-            disabled={Boolean(loading)}
-          >
-            <Image
-              source={require('../../assets/bookmark.png')}
-              style={[
-                styles.actionIconImage,
-                isIconActive('want_to_read') && styles.actionIconImageActive,
-              ]}
-              resizeMode="contain"
-            />
-          </TouchableOpacity>
-
           {/* Currently Reading */}
           <TouchableOpacity
             style={[
@@ -341,6 +322,25 @@ export default function BookDetailScreen() {
               style={[
                 styles.actionIconImage,
                 isIconActive('currently_reading') && styles.actionIconImageActive,
+              ]}
+              resizeMode="contain"
+            />
+          </TouchableOpacity>
+
+          {/* Want to Read */}
+          <TouchableOpacity
+            style={[
+              styles.actionIcon,
+              isIconActive('want_to_read') && styles.actionIconActive,
+            ]}
+            onPress={() => handleIconPress('want_to_read')}
+            disabled={Boolean(loading)}
+          >
+            <Image
+              source={require('../../assets/bookmark.png')}
+              style={[
+                styles.actionIconImage,
+                isIconActive('want_to_read') && styles.actionIconImageActive,
               ]}
               resizeMode="contain"
             />

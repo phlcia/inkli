@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -38,6 +38,8 @@ import {
   getCommentLikes,
   toggleCommentLike,
 } from '../services/activityCommentLikes';
+import { searchUsersForMention } from '../services/users';
+import { UserMention } from '../types/users';
 
 type ActivityCommentsRoute = RouteProp<
   { ActivityComments: ActivityCommentsParams },
@@ -67,6 +69,14 @@ export default function ActivityCommentsScreen() {
   const [replyTo, setReplyTo] = useState<ActivityComment | null>(null);
   const [likeCounts, setLikeCounts] = useState<Map<string, number>>(new Map());
   const [likedKeys, setLikedKeys] = useState<Set<string>>(new Set());
+  const [mentionQuery, setMentionQuery] = useState('');
+  const [mentionResults, setMentionResults] = useState<UserMention[]>([]);
+  const [showMentions, setShowMentions] = useState(false);
+  const [mentionStart, setMentionStart] = useState<number | null>(null);
+  const [mentionLoading, setMentionLoading] = useState(false);
+  const [selection, setSelection] = useState({ start: 0, end: 0 });
+  const [activeMentionIndex, setActiveMentionIndex] = useState(0);
+  const mentionRequestId = useRef(0);
   const [headerUserBook, setHeaderUserBook] = useState<UserBook | null>(
     route.params.userBook || null
   );
@@ -82,6 +92,7 @@ export default function ActivityCommentsScreen() {
   const [headerViewerStatus, setHeaderViewerStatus] = useState<
     'read' | 'currently_reading' | 'want_to_read' | null
   >(route.params.viewerStatus ?? null);
+  const canMention = !!currentUser?.id;
 
   const loadComments = useCallback(async () => {
     try {
@@ -102,7 +113,7 @@ export default function ActivityCommentsScreen() {
     }
   }, [currentUser?.id, userBookId]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     loadComments();
   }, [loadComments]);
 
@@ -117,12 +128,6 @@ export default function ActivityCommentsScreen() {
       default:
         return 'You added';
     }
-  };
-
-  const formatDayOfWeek = (dateString: string) => {
-    const date = new Date(dateString);
-    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    return days[date.getDay()];
   };
 
   const formatDateForDisplay = (dateString: string): string => {
@@ -222,7 +227,7 @@ export default function ActivityCommentsScreen() {
     }
   }, [route.params, userBookId]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     loadHeader();
   }, [loadHeader]);
 
@@ -261,6 +266,12 @@ export default function ActivityCommentsScreen() {
       }
 
       setCommentText('');
+      setShowMentions(false);
+      setMentionQuery('');
+      setMentionStart(null);
+      setMentionResults([]);
+      setSelection({ start: 0, end: 0 });
+      setActiveMentionIndex(0);
       setReplyTo(null);
       setComments((prev) => [...prev, created]);
       setLikeCounts((prev) => {
@@ -304,6 +315,162 @@ export default function ActivityCommentsScreen() {
     navigation.navigate('ActivityLikes', { commentId });
   };
 
+  const updateMentionState = (text: string, cursorPosition: number) => {
+    const textUpToCursor = text.slice(0, cursorPosition);
+    const match = textUpToCursor.match(/(^|\s)@([\w.]*)$/);
+    if (!match) {
+      setShowMentions(false);
+      setMentionQuery('');
+      setMentionStart(null);
+      return;
+    }
+
+    const prefixLength = match[1]?.length ?? 0;
+    const atIndex = (match.index ?? 0) + prefixLength;
+    const query = match[2] ?? '';
+    setMentionStart(atIndex);
+    setMentionQuery(query);
+    setShowMentions(query.length > 0);
+  };
+
+  const handleChangeText = (text: string) => {
+    setCommentText(text);
+    const cursorPosition = selection.end ?? text.length;
+    const safeCursor =
+      cursorPosition === 0 && text.length > 0
+        ? text.length
+        : Math.min(cursorPosition, text.length);
+    updateMentionState(text, safeCursor);
+  };
+
+  const handleSelectionChange = (nextSelection: { start: number; end: number }) => {
+    setSelection(nextSelection);
+    updateMentionState(commentText, nextSelection.start);
+  };
+
+  const handleSelectMention = (user: UserMention) => {
+    if (mentionStart === null) return;
+    const cursorPosition = selection.end ?? commentText.length;
+    const before = commentText.slice(0, mentionStart);
+    const after = commentText.slice(cursorPosition);
+    const insertion = `@${user.username} `;
+    const nextText = `${before}${insertion}${after}`;
+    const nextCursor = before.length + insertion.length;
+    setCommentText(nextText);
+    setSelection({ start: nextCursor, end: nextCursor });
+    setShowMentions(false);
+    setMentionQuery('');
+    setMentionStart(null);
+    setMentionResults([]);
+    setActiveMentionIndex(0);
+  };
+
+  const handleMentionKeyPress = (key: string) => {
+    if (!showMentions || mentionResults.length === 0) return;
+    if (key === 'ArrowDown') {
+      setActiveMentionIndex((prev) => (prev + 1) % mentionResults.length);
+    } else if (key === 'ArrowUp') {
+      setActiveMentionIndex((prev) =>
+        prev === 0 ? mentionResults.length - 1 : prev - 1
+      );
+    } else if (key === 'Enter') {
+      const selectionItem = mentionResults[activeMentionIndex];
+      if (selectionItem) {
+        handleSelectMention(selectionItem);
+      }
+    }
+  };
+
+  const handleMentionPress = async (username: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .select('user_id, username')
+        .eq('username', username)
+        .single();
+
+      if (error || !data) return;
+      navigateToProfile(data.user_id, data.username);
+    } catch (error) {
+      console.error('Error navigating to mention profile:', error);
+    }
+  };
+
+  const renderMentionText = (text: string) => {
+    const parts: React.ReactNode[] = [];
+    const mentionRegex = /@([A-Za-z0-9_]+)/g;
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+
+    while ((match = mentionRegex.exec(text)) !== null) {
+      const start = match.index;
+      const beforeChar = start > 0 ? text[start - 1] : '';
+      if (beforeChar && !/\s/.test(beforeChar)) {
+        continue;
+      }
+
+      if (start > lastIndex) {
+        parts.push(
+          <Text key={`text-${start}`} style={styles.commentText}>
+            {text.slice(lastIndex, start)}
+          </Text>
+        );
+      }
+
+      const mentionUsername = match[1];
+      parts.push(
+        <Text
+          key={`mention-${start}`}
+          style={styles.mentionText}
+          onPress={() => handleMentionPress(mentionUsername)}
+        >
+          @{mentionUsername}
+        </Text>
+      );
+
+      lastIndex = start + match[0].length;
+    }
+
+    if (lastIndex < text.length) {
+      parts.push(
+        <Text key={`text-${lastIndex}`} style={styles.commentText}>
+          {text.slice(lastIndex)}
+        </Text>
+      );
+    }
+
+    return parts.length ? parts : <Text style={styles.commentText}>{text}</Text>;
+  };
+
+  useEffect(() => {
+    if (!currentUser?.id || !showMentions) {
+      setMentionResults([]);
+      setMentionLoading(false);
+      return;
+    }
+
+    const requestId = ++mentionRequestId.current;
+    setMentionLoading(true);
+
+    const timeoutId = setTimeout(async () => {
+      const results = await searchUsersForMention(
+        mentionQuery,
+        currentUser.id,
+        10
+      );
+
+      if (mentionRequestId.current === requestId) {
+        setMentionResults(results);
+        setMentionLoading(false);
+        setActiveMentionIndex(0);
+      }
+    }, 300);
+
+    return () => {
+      clearTimeout(timeoutId);
+    };
+  }, [mentionQuery, showMentions, currentUser?.id]);
+
   const navigateToProfile = (userId: string, username: string) => {
     if (currentUser?.id === userId) return;
     navigation.navigate('UserProfile', {
@@ -338,15 +505,15 @@ export default function ActivityCommentsScreen() {
           )}
         </TouchableOpacity>
         <View style={styles.commentContent}>
-          <TouchableOpacity
-            onPress={() => navigateToProfile(comment.user_id, username)}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.inlineCommentText}>
-              <Text style={styles.usernameText}>@{username} </Text>
-              <Text style={styles.commentText}>{comment.comment_text}</Text>
+          <Text style={styles.inlineCommentText}>
+            <Text
+              style={styles.usernameText}
+              onPress={() => navigateToProfile(comment.user_id, username)}
+            >
+              @{username}{' '}
             </Text>
-          </TouchableOpacity>
+            {renderMentionText(comment.comment_text)}
+          </Text>
           <View style={styles.commentActions}>
             <TouchableOpacity
               onPress={() => setReplyTo(comment)}
@@ -415,7 +582,6 @@ export default function ActivityCommentsScreen() {
                   avatarFallback={headerAvatarFallback}
                   onPressBook={handleBookPress}
                   formatDateRange={formatDateRange}
-                  formatDayOfWeek={formatDayOfWeek}
                   viewerStatus={headerViewerStatus}
                   showCommentIcon={false}
                   showCommentsLink={false}
@@ -454,12 +620,63 @@ export default function ActivityCommentsScreen() {
                 </TouchableOpacity>
               </View>
             )}
+            {showMentions && canMention && (
+              <View style={styles.mentionList}>
+                {mentionLoading ? (
+                  <View style={styles.mentionLoadingRow}>
+                    <ActivityIndicator size="small" color={colors.primaryBlue} />
+                    <Text style={styles.mentionLoadingText}>Searching...</Text>
+                  </View>
+                ) : (
+                  <FlatList
+                    data={mentionResults}
+                    keyExtractor={(item) => item.user_id}
+                    keyboardShouldPersistTaps="handled"
+                    renderItem={({ item, index }) => (
+                      <TouchableOpacity
+                        style={[
+                          styles.mentionItem,
+                          index === activeMentionIndex && styles.mentionItemActive,
+                        ]}
+                        onPress={() => handleSelectMention(item)}
+                        activeOpacity={0.7}
+                      >
+                        {item.avatar_url ? (
+                          <Image
+                            source={{ uri: item.avatar_url }}
+                            style={styles.mentionAvatar}
+                          />
+                        ) : (
+                          <View style={styles.mentionAvatarPlaceholder}>
+                            <Text style={styles.avatarText}>
+                              {item.username.charAt(0).toUpperCase()}
+                            </Text>
+                          </View>
+                        )}
+                        <Text style={styles.mentionUsername}>@{item.username}</Text>
+                      </TouchableOpacity>
+                    )}
+                    ListEmptyComponent={
+                      <View style={styles.mentionEmpty}>
+                        <Text style={styles.mentionEmptyText}>No matches</Text>
+                      </View>
+                    }
+                  />
+                )}
+              </View>
+            )}
             <TextInput
               style={styles.textInput}
               placeholder="Comment or tag a friend"
               placeholderTextColor={`${colors.brownText}99`}
               value={commentText}
-              onChangeText={setCommentText}
+              onChangeText={handleChangeText}
+              onSelectionChange={(event) =>
+                handleSelectionChange(event.nativeEvent.selection)
+              }
+              onKeyPress={(event) => handleMentionKeyPress(event.nativeEvent.key)}
+              onBlur={() => setShowMentions(false)}
+              selection={selection}
               multiline
             />
           </View>
@@ -591,6 +808,12 @@ const styles = StyleSheet.create({
     fontFamily: typography.body,
     color: colors.brownText,
   },
+  mentionText: {
+    fontSize: 14,
+    fontFamily: typography.body,
+    color: colors.brownText,
+    fontWeight: '600',
+  },
   commentActions: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -634,6 +857,66 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     marginRight: 10,
+  },
+  mentionList: {
+    maxHeight: 160,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: `${colors.brownText}1A`,
+    backgroundColor: colors.white,
+    marginBottom: 8,
+    overflow: 'hidden',
+  },
+  mentionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  mentionItemActive: {
+    backgroundColor: `${colors.primaryBlue}14`,
+  },
+  mentionAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    marginRight: 10,
+  },
+  mentionAvatarPlaceholder: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.creamBackground,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  mentionUsername: {
+    fontSize: 14,
+    fontFamily: typography.body,
+    color: colors.brownText,
+    fontWeight: '600',
+  },
+  mentionLoadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  mentionLoadingText: {
+    fontSize: 13,
+    fontFamily: typography.body,
+    color: `${colors.brownText}AA`,
+  },
+  mentionEmpty: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  mentionEmptyText: {
+    fontSize: 13,
+    fontFamily: typography.body,
+    color: `${colors.brownText}AA`,
   },
   textInput: {
     fontSize: 14,
