@@ -3,3 +3,7 @@ export type FollowersFollowingParams = {
   username?: string;
   initialTab: 'followers' | 'following';
 };
+
+export type ActivityLikesParams = {
+  userBookId: string;
+};

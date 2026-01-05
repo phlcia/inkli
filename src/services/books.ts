@@ -99,6 +99,7 @@ export interface UserBook {
   notes?: string | null;
   started_date?: string | null;
   finished_date?: string | null;
+  likes_count?: number | null;
   created_at: string;
   updated_at: string;
   book?: Book;

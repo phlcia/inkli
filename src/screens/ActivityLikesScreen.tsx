@@ -12,62 +12,53 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   CompositeNavigationProp,
+  RouteProp,
   useNavigation,
   useRoute,
-  RouteProp,
 } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { colors, typography } from '../config/theme';
 import { useAuth } from '../contexts/AuthContext';
 import { ProfileStackParamList } from '../navigation/ProfileStackNavigator';
 import { SearchStackParamList } from '../navigation/SearchStackNavigator';
-import { FollowersFollowingParams } from '../navigation/types';
+import { ActivityLikesParams } from '../navigation/types';
+import { getActivityLikes } from '../services/activityLikes';
+import { ActivityLike } from '../types/activityLikes';
 import {
   followUser,
   unfollowUser,
   getFollowingIds,
   getFollowerIds,
-  getFollowersList,
-  getFollowingList,
-  UserSummary,
 } from '../services/userProfile';
-type FollowersFollowingRoute = RouteProp<
-  { FollowersFollowing: FollowersFollowingParams },
-  'FollowersFollowing'
+
+type ActivityLikesRoute = RouteProp<
+  { ActivityLikes: ActivityLikesParams },
+  'ActivityLikes'
 >;
 
-type TabKey = 'followers' | 'following';
-
-export default function FollowersFollowingScreen() {
+export default function ActivityLikesScreen() {
   const { user: currentUser } = useAuth();
-  type FollowersFollowingNavigation = CompositeNavigationProp<
-    StackNavigationProp<ProfileStackParamList, 'FollowersFollowing'>,
-    StackNavigationProp<SearchStackParamList, 'FollowersFollowing'>
+  type ActivityLikesNavigation = CompositeNavigationProp<
+    StackNavigationProp<ProfileStackParamList, 'ActivityLikes'>,
+    StackNavigationProp<SearchStackParamList, 'ActivityLikes'>
   >;
 
-  const navigation = useNavigation<FollowersFollowingNavigation>();
-  const route = useRoute<FollowersFollowingRoute>();
-  const { userId, username, initialTab } = route.params;
+  const navigation = useNavigation<ActivityLikesNavigation>();
+  const route = useRoute<ActivityLikesRoute>();
+  const { userBookId } = route.params;
 
-  const [activeTab, setActiveTab] = useState<TabKey>(initialTab);
+  const [likes, setLikes] = useState<ActivityLike[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
-  const [followers, setFollowers] = useState<UserSummary[]>([]);
-  const [following, setFollowing] = useState<UserSummary[]>([]);
   const [followingIds, setFollowingIds] = useState<Set<string>>(new Set());
   const [followerIds, setFollowerIds] = useState<Set<string>>(new Set());
   const [followLoading, setFollowLoading] = useState<Set<string>>(new Set());
 
-  const loadData = useCallback(async () => {
+  const loadLikes = useCallback(async () => {
     try {
       setLoading(true);
-      const [followersRes, followingRes] = await Promise.all([
-        getFollowersList(userId),
-        getFollowingList(userId),
-      ]);
-
-      setFollowers(followersRes.followers);
-      setFollowing(followingRes.following);
+      const data = await getActivityLikes(userBookId);
+      setLikes(data);
 
       if (currentUser?.id) {
         const [followingIdsRes, followerIdsRes] = await Promise.all([
@@ -80,23 +71,20 @@ export default function FollowersFollowingScreen() {
     } finally {
       setLoading(false);
     }
-  }, [currentUser?.id, userId]);
+  }, [currentUser?.id, userBookId]);
 
   React.useEffect(() => {
-    loadData();
-  }, [loadData]);
+    loadLikes();
+  }, [loadLikes]);
 
-  const data = activeTab === 'followers' ? followers : following;
-
-  const filteredData = useMemo(() => {
+  const filteredLikes = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return data;
-    return data.filter((item) => {
-      const fullName = `${item.first_name} ${item.last_name}`.trim().toLowerCase();
-      const handle = `@${item.username}`.toLowerCase();
-      return fullName.includes(q) || handle.includes(q) || item.username.toLowerCase().includes(q);
+    if (!q) return likes;
+    return likes.filter((item) => {
+      const username = item.user?.username?.toLowerCase() || '';
+      return username.includes(q) || `@${username}`.includes(q);
     });
-  }, [data, searchQuery]);
+  }, [likes, searchQuery]);
 
   const handleToggleFollow = async (targetId: string) => {
     if (!currentUser?.id || targetId === currentUser.id) return;
@@ -112,9 +100,6 @@ export default function FollowersFollowingScreen() {
             next.delete(targetId);
             return next;
           });
-          if (currentUser.id === userId && activeTab === 'following') {
-            setFollowing((prev) => prev.filter((u) => u.user_id !== targetId));
-          }
         }
       } else {
         const { error } = await followUser(currentUser.id, targetId);
@@ -131,10 +116,11 @@ export default function FollowersFollowingScreen() {
     }
   };
 
-  const renderItem = ({ item }: { item: UserSummary }) => {
+  const renderItem = ({ item }: { item: ActivityLike }) => {
+    const username = item.user?.username || 'user';
+    const avatarUrl = item.user?.avatar_url || null;
     const isFollowing = followingIds.has(item.user_id);
     const isLoading = followLoading.has(item.user_id);
-    const fullName = `${item.first_name} ${item.last_name}`.trim();
     const followsYou = followerIds.has(item.user_id);
 
     return (
@@ -145,22 +131,21 @@ export default function FollowersFollowingScreen() {
           if (currentUser?.id === item.user_id) return;
           navigation.navigate('UserProfile', {
             userId: item.user_id,
-            username: item.username,
+            username,
           });
         }}
       >
-        {item.profile_photo_url ? (
-          <Image source={{ uri: item.profile_photo_url }} style={styles.avatar} />
+        {avatarUrl ? (
+          <Image source={{ uri: avatarUrl }} style={styles.avatar} />
         ) : (
           <View style={styles.avatarPlaceholder}>
             <Text style={styles.avatarText}>
-              {(item.first_name?.charAt(0) || item.username?.charAt(0) || 'U').toUpperCase()}
-              {(item.last_name?.charAt(0) || '').toUpperCase()}
+              {username.charAt(0).toUpperCase()}
             </Text>
           </View>
         )}
         <View style={styles.rowText}>
-          <Text style={styles.rowName}>{fullName || item.username}</Text>
+          <Text style={styles.rowName}>@{username}</Text>
           {followsYou && item.user_id !== currentUser?.id && (
             <Text style={styles.rowSubtext}>Follows you</Text>
           )}
@@ -175,9 +160,14 @@ export default function FollowersFollowingScreen() {
             disabled={isLoading}
           >
             {isLoading ? (
-              <ActivityIndicator size="small" color={isFollowing ? colors.brownText : colors.white} />
+              <ActivityIndicator
+                size="small"
+                color={isFollowing ? colors.brownText : colors.white}
+              />
             ) : (
-              <Text style={[styles.followButtonText, isFollowing && styles.followingButtonText]}>
+              <Text
+                style={[styles.followButtonText, isFollowing && styles.followingButtonText]}
+              >
                 {isFollowing ? 'Following' : 'Follow'}
               </Text>
             )}
@@ -193,30 +183,15 @@ export default function FollowersFollowingScreen() {
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Text style={styles.backButton}>←</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>@{username || 'Profile'}</Text>
+        <Text style={styles.headerTitle}>Likes</Text>
         <View style={styles.headerSpacer} />
-      </View>
-
-      <View style={styles.tabs}>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'followers' && styles.tabActive]}
-          onPress={() => setActiveTab('followers')}
-        >
-          <Text style={styles.tabLabel}>{followers.length} Followers</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'following' && styles.tabActive]}
-          onPress={() => setActiveTab('following')}
-        >
-          <Text style={styles.tabLabel}>{following.length} Following</Text>
-        </TouchableOpacity>
       </View>
 
       <View style={styles.searchContainer}>
         <Image source={require('../../assets/search.png')} style={styles.searchIcon} />
         <TextInput
           style={styles.searchInput}
-          placeholder={`Search ${activeTab}`}
+          placeholder="Search likes"
           placeholderTextColor={colors.brownText}
           value={searchQuery}
           onChangeText={setSearchQuery}
@@ -229,10 +204,13 @@ export default function FollowersFollowingScreen() {
         </View>
       ) : (
         <FlatList
-          data={filteredData}
-          keyExtractor={(item) => item.user_id}
+          data={filteredLikes}
+          keyExtractor={(item) => item.id}
           renderItem={renderItem}
           contentContainerStyle={styles.listContent}
+          ListEmptyComponent={
+            <Text style={styles.emptyText}>No likes yet</Text>
+          }
         />
       )}
     </SafeAreaView>
@@ -264,28 +242,6 @@ const styles = StyleSheet.create({
   },
   headerSpacer: {
     width: 32,
-  },
-  tabs: {
-    flexDirection: 'row',
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: `${colors.brownText}1A`,
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: 12,
-    alignItems: 'center',
-    borderBottomWidth: 2,
-    borderBottomColor: 'transparent',
-  },
-  tabActive: {
-    borderBottomColor: colors.brownText,
-  },
-  tabLabel: {
-    fontSize: 16,
-    fontFamily: typography.body,
-    color: colors.brownText,
-    fontWeight: '600',
   },
   searchContainer: {
     flexDirection: 'row',
@@ -395,5 +351,13 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  emptyText: {
+    fontSize: 14,
+    fontFamily: typography.body,
+    color: colors.brownText,
+    opacity: 0.6,
+    textAlign: 'center',
+    marginTop: 24,
   },
 });

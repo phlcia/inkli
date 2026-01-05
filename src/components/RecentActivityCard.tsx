@@ -1,8 +1,14 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
+import { CompositeNavigationProp, useNavigation } from '@react-navigation/native';
+import { StackNavigationProp } from '@react-navigation/stack';
 import { colors, typography } from '../config/theme';
 import { UserBook } from '../services/books';
 import { getScoreColor, formatScore } from '../utils/rankScoreColors';
+import { useAuth } from '../contexts/AuthContext';
+import { checkUserLiked, getLikesCount, toggleLike } from '../services/activityLikes';
+import { ProfileStackParamList } from '../navigation/ProfileStackNavigator';
+import { SearchStackParamList } from '../navigation/SearchStackNavigator';
 
 type RecentActivityCardProps = {
   userBook: UserBook;
@@ -33,6 +39,78 @@ export default function RecentActivityCard({
   const isCurrentlyReading = viewerStatus === 'currently_reading';
   const isWantToRead = viewerStatus === 'want_to_read';
   const actionTint = getScoreColor(10);
+  const { user } = useAuth();
+  type ActivityLikesNavigation = CompositeNavigationProp<
+    StackNavigationProp<ProfileStackParamList, 'ActivityLikes'>,
+    StackNavigationProp<SearchStackParamList, 'ActivityLikes'>
+  >;
+  const navigation = useNavigation<ActivityLikesNavigation>();
+  const [liked, setLiked] = useState(false);
+  const [likesCount, setLikesCount] = useState(userBook.likes_count ?? 0);
+  const [likeLoading, setLikeLoading] = useState(false);
+
+  useEffect(() => {
+    setLikesCount(userBook.likes_count ?? 0);
+  }, [userBook.likes_count]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    const loadLikeState = async () => {
+      if (!user?.id) return;
+      try {
+        const hasLiked = await checkUserLiked(userBook.id, user.id);
+        if (isActive) setLiked(hasLiked);
+      } catch (error) {
+        console.error('Error loading activity like state:', error);
+      }
+    };
+
+    loadLikeState();
+
+    return () => {
+      isActive = false;
+    };
+  }, [user?.id, userBook.id]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    const loadLikesCount = async () => {
+      try {
+        const count = await getLikesCount(userBook.id);
+        if (isActive) setLikesCount(count);
+      } catch (error) {
+        console.error('Error loading likes count:', error);
+      }
+    };
+
+    loadLikesCount();
+
+    return () => {
+      isActive = false;
+    };
+  }, [userBook.id]);
+
+  const handleToggleLike = async () => {
+    if (!user?.id || likeLoading) return;
+    setLikeLoading(true);
+    try {
+      const result = await toggleLike(userBook.id, user.id);
+      setLiked(result.liked);
+      setLikesCount((prev) =>
+        Math.max(0, prev + (result.liked ? 1 : -1))
+      );
+    } catch (error) {
+      console.error('Error toggling activity like:', error);
+    } finally {
+      setLikeLoading(false);
+    }
+  };
+
+  const handlePressLikes = () => {
+    navigation.navigate('ActivityLikes', { userBookId: userBook.id });
+  };
 
   return (
     <View style={styles.activityCard}>
@@ -123,12 +201,32 @@ export default function RecentActivityCard({
         </View>
       )}
 
+      {likesCount > 0 && (
+        <>
+          <View style={styles.likesRow}>
+            <TouchableOpacity onPress={handlePressLikes} activeOpacity={0.7}>
+              <Text style={styles.likesText}>
+                {likesCount} {likesCount === 1 ? 'like' : 'likes'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </>
+      )}
+
       {/* Interaction Footer */}
       <View style={styles.cardFooter}>
         <View style={styles.cardFooterLeft}>
-          <TouchableOpacity style={styles.cardFooterIcon}>
+          <TouchableOpacity
+            style={styles.cardFooterIcon}
+            onPress={handleToggleLike}
+            disabled={!user?.id || likeLoading}
+          >
             <Image
-              source={require('../../assets/heart.png')}
+              source={
+                liked
+                  ? require('../../assets/heartshaded.png')
+                  : require('../../assets/heart.png')
+              }
               style={styles.cardFooterIconImage}
               resizeMode="contain"
             />
@@ -332,19 +430,29 @@ const styles = StyleSheet.create({
     color: colors.brownText,
     opacity: 0.8,
   },
+  likesRow: {
+    marginTop: 8,
+    marginBottom: 8,
+    alignItems: 'flex-start',
+  },
+  likesText: {
+    fontSize: 14,
+    fontFamily: typography.body,
+    color: colors.brownText,
+    fontWeight: '600',
+  },
   cardFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: `${colors.brownText}1A`,
-    marginBottom: 8,
+    paddingTop: 4,
+    marginBottom: 4,
   },
   cardFooterLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 16,
+    marginLeft: -6,
   },
   cardFooterRight: {
     flexDirection: 'row',
