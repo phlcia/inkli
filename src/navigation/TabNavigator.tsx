@@ -4,7 +4,7 @@ import { Image, View, Text, StyleSheet } from 'react-native';
 import { colors, typography } from '../config/theme';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../config/supabase';
-import HomeScreen from '../screens/HomeScreen';
+import HomeStackNavigator from './HomeStackNavigator';
 import YourShelfStackNavigator from './YourShelfStackNavigator';
 import SearchStackNavigator from './SearchStackNavigator';
 import LeaderboardScreen from '../screens/LeaderboardScreen';
@@ -86,7 +86,7 @@ export default function TabNavigator() {
     >
       <Tab.Screen
         name="Home"
-        component={HomeScreen}
+        component={HomeStackNavigator}
         options={{
           headerShown: false,
           tabBarIcon: ({ focused }) => (

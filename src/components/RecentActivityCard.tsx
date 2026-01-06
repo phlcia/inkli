@@ -15,9 +15,12 @@ import { formatActivityTimestamp } from '../utils/dateUtils';
 type RecentActivityCardProps = {
   userBook: UserBook;
   actionText: string;
+  userDisplayName?: string;
   avatarUrl?: string | null;
   avatarFallback: string;
   onPressBook: (userBook: UserBook) => void;
+  onPressUser?: () => void;
+  onPressBookTitle?: () => void;
   formatDateRange: (startDate: string | null, endDate: string | null) => string | null;
   viewerStatus?: 'read' | 'currently_reading' | 'want_to_read' | null;
   onToggleWantToRead?: () => void;
@@ -28,9 +31,12 @@ type RecentActivityCardProps = {
 export default function RecentActivityCard({
   userBook,
   actionText,
+  userDisplayName,
   avatarUrl,
   avatarFallback,
   onPressBook,
+  onPressUser,
+  onPressBookTitle,
   formatDateRange,
   viewerStatus = null,
   onToggleWantToRead,
@@ -55,6 +61,9 @@ export default function RecentActivityCard({
   const [likeLoading, setLikeLoading] = useState(false);
   const shouldShowCommentsLink = showCommentsLink && commentsCount > 0;
   const shouldShowLikesRow = likesCount > 0 || shouldShowCommentsLink;
+  const actionSuffix = userDisplayName && actionText.startsWith(`${userDisplayName} `)
+    ? actionText.slice(userDisplayName.length + 1)
+    : actionText;
 
   useEffect(() => {
     setLikesCount(userBook.likes_count ?? 0);
@@ -173,7 +182,16 @@ export default function RecentActivityCard({
           )}
           <View style={styles.cardHeaderText}>
             <Text style={styles.cardActionText}>
-              {actionText} <Text style={styles.cardBookTitle}>{book.title}</Text>
+              {userDisplayName ? (
+                <Text style={styles.cardUserText} onPress={onPressUser}>
+                  {userDisplayName}
+                </Text>
+              ) : null}
+              {userDisplayName ? ' ' : ''}
+              {actionSuffix}{' '}
+              <Text style={styles.cardBookTitle} onPress={onPressBookTitle || (() => onPressBook(userBook))}>
+                {book.title}
+              </Text>
             </Text>
           </View>
         </View>
@@ -389,6 +407,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   cardActionText: {
+    fontSize: 16,
+    fontFamily: typography.body,
+    color: colors.brownText,
+    fontWeight: '600',
+  },
+  cardUserText: {
     fontSize: 16,
     fontFamily: typography.body,
     color: colors.brownText,
