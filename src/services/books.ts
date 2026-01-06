@@ -1193,7 +1193,7 @@ function getDefaultScoreForRating(rating: 'liked' | 'fine' | 'disliked'): number
     case 'liked':
       return 10.0;
     case 'fine':
-      return 7.0;
+      return 6.5;
     case 'disliked':
       return 3.5;
   }
