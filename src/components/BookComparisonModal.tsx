@@ -135,7 +135,7 @@ export default function BookComparisonModal({
             // Get max score for tier
             const tierMaxScores = {
               liked: 10.0,
-              fine: 7.0,
+              fine: 6.5,
               disliked: 3.5,
             };
             const defaultScore = tierMaxScores[rating];
@@ -473,6 +473,16 @@ export default function BookComparisonModal({
         const allBooks = ranking.getBooks();
         const tierBooks = allBooks.filter(b => b.tier === rating);
         const position = tierBooks.length;
+        const tierBounds = {
+          liked: { min: 6.5, max: 10.0 },
+          fine: { min: 3.5, max: 6.5 },
+          disliked: { min: 0, max: 3.5 },
+        };
+        const { min, max } = tierBounds[rating];
+        const score = tierBooks.length === 0
+          ? max
+          : Math.max(tierBooks[tierBooks.length - 1].score - 0.1, min + 0.001);
+        const roundedScore = Math.round(score * 1000) / 1000;
         
         // Create a mock result for skipping
         const skipResult = {
@@ -483,10 +493,10 @@ export default function BookComparisonModal({
             authors: currentBook.authors || [],
             cover_url: currentBook.cover_url || null,
             tier: rating,
-            score: 0, // Will be calculated
+            score: roundedScore,
           },
           positionInTier: position,
-          score: 0,
+          score: roundedScore,
         };
         await saveFinalRank(skipResult);
       } else {

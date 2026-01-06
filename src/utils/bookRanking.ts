@@ -25,8 +25,8 @@ export interface RankingState {
 /**
  * Tier score boundaries
  * disliked: [0, 3.5]
- * fine: (3.5, 7.0]
- * liked: (7.0, 10.0]
+ * fine: (3.5, 6.5]
+ * liked: (6.5, 10.0]
  */
 const TIER_BOUNDARIES = {
   disliked: { min: 0, max: 3.5 },
