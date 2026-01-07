@@ -68,6 +68,7 @@ export default function SearchScreen() {
   const [followingIds, setFollowingIds] = useState<Set<string>>(new Set());
   const [followLoading, setFollowLoading] = useState<Set<string>>(new Set());
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const searchRequestIdRef = useRef(0);
 
   // Load recent searches and following IDs on mount
   useEffect(() => {
@@ -237,33 +238,42 @@ export default function SearchScreen() {
 
   const performBookSearch = async (searchQuery: string) => {
     if (!searchQuery.trim() || searchQuery.trim().length < 2) {
+      searchRequestIdRef.current += 1;
       setBookResults([]);
       setLoading(false);
       return;
     }
 
+    const requestId = ++searchRequestIdRef.current;
     try {
       setLoading(true);
       const books = await searchBooksWithStats(searchQuery);
+      if (requestId !== searchRequestIdRef.current) return;
       setBookResults(books);
     } catch (error) {
       console.error('Error searching books:', error);
+      if (requestId !== searchRequestIdRef.current) return;
       setBookResults([]);
     } finally {
-      setLoading(false);
+      if (requestId === searchRequestIdRef.current) {
+        setLoading(false);
+      }
     }
   };
 
   const performMemberSearch = async (searchQuery: string) => {
     if (!searchQuery.trim() || searchQuery.trim().length < 2) {
+      searchRequestIdRef.current += 1;
       setMemberResults([]);
       setLoading(false);
       return;
     }
 
+    const requestId = ++searchRequestIdRef.current;
     try {
       setLoading(true);
       const { members, error } = await searchMembers(searchQuery);
+      if (requestId !== searchRequestIdRef.current) return;
       if (error) {
         console.error('Error searching members:', error);
         setMemberResults([]);
@@ -275,9 +285,12 @@ export default function SearchScreen() {
       }
     } catch (error) {
       console.error('Error searching members:', error);
+      if (requestId !== searchRequestIdRef.current) return;
       setMemberResults([]);
     } finally {
-      setLoading(false);
+      if (requestId === searchRequestIdRef.current) {
+        setLoading(false);
+      }
     }
   };
 
@@ -299,6 +312,7 @@ export default function SearchScreen() {
     }
 
     if (query.trim().length < 2) {
+      searchRequestIdRef.current += 1;
       setBookResults([]);
       setMemberResults([]);
       setLoading(false);
