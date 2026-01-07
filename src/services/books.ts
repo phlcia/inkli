@@ -389,7 +389,7 @@ export async function searchBooks(query: string): Promise<any[]> {
     // Use Open Library for search (deduplicated results)
     // Fetch more results to have better selection after scoring
     const response = await fetch(
-      `https://openlibrary.org/search.json?q=${encodeURIComponent(normalizedQuery)}&limit=30`
+      `https://openlibrary.org/search.json?q=${encodeURIComponent(normalizedQuery)}&limit=60`
     );
     
     if (!response.ok) {
@@ -397,6 +397,8 @@ export async function searchBooks(query: string): Promise<any[]> {
     }
     
     const data = await response.json();
+    console.log('Query:', normalizedQuery, 'Results:', data.docs.length);
+    console.log('First 5 titles:', data.docs.slice(0, 5).map((doc: any) => doc.title));
     
     const books = data.docs.map((book: any) => {
       // Calculate relevance score for each result
@@ -416,10 +418,19 @@ export async function searchBooks(query: string): Promise<any[]> {
       };
     });
     
+    const normalizedLower = normalizedQuery.toLowerCase();
+    const exactTitleMatches = books.filter(
+      (book) => (book.title || '').toLowerCase() === normalizedLower
+    );
+    const nonExactMatches = books.filter(
+      (book) => (book.title || '').toLowerCase() !== normalizedLower
+    );
+
     // Sort by relevance score (highest first) and return top 20
-    const sortedBooks = books
-      .sort((a, b) => b.relevanceScore - a.relevanceScore)
-      .slice(0, 20);
+    const sortedBooks = [
+      ...exactTitleMatches,
+      ...nonExactMatches.sort((a, b) => b.relevanceScore - a.relevanceScore),
+    ].slice(0, 20);
     
     console.log(`Found ${sortedBooks.length} books from Open Library, sorted by relevance`);
     return sortedBooks;
