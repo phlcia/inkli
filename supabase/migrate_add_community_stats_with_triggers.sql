@@ -1,3 +1,4 @@
+-- SUPERSEDED by migrate_increase_rank_score_precision_3dp.sql
 -- Migration: Add community statistics to books table with automatic triggers
 -- This implements a hybrid approach where stats are pre-calculated and updated via triggers
 
@@ -93,4 +94,3 @@ CREATE TRIGGER update_book_stats_trigger
 --     PERFORM update_book_stats(book_record.book_id);
 --   END LOOP;
 -- END $$;
-

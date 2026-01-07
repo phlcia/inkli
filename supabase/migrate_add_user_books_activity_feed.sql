@@ -1,3 +1,4 @@
+-- SUPERSEDED by migrate_activity_cards_user_book_link.sql
 -- Feed query based on user_books activity and bridge to activity_cards
 
 CREATE INDEX IF NOT EXISTS idx_user_books_user_updated_at

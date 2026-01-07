@@ -1,3 +1,4 @@
+-- SUPERSEDED by migrate_add_activity_comments.sql (FK now added there)
 -- Ensure FK name for activity_comment_likes -> user_profiles matches app join hint
 DO $$
 BEGIN
