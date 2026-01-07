@@ -1,3 +1,4 @@
+-- SUPERSEDED by migrate_increase_rank_score_precision_3dp.sql
 -- Migration: Fix rank_score precision to allow 10.0
 -- Changes NUMERIC(3,2) to NUMERIC(4,2) to support scores up to 99.99 (allows 10.0)
 
@@ -53,4 +54,3 @@ BEGIN
   WHERE id = book_id_param;
 END;
 $$ LANGUAGE plpgsql;
-

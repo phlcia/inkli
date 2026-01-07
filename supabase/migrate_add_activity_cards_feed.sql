@@ -1,3 +1,4 @@
+-- SUPERSEDED by migrate_activity_cards_user_book_link.sql
 -- Activity cards for social feed
 
 CREATE TABLE IF NOT EXISTS activity_cards (
