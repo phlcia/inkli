@@ -6,6 +6,7 @@ import BookDetailScreen from '../screens/BookDetailScreen';
 import ActivityLikesScreen from '../screens/ActivityLikesScreen';
 import ActivityCommentsScreen from '../screens/ActivityCommentsScreen';
 import UserProfileScreen from '../screens/UserProfileScreen';
+import UserShelfScreen from '../screens/UserShelfScreen';
 import { ActivityLikesParams, ActivityCommentsParams } from './types';
 
 export type HomeStackParamList = {
@@ -14,6 +15,11 @@ export type HomeStackParamList = {
   ActivityLikes: ActivityLikesParams;
   ActivityComments: ActivityCommentsParams;
   UserProfile: { userId: string; username?: string };
+  UserShelf: {
+    userId: string;
+    username?: string;
+    initialTab?: 'read' | 'currently_reading' | 'want_to_read';
+  };
 };
 
 const Stack = createNativeStackNavigator<HomeStackParamList>();
@@ -61,6 +67,15 @@ export default function HomeStackNavigator() {
         options={{
           presentation: 'card',
           animation: 'slide_from_right',
+        }}
+      />
+      <Stack.Screen
+        name="UserShelf"
+        component={UserShelfScreen}
+        options={{
+          presentation: 'card',
+          animation: 'slide_from_right',
+          headerShown: false,
         }}
       />
     </Stack.Navigator>
