@@ -3,8 +3,8 @@
 -- Books table
 CREATE TABLE IF NOT EXISTS books (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  google_books_id TEXT UNIQUE,
-  open_library_id TEXT UNIQUE,
+  google_books_id TEXT,
+  open_library_id TEXT,
   title TEXT NOT NULL,
   authors TEXT[] NOT NULL,
   subtitle TEXT,
@@ -26,13 +26,23 @@ CREATE TABLE IF NOT EXISTS books (
   stats_last_updated TIMESTAMPTZ DEFAULT NULL,
   cover_url TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
+  CONSTRAINT books_open_library_id_key UNIQUE (open_library_id),
+  CONSTRAINT books_google_books_id_key UNIQUE (google_books_id),
+  CONSTRAINT books_isbn_13_key UNIQUE (isbn_13),
   CONSTRAINT books_has_id CHECK (
     open_library_id IS NOT NULL OR google_books_id IS NOT NULL
   )
 );
 
+ALTER TABLE public.books ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Anyone can read books" ON public.books;
+CREATE POLICY "Anyone can read books"
+  ON public.books
+  FOR SELECT
+  USING (true);
+
 CREATE INDEX IF NOT EXISTS idx_books_google_id ON books(google_books_id);
-CREATE UNIQUE INDEX IF NOT EXISTS books_open_library_id_key ON books(open_library_id);
 CREATE INDEX IF NOT EXISTS idx_books_categories ON books USING GIN(categories);
 CREATE INDEX IF NOT EXISTS idx_books_published_date ON books(published_date);
 CREATE INDEX IF NOT EXISTS idx_books_average_rating ON books(average_rating);

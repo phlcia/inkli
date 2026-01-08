@@ -817,42 +817,25 @@ export function buildBookFromOpenLibrary(olBook: any): any {
  * Uses upsert with open_library_id as conflict key
  */
 export async function saveBookToDatabase(enrichedBook: any): Promise<Book> {
-  const bookDataToInsert = {
-    open_library_id: enrichedBook.open_library_id || null,
-    google_books_id: enrichedBook.google_books_id || null,
-    title: enrichedBook.title,
-    subtitle: enrichedBook.subtitle || null,
-    authors: enrichedBook.authors || [],
-    publisher: enrichedBook.publisher || null,
-    published_date: enrichedBook.published_date || null,
-    first_published: enrichedBook.first_published || null,
-    description: enrichedBook.description || null,
-    page_count: enrichedBook.page_count || null,
-    categories: enrichedBook.categories || null,
-    average_rating: enrichedBook.average_rating || null,
-    ratings_count: enrichedBook.ratings_count || null,
-    language: enrichedBook.language || null,
-    cover_url: enrichedBook.cover_url || null,
-    preview_link: enrichedBook.preview_link || null,
-    info_link: enrichedBook.info_link || null,
-    isbn_10: enrichedBook.isbn_10 || null,
-    isbn_13: enrichedBook.isbn_13 || null,
-  };
+  const { book } = await upsertBookViaEdge(enrichedBook);
+  return book;
+}
 
-  const { data, error } = await supabase
-    .from('books')
-    .upsert(bookDataToInsert, {
-      onConflict: 'open_library_id',
-    })
-    .select()
-    .single();
-  
+async function upsertBookViaEdge(enrichedBook: any): Promise<{ book: Book; book_id: string }> {
+  const { data, error } = await supabase.functions.invoke('books-upsert', {
+    body: { book: enrichedBook },
+  });
+
   if (error) {
-    console.error('Error saving book:', error);
+    console.error('Error upserting book via Edge Function:', error);
     throw error;
   }
-  
-  return data as Book;
+
+  if (!data?.book_id || !data?.book) {
+    throw new Error('Invalid response from books-upsert');
+  }
+
+  return { book_id: data.book_id as string, book: data.book as Book };
 }
 
 /**
@@ -902,85 +885,7 @@ export async function addBookToShelf(
   }
 ): Promise<{ userBookId: string; isUpdate: boolean; previousStatus?: string }> {
   try {
-    // Prepare complete book data from enriched book
-    const bookDataToInsert = {
-      open_library_id: bookData.open_library_id || null,
-      google_books_id: bookData.google_books_id || null,
-      title: bookData.title,
-      subtitle: bookData.subtitle || null,
-      authors: bookData.authors || [],
-      publisher: bookData.publisher || null,
-      published_date: bookData.published_date || null,
-      first_published: bookData.first_published || null,
-      description: bookData.description || null,
-      page_count: bookData.page_count || null,
-      categories: bookData.categories || null,
-      average_rating: bookData.average_rating || null,
-      ratings_count: bookData.ratings_count || null,
-      language: bookData.language || null,
-      cover_url: bookData.cover_url || null,
-      preview_link: bookData.preview_link || null,
-      info_link: bookData.info_link || null,
-      isbn_10: bookData.isbn_10 || null,
-      isbn_13: bookData.isbn_13 || null,
-    };
-
-    // Check if book already exists in books table
-    // Try open_library_id first, then google_books_id
-    let existingBook = null;
-    if (bookData.open_library_id) {
-      const { data } = await supabase
-      .from('books')
-      .select('id')
-        .eq('open_library_id', bookData.open_library_id)
-      .single();
-      existingBook = data;
-    }
-    
-    if (!existingBook && bookData.google_books_id) {
-      const { data } = await supabase
-        .from('books')
-        .select('id')
-        .eq('google_books_id', bookData.google_books_id)
-        .single();
-      existingBook = data;
-    }
-
-    let bookId: string;
-
-    if (existingBook) {
-      bookId = existingBook.id;
-      // Update existing book with any new data (in case we have more complete info now)
-      await supabase
-        .from('books')
-        .update(bookDataToInsert)
-        .eq('id', bookId);
-    } else {
-      // Insert new book with all fields
-      // Use upsert with conflict resolution on open_library_id if available
-      if (bookDataToInsert.open_library_id) {
-        const { data: newBook, error: bookError } = await supabase
-          .from('books')
-          .upsert(bookDataToInsert, {
-            onConflict: 'open_library_id',
-          })
-          .select('id')
-          .single();
-
-        if (bookError) throw bookError;
-        bookId = newBook.id;
-      } else {
-        // Fallback to regular insert if no open_library_id
-      const { data: newBook, error: bookError } = await supabase
-        .from('books')
-        .insert(bookDataToInsert)
-        .select('id')
-        .single();
-
-      if (bookError) throw bookError;
-      bookId = newBook.id;
-      }
-    }
+    const { book_id: bookId } = await upsertBookViaEdge(bookData);
 
     // Check if user already has this book
     const existingCheck = await checkUserHasBook(bookId, userId);
