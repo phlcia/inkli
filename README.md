@@ -34,6 +34,7 @@ A social book ranking and discovery app built with Expo (React Native), Supabase
 - **Book details**: View and edit ratings (liked/fine/disliked), notes, start/finish dates
 - **Auto-save**: Notes and dates automatically save as you type/select them
 - **Community stats**: See average scores and member counts for books
+- **Secure catalog writes**: `public.books` is read-only to clients; inserts handled by Edge Function
 
 #### Ranking System
 - **Binary search ranking**: Efficient O(log n) pairwise comparison system for ranking books
@@ -43,11 +44,13 @@ A social book ranking and discovery app built with Expo (React Native), Supabase
 - **Rank persistence**: Rankings stored in database with automatic recalculation support
 
 #### Social Features
-- **Activity feed**: Recent activity cards on profile showing book additions with notes and dates read
+- **Activity feed**: Home feed with followed users' activity, cursor pagination, pull-to-refresh
+- **Activity cards**: Unified `RecentActivityCard` UI with likes/comments and book context
 - **Leaderboard**: Global rankings based on books read count
 - **User following**: Follow/unfollow other users
 - **Member search**: Search for users by username, first name, or last name
 - **Profile viewing**: View other users' profiles and reading stats
+ - **Comments & likes**: Activity comments/likes with counts and detail screens
 
 #### Navigation & UI
 - **Tab navigation**: Home, Your Shelf, Search, Leaderboard, Profile
@@ -56,10 +59,6 @@ A social book ranking and discovery app built with Expo (React Native), Supabase
 - **Responsive design**: Safe area handling, proper keyboard avoidance
 
 ### 🚧 In Progress / Needs Work
-
-#### Home Screen
-- Currently a placeholder - needs implementation
-- **Suggested features**: Activity feed, recommended books, following users' activity, trending books
 
 #### UI/UX Polish
 - ✅ Activity cards with notes and dates display
@@ -132,20 +131,30 @@ Run all migration files in order in your Supabase SQL Editor:
 12. `supabase/migrate_add_user_follows.sql` - User following system
 13. `supabase/migrate_update_user_profiles_rls.sql` - Row Level Security policies
 14. `supabase/migrate_fix_rank_score_precision.sql` - Fix rank_score precision to allow 10.0 (NUMERIC(4,2))
+15. `supabase/migrate_increase_rank_score_precision_3dp.sql` - Increase precision to NUMERIC(6,3)
+16. `supabase/migrate_add_activity_likes.sql` - Activity likes
+17. `supabase/migrate_add_activity_comments.sql` - Activity comments + likes
+18. `supabase/migrate_add_activity_cards_feed.sql` - Activity cards table
+19. `supabase/migrate_activity_cards_user_book_link.sql` - Link activity cards to user_books + feed RPC
+20. `supabase/migrate_lock_down_books_rls.sql` - Lock down books writes + uniqueness
 
 Or use the consolidated `supabase/schema.sql` if available.
 
-### 4. Configure Google Books API (Optional)
+### 4. Deploy Edge Functions
+
+- `supabase/functions/recalculate-ranks` (optional): maintenance rank recalculation
+- `supabase/functions/books-upsert`: authenticated book upsert with validation (required)
+
+### 5. Configure Google Books API (Optional)
 
 1. Get a Google Books API key from [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
 2. Create a `.env` file in the project root:
    ```
    EXPO_PUBLIC_GOOGLE_BOOKS_API_KEY=your_api_key_here
    ```
-3. The API key is optional - the app works without it but with lower rate limits (1,000 requests/day)
-4. With an API key, you get higher rate limits (up to 10,000 requests/day depending on quota)
+3. The API key is optional - the app works without it but with lower rate limits
 
-### 5. Run the App
+### 6. Run the App
 
 ```bash
 npm start
@@ -176,17 +185,22 @@ inkli/
 │   │   └── useBookRanking.ts            # Binary search ranking hook
 │   ├── navigation/
 │   │   ├── AuthStackNavigator.tsx       # Authentication flow navigation
+│   │   ├── HomeStackNavigator.tsx       # Home feed stack
 │   │   ├── ProfileStackNavigator.tsx    # Profile screen stack
 │   │   ├── SearchStackNavigator.tsx     # Search screen stack
 │   │   └── TabNavigator.tsx             # Bottom tab navigation
 │   ├── screens/
-│   │   ├── HomeScreen.tsx               # Home (placeholder)
+│   │   ├── HomeScreen.tsx               # Home activity feed
 │   │   ├── YourShelfScreen.tsx         # User's book shelf
 │   │   ├── SearchScreen.tsx             # Book search
 │   │   ├── BookDetailScreen.tsx         # Book detail view
 │   │   ├── BookRankingScreen.tsx        # Book ranking with notes and dates
 │   │   ├── LeaderboardScreen.tsx        # Global leaderboard
 │   │   ├── ProfileScreen.tsx           # User profile with activity feed
+│   │   ├── UserProfileScreen.tsx        # Public profile view
+│   │   ├── UserShelfScreen.tsx          # Public shelves
+│   │   ├── ActivityLikesScreen.tsx      # Activity likes list
+│   │   ├── ActivityCommentsScreen.tsx   # Activity comments thread
 │   │   ├── EditProfileScreen.tsx        # Edit profile
 │   │   ├── WelcomeScreen.tsx            # Onboarding welcome
 │   │   ├── CreateAccountScreen.tsx      # Account creation
@@ -196,17 +210,18 @@ inkli/
 │   │   └── ReadingInterestsScreen.tsx   # Reading interests selection
 │   ├── services/
 │   │   ├── books.ts                     # Book-related API functions
+│   │   ├── activityFeed.ts              # Home feed RPC + pagination
 │   │   └── userProfile.ts               # User profile API functions
 │   └── utils/
 │       ├── bookRanking.ts               # Binary search ranking algorithm
 │       ├── bookRanking.example.ts       # Ranking example/guide
 │       └── rankScoreColors.ts           # Score color utilities
 ├── supabase/
-│   ├── schema.sql                       # Consolidated schema (legacy)
+│   ├── schema.sql                       # Consolidated schema (current)
 │   ├── migrate_*.sql                    # Individual migration files
-│   │   └── migrate_fix_rank_score_precision.sql  # Fix rank_score to NUMERIC(4,2)
 │   ├── functions/
-│   │   └── recalculate-ranks/           # Edge function for rank recalculation
+│   │   ├── recalculate-ranks/           # Edge function for rank recalculation
+│   │   └── books-upsert/                # Edge function for book upsert
 │   └── check_and_fix_ranking.sql        # Ranking troubleshooting script
 ├── assets/                              # Images and icons
 ├── App.tsx                              # Main app entry point
@@ -226,6 +241,9 @@ inkli/
 - `getUserBooksByRating(userId, rating)` - Get books by rating category
 - `getRecentUserBooks(userId, limit)` - Get recent activity with notes and dates
 
+### Activity Feed Services (`src/services/activityFeed.ts`)
+- `fetchFollowedActivityCards(userId, options)` - Cursor-paginated feed from RPC
+
 ### User Profile Services (`src/services/userProfile.ts`)
 - `getUserProfile(userId)` - Get user profile
 - `updateUserProfile(userId, updates)` - Update profile
@@ -243,58 +261,50 @@ inkli/
 ## 🎯 What Needs to Be Done
 
 ### High Priority
-1. **Home Screen Implementation**
-   - Activity feed showing recent book additions by followed users
-   - Recommended books based on reading history
-   - Trending books section
-   - Personalized content
-
-2. **Error Handling & User Feedback**
+1. **Error Handling & User Feedback**
    - Consistent error messages across the app
    - Toast notifications for success/error states
    - Network error handling with retry options
    - Offline mode detection
 
-3. **Performance Optimization**
+2. **Performance Optimization**
    - Implement pagination for book lists (currently loads all books)
    - Add virtualized lists (FlatList optimization)
    - Image caching and lazy loading
    - Optimistic UI updates for better perceived performance
 
-4. **Testing**
+3. **Testing**
    - Unit tests for ranking algorithm
    - Integration tests for API calls
    - E2E tests for critical user flows
    - Performance testing
 
 ### Medium Priority
-5. **Search Enhancements**
+4. **Search Enhancements**
    - Advanced filters (genre, year, author, etc.)
-   - Search history
    - Saved searches
    - Search suggestions/autocomplete
 
-6. **Social Features**
-   - Comments/reviews on books
+5. **Social Features**
+   - Reviews on books (distinct from activity comments)
    - Book clubs/groups
    - Sharing book lists
    - Reading challenges
 
-7. **Analytics & Insights**
+6. **Analytics & Insights**
    - Reading statistics dashboard
    - Genre breakdown
    - Reading goals and progress
    - Yearly reading summaries
 
 ### Low Priority
-8. **UI/UX Polish**
+7. **UI/UX Polish**
    - Animations and transitions
    - Skeleton loaders
-   - Pull-to-refresh everywhere
    - Haptic feedback
    - Dark mode support
 
-9. **Accessibility**
+8. **Accessibility**
    - Screen reader support
    - Keyboard navigation
    - High contrast mode
