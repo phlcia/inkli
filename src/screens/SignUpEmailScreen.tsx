@@ -103,8 +103,8 @@ const styles = StyleSheet.create({
     paddingTop: 60,
   },
   title: {
-    fontSize: 32,
-    fontFamily: typography.heroTitle,
+    fontSize: 30,
+    fontFamily: typography.logo,
     color: colors.brownText,
     textAlign: 'center',
     marginBottom: 40,

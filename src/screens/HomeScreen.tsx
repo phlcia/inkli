@@ -2,17 +2,19 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Image,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { colors, typography } from '../config/theme';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchFollowedActivityCards } from '../services/activityFeed';
+import { fetchUnreadNotificationsCount } from '../services/notifications';
 import { ActivityFeedCursor, ActivityFeedItem } from '../types/activityCards';
 import { supabase } from '../config/supabase';
 import RecentActivityCard from '../components/RecentActivityCard';
@@ -28,6 +30,7 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [paginating, setPaginating] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   const loadInitial = useCallback(async () => {
     if (!user) return;
@@ -57,6 +60,30 @@ export default function HomeScreen() {
   useEffect(() => {
     loadInitial();
   }, [loadInitial]);
+
+  useFocusEffect(
+    useCallback(() => {
+      let isActive = true;
+      if (!user) {
+        setUnreadCount(0);
+        return () => {
+          isActive = false;
+        };
+      }
+
+      fetchUnreadNotificationsCount(user.id)
+        .then((count) => {
+          if (isActive) setUnreadCount(count);
+        })
+        .catch((error) => {
+          console.error('Error fetching unread notifications:', error);
+        });
+
+      return () => {
+        isActive = false;
+      };
+    }, [user])
+  );
 
   const handleRefresh = useCallback(async () => {
     if (!user) return;
@@ -266,6 +293,27 @@ export default function HomeScreen() {
           <Text style={styles.logo}>inkli</Text>
         </View>
         <View style={styles.headerRight}>
+          <Pressable
+            onPress={() => navigation.navigate('Notifications')}
+            style={({ pressed }) => [
+              styles.headerIcon,
+              pressed && styles.headerIconPressed,
+            ]}
+            android_ripple={{ color: 'rgba(0, 0, 0, 0.06)' }}
+          >
+            <Image
+              source={require('../../assets/heart.png')}
+              style={styles.headerIconImage}
+              resizeMode="contain"
+            />
+            {unreadCount > 0 ? (
+              <View style={styles.headerBadge}>
+                <Text style={styles.headerBadgeText}>
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </Text>
+              </View>
+            ) : null}
+          </Pressable>
         </View>
       </View>
 
@@ -320,6 +368,34 @@ const styles = StyleSheet.create({
     height: 32,
     justifyContent: 'center',
     alignItems: 'center',
+    borderRadius: 16,
+    position: 'relative',
+  },
+  headerIconPressed: {
+    backgroundColor: 'rgba(0, 0, 0, 0.04)',
+  },
+  headerIconImage: {
+    width: 22,
+    height: 22,
+    tintColor: colors.brownText,
+  },
+  headerBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -6,
+    minWidth: 16,
+    height: 16,
+    paddingHorizontal: 4,
+    borderRadius: 8,
+    backgroundColor: '#E76B6B',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerBadgeText: {
+    fontSize: 10,
+    fontFamily: typography.body,
+    color: colors.white,
+    fontWeight: '600',
   },
   iconText: {
     fontSize: 20,
