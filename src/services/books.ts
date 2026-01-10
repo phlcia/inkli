@@ -497,53 +497,25 @@ export async function searchBooksWithStats(query: string): Promise<any[]> {
  */
 export async function updateBookCommunityStats(bookId: string): Promise<{ success: boolean; error: any }> {
   try {
-    // Calculate average rank_score and count distinct users
-    // Only count rows where rank_score IS NOT NULL
-    const { data: statsData, error: statsError } = await supabase
-      .from('user_books')
-      .select('rank_score, user_id')
-      .eq('book_id', bookId)
-      .not('rank_score', 'is', null);
+    const { data, error } = await supabase.functions.invoke('books-update-community-stats', {
+      body: { book_id: bookId },
+    })
 
-    if (statsError) {
-      console.error('Error fetching book stats for manual update:', statsError);
-      return { success: false, error: statsError };
+    if (error) {
+      console.error('Error updating book community stats via Edge Function:', error)
+      return { success: false, error }
     }
 
-    // Calculate average score and member count (distinct users)
-    const rankScores = (statsData || []).map((ub: any) => ub.rank_score);
-    const uniqueUserIds = new Set((statsData || []).map((ub: any) => ub.user_id));
-    
-    const average_score = rankScores.length > 0
-      ? rankScores.reduce((sum: number, score: number) => sum + score, 0) / rankScores.length
-      : null;
-    const member_count = uniqueUserIds.size;
-
-    // Round average_score to 2 decimal places (matching DECIMAL(3,2))
-    const roundedAverage = average_score !== null 
-      ? Math.round(average_score * 100) / 100 
-      : null;
-
-    // Update the books table with calculated stats
-    const { error: updateError } = await supabase
-      .from('books')
-      .update({
-        community_average_score: roundedAverage,
-        community_rank_count: member_count,
-        stats_last_updated: new Date().toISOString(),
-      })
-      .eq('id', bookId);
-
-    if (updateError) {
-      console.error('Error updating book community stats:', updateError);
-      return { success: false, error: updateError };
+    if (!data?.success) {
+      const invalidResponse = new Error('Invalid response from books-update-community-stats')
+      console.error('Error updating book community stats via Edge Function:', invalidResponse)
+      return { success: false, error: invalidResponse }
     }
 
-    console.log(`Updated community stats for book ${bookId}: avg=${roundedAverage}, count=${member_count}`);
-    return { success: true, error: null };
+    return { success: true, error: null }
   } catch (error) {
-    console.error('Exception updating book community stats:', error);
-    return { success: false, error };
+    console.error('Exception updating book community stats:', error)
+    return { success: false, error }
   }
 }
 
