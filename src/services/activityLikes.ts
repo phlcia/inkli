@@ -98,17 +98,16 @@ export async function checkUserLiked(
 
 export async function getLikesCount(userBookId: string): Promise<number> {
   try {
-    const { data, error } = await supabase
-      .from('user_books')
-      .select('likes_count')
-      .eq('id', userBookId)
-      .maybeSingle();
+    const { count, error } = await supabase
+      .from('activity_likes')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_book_id', userBookId);
 
-    if (error && error.code !== 'PGRST116') {
+    if (error) {
       throw error;
     }
 
-    return data?.likes_count ?? 0;
+    return count ?? 0;
   } catch (error) {
     console.error('Error fetching likes count:', error);
     throw error;

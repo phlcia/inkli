@@ -106,11 +106,11 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: 24,
-    paddingTop: 60,
+    justifyContent: 'center',
   },
   title: {
-    fontSize: 32,
-    fontFamily: typography.heroTitle,
+    fontSize: 30,
+    fontFamily: typography.logo,
     color: colors.brownText,
     textAlign: 'center',
     marginBottom: 40,

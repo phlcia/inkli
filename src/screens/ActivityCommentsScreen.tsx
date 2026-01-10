@@ -16,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   CompositeNavigationProp,
   RouteProp,
+  useFocusEffect,
   useNavigation,
   useRoute,
 } from '@react-navigation/native';
@@ -113,9 +114,11 @@ export default function ActivityCommentsScreen() {
     }
   }, [currentUser?.id, userBookId]);
 
-  useEffect(() => {
-    loadComments();
-  }, [loadComments]);
+  useFocusEffect(
+    useCallback(() => {
+      loadComments();
+    }, [loadComments])
+  );
 
   const getActionText = (status: string) => {
     switch (status) {
@@ -227,9 +230,11 @@ export default function ActivityCommentsScreen() {
     }
   }, [route.params, userBookId]);
 
-  useEffect(() => {
-    loadHeader();
-  }, [loadHeader]);
+  useFocusEffect(
+    useCallback(() => {
+      loadHeader();
+    }, [loadHeader])
+  );
 
   const rows = useMemo<CommentRow[]>(() => {
     const topLevel = comments.filter((c) => !c.parent_comment_id);
