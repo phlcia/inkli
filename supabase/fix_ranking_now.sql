@@ -25,3 +25,4 @@ WHERE global_rank IS NOT NULL
 ORDER BY global_rank ASC
 LIMIT 10;
 
+

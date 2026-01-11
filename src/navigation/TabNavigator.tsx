@@ -7,7 +7,7 @@ import { supabase } from '../config/supabase';
 import HomeStackNavigator from './HomeStackNavigator';
 import YourShelfStackNavigator from './YourShelfStackNavigator';
 import SearchStackNavigator from './SearchStackNavigator';
-import LeaderboardScreen from '../screens/LeaderboardScreen';
+import LeaderboardScreen from '../features/leaderboard/screens/LeaderboardScreen';
 import ProfileStackNavigator from './ProfileStackNavigator';
 
 const Tab = createBottomTabNavigator();
@@ -41,7 +41,7 @@ function ProfileTabIcon({ focused }: { focused: boolean }) {
 
   const getInitial = () => {
     if (!user?.email) return 'U';
-    return user.email.split('@')[0].charAt(0).toUpperCase();
+    return user.email?.split('@')[0]?.charAt(0)?.toUpperCase() || 'U';
   };
 
   if (profilePhotoUrl) {

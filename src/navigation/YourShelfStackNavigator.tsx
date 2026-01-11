@@ -1,8 +1,8 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { colors } from '../config/theme';
-import YourShelfScreen from '../screens/YourShelfScreen';
-import BookDetailScreen from '../screens/BookDetailScreen';
+import YourShelfScreen from '../features/shelf/screens/YourShelfScreen';
+import BookDetailScreen from '../features/books/screens/BookDetailScreen';
 
 export type YourShelfStackParamList = {
   YourShelfMain: undefined;

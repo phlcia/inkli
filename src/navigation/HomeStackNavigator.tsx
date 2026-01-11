@@ -1,13 +1,13 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { colors } from '../config/theme';
-import HomeScreen from '../screens/HomeScreen';
-import BookDetailScreen from '../screens/BookDetailScreen';
-import ActivityLikesScreen from '../screens/ActivityLikesScreen';
-import ActivityCommentsScreen from '../screens/ActivityCommentsScreen';
-import UserProfileScreen from '../screens/UserProfileScreen';
-import UserShelfScreen from '../screens/UserShelfScreen';
-import NotificationsScreen from '../screens/NotificationsScreen';
+import HomeScreen from '../features/home/screens/HomeScreen';
+import BookDetailScreen from '../features/books/screens/BookDetailScreen';
+import ActivityLikesScreen from '../features/social/screens/ActivityLikesScreen';
+import ActivityCommentsScreen from '../features/social/screens/ActivityCommentsScreen';
+import UserProfileScreen from '../features/profile/screens/UserProfileScreen';
+import UserShelfScreen from '../features/social/screens/UserShelfScreen';
+import NotificationsScreen from '../features/social/screens/NotificationsScreen';
 import { ActivityLikesParams, ActivityCommentsParams } from './types';
 
 export type HomeStackParamList = {

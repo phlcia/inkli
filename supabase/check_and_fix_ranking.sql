@@ -103,3 +103,4 @@ WHERE books_read_count > 0
 ORDER BY global_rank ASC
 LIMIT 20;
 
+
