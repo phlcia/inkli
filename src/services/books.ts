@@ -1,4 +1,5 @@
 import { supabase } from '../config/supabase';
+import { resolveCoverUrl } from './coverResolver';
 
 export interface GoogleBook {
   id: string;
@@ -79,6 +80,7 @@ export interface Book {
   ratings_count: number | null;
   language: string | null;
   cover_url: string | null;
+  cover_fetched_at?: string | null;
   preview_link: string | null;
   info_link: string | null;
   isbn_10: string | null;
@@ -492,6 +494,77 @@ export async function searchBooksWithStats(query: string): Promise<any[]> {
         };
       })
     );
+
+    const isbn13s = Array.from(
+      new Set(
+        booksWithStats
+          .map((book) => book.isbn_13 || book.isbn || null)
+          .filter((value: string | null): value is string => Boolean(value))
+      )
+    );
+    const openLibraryIds = Array.from(
+      new Set(
+        booksWithStats
+          .map((book) => book.open_library_id || null)
+          .filter((value: string | null): value is string => Boolean(value))
+      )
+    );
+    const googleBooksIds = Array.from(
+      new Set(
+        booksWithStats
+          .map((book) => book.google_books_id || null)
+          .filter((value: string | null): value is string => Boolean(value))
+      )
+    );
+
+    const orFilters: string[] = [];
+    const formatInList = (values: string[]) =>
+      values.map((value) => `"${value.replace(/"/g, '\\"')}"`).join(',');
+
+    if (isbn13s.length > 0) {
+      orFilters.push(`isbn_13.in.(${formatInList(isbn13s)})`);
+    }
+    if (openLibraryIds.length > 0) {
+      orFilters.push(`open_library_id.in.(${formatInList(openLibraryIds)})`);
+    }
+    if (googleBooksIds.length > 0) {
+      orFilters.push(`google_books_id.in.(${formatInList(googleBooksIds)})`);
+    }
+
+    if (orFilters.length > 0) {
+      const { data, error } = await supabase
+        .from('books')
+        .select('isbn_13, open_library_id, google_books_id, cover_url')
+        .not('cover_url', 'is', null)
+        .or(orFilters.join(','));
+
+      if (!error && data) {
+        const coverMapByIsbn = new Map<string, string>();
+        const coverMapByOl = new Map<string, string>();
+        const coverMapByGb = new Map<string, string>();
+
+        data.forEach((row) => {
+          if (row.cover_url) {
+            if (row.isbn_13) coverMapByIsbn.set(row.isbn_13, row.cover_url);
+            if (row.open_library_id) coverMapByOl.set(row.open_library_id, row.cover_url);
+            if (row.google_books_id) coverMapByGb.set(row.google_books_id, row.cover_url);
+          }
+        });
+
+        booksWithStats.forEach((book) => {
+          if (book.cover_url) return;
+          const isbn = book.isbn_13 || book.isbn || null;
+          const olId = book.open_library_id || null;
+          const gbId = book.google_books_id || null;
+
+          book.cover_url =
+            (isbn && coverMapByIsbn.get(isbn)) ||
+            (olId && coverMapByOl.get(olId)) ||
+            (gbId && coverMapByGb.get(gbId)) ||
+            null;
+        });
+      }
+    }
     
     return booksWithStats;
   } catch (error) {

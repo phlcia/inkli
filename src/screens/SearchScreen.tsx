@@ -15,6 +15,7 @@ import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { colors, typography } from '../config/theme';
 import { searchBooksWithStats, enrichBookWithGoogleBooks, checkDatabaseForBook } from '../services/books';
+import { resolveCoverUrl, CoverResolvableBook } from '../services/coverResolver';
 import { searchMembers, followUser, unfollowUser, getFollowingIds } from '../services/userProfile';
 import { SearchStackParamList } from '../navigation/SearchStackNavigator';
 import { useAuth } from '../contexts/AuthContext';
@@ -48,6 +49,115 @@ interface RecentMemberSearch {
   last_name: string;
   profile_photo_url: string | null;
   timestamp: number;
+}
+
+const getPlaceholderColor = (value: string) => {
+  const palette = [
+    '#4EACE3',
+    '#6FB8D6',
+    '#2FA463',
+    '#CFA15F',
+    '#B8845A',
+    '#8FB7A5',
+    '#9B7B6C',
+    '#7FA4C8',
+  ];
+  const hash = value.split('').reduce((acc, char) => {
+    return char.charCodeAt(0) + ((acc << 5) - acc);
+  }, 0);
+  return palette[Math.abs(hash) % palette.length];
+};
+
+type BookSearchItemProps = {
+  book: any;
+  onPress: () => void;
+  disabled?: boolean;
+  trailing?: React.ReactNode;
+};
+
+function BookSearchItem({ book, onPress, disabled, trailing }: BookSearchItemProps) {
+  const [coverUrl, setCoverUrl] = useState<string | null>(book.cover_url ?? null);
+  const [loadingCover, setLoadingCover] = useState(!book.cover_url);
+  const coverKey =
+    book.isbn_13 || book.open_library_id || book.google_books_id || book.isbn || '';
+  const hasCover = Boolean(coverUrl) && !/image not available/i.test(coverUrl ?? '');
+  const placeholderColor = getPlaceholderColor(book.title || '');
+
+  useEffect(() => {
+    setCoverUrl(book.cover_url ?? null);
+    setLoadingCover(!book.cover_url);
+  }, [book.cover_url]);
+
+  useEffect(() => {
+    let isActive = true;
+    const coverId =
+      typeof book.cover_id === 'number'
+        ? book.cover_id
+        : typeof book.cover_i === 'number'
+        ? book.cover_i
+        : typeof book._raw?.cover_i === 'number'
+        ? book._raw.cover_i
+        : null;
+
+    const fetchCover = async () => {
+      if (!coverUrl && coverId) {
+        const openLibraryUrl = `https://covers.openlibrary.org/b/id/${coverId}-L.jpg`;
+        if (isActive) {
+          setCoverUrl(openLibraryUrl);
+          setLoadingCover(false);
+          Image.prefetch(openLibraryUrl).catch(() => undefined);
+        }
+        return;
+      }
+
+      if (coverUrl) {
+        setLoadingCover(false);
+        Image.prefetch(coverUrl).catch(() => undefined);
+        return;
+      }
+      const resolved = await resolveCoverUrl(book as CoverResolvableBook);
+      if (isActive) {
+        setCoverUrl(resolved);
+        setLoadingCover(false);
+        if (resolved) {
+          Image.prefetch(resolved).catch(() => undefined);
+        }
+      }
+    };
+
+    void fetchCover();
+
+    return () => {
+      isActive = false;
+    };
+  }, [coverKey]);
+
+  return (
+    <TouchableOpacity style={styles.bookItem} onPress={onPress} disabled={disabled}>
+      {hasCover ? (
+        <Image source={{ uri: coverUrl ?? '' }} style={styles.bookCover} resizeMode="contain" />
+      ) : loadingCover ? (
+        <View style={styles.bookCoverPlaceholder}>
+          <ActivityIndicator color={colors.white} />
+        </View>
+      ) : (
+        <View style={[styles.bookCoverPlaceholder, { backgroundColor: placeholderColor }]}>
+          <Text style={styles.bookCoverPlaceholderText}>
+            {(book.title || '?').trim().charAt(0).toUpperCase()}
+          </Text>
+        </View>
+      )}
+      <View style={styles.bookInfo}>
+        <Text style={styles.bookTitle} numberOfLines={2}>
+          {book.title}
+        </Text>
+        <Text style={styles.bookAuthor} numberOfLines={1}>
+          {book.authors?.join(', ') || 'Unknown Author'}
+        </Text>
+      </View>
+      {trailing}
+    </TouchableOpacity>
+  );
 }
 
 // Storage keys for recent searches (scoped per user)
@@ -409,54 +519,31 @@ export default function SearchScreen() {
 
   const renderBookItem = ({ item }: { item: any }) => {
     const isEnriching = enrichingBookId === item.open_library_id;
-    const coverUrl = item.cover_url;
 
     return (
-      <TouchableOpacity
-        style={styles.bookItem}
+      <BookSearchItem
+        book={item}
         onPress={() => handleBookPress(item)}
         disabled={isEnriching}
-      >
-        {coverUrl && (
-          <Image source={{ uri: coverUrl }} style={styles.bookCover} resizeMode="contain" />
-        )}
-        <View style={styles.bookInfo}>
-          <Text style={styles.bookTitle} numberOfLines={2}>
-            {item.title}
-          </Text>
-          <Text style={styles.bookAuthor} numberOfLines={1}>
-            {item.authors?.join(', ') || 'Unknown Author'}
-          </Text>
-        </View>
-      </TouchableOpacity>
+      />
     );
   };
 
   const renderRecentSearchItem = ({ item }: { item: RecentSearch }) => {
     return (
-      <TouchableOpacity
-        style={styles.bookItem}
+      <BookSearchItem
+        book={item}
         onPress={() => handleBookPress(item)}
-      >
-        {item.cover_url && (
-          <Image source={{ uri: item.cover_url }} style={styles.bookCover} resizeMode="contain" />
+        trailing={(
+          <TouchableOpacity
+            style={styles.removeButton}
+            onPress={() => removeRecentSearch(item.open_library_id)}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Text style={styles.removeButtonText}>✕</Text>
+          </TouchableOpacity>
         )}
-        <View style={styles.bookInfo}>
-          <Text style={styles.bookTitle} numberOfLines={2}>
-            {item.title}
-          </Text>
-          <Text style={styles.bookAuthor} numberOfLines={1}>
-            {item.authors?.join(', ') || 'Unknown Author'}
-          </Text>
-        </View>
-        <TouchableOpacity
-          style={styles.removeButton}
-          onPress={() => removeRecentSearch(item.open_library_id)}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          <Text style={styles.removeButtonText}>✕</Text>
-        </TouchableOpacity>
-      </TouchableOpacity>
+      />
     );
   };
 
@@ -815,6 +902,21 @@ const styles = StyleSheet.create({
     aspectRatio: 2/3,
     borderRadius: 4,
     marginRight: 12,
+  },
+  bookCoverPlaceholder: {
+    width: 60,
+    aspectRatio: 2 / 3,
+    borderRadius: 4,
+    marginRight: 12,
+    backgroundColor: colors.primaryBlue,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bookCoverPlaceholderText: {
+    color: colors.white,
+    fontSize: 26,
+    fontFamily: typography.body,
+    fontWeight: '700',
   },
   bookInfo: {
     flex: 1,
