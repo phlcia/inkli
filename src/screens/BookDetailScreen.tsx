@@ -14,7 +14,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, typography } from '../config/theme';
-import { addBookToShelf, checkUserHasBook, removeBookFromShelf } from '../services/books';
+import { BookCoverPlaceholder } from '../components/BookCoverPlaceholder';
+import { addBookToShelf, checkUserHasBook, getBookCircles, removeBookFromShelf, BookCirclesResult } from '../services/books';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../config/supabase';
 import { SearchStackParamList } from '../navigation/SearchStackNavigator';
@@ -34,9 +35,44 @@ export default function BookDetailScreen() {
   const [loading, setLoading] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [animatedIcon, setAnimatedIcon] = useState<string | null>(null);
+  const [circleStats, setCircleStats] = useState<BookCirclesResult | null>(null);
+  const [circleLoading, setCircleLoading] = useState(false);
+  const [circleError, setCircleError] = useState(false);
   const fadeAnim = React.useRef(new Animated.Value(0)).current;
 
   const coverUrl = book.cover_url;
+  const hasCover =
+    Boolean(coverUrl) && !/image not available/i.test(coverUrl ?? '');
+
+  const resolveBookIdForStats = React.useCallback(async () => {
+    if (book.id) return book.id;
+
+    if (book.open_library_id) {
+      const { data, error } = await supabase
+        .from('books')
+        .select('id')
+        .eq('open_library_id', book.open_library_id)
+        .single();
+
+      if (!error && data?.id) {
+        return data.id as string;
+      }
+    }
+
+    if (book.google_books_id) {
+      const { data, error } = await supabase
+        .from('books')
+        .select('id')
+        .eq('google_books_id', book.google_books_id)
+        .single();
+
+      if (!error && data?.id) {
+        return data.id as string;
+      }
+    }
+
+    return null;
+  }, [book.id, book.open_library_id, book.google_books_id]);
 
   // Check if book already exists in user's shelf
   const refreshBookStatus = React.useCallback(async () => {
@@ -82,6 +118,46 @@ export default function BookDetailScreen() {
   useEffect(() => {
     refreshBookStatus();
   }, [refreshBookStatus]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    const loadCircles = async () => {
+      setCircleLoading(true);
+      setCircleError(false);
+
+      try {
+        const resolvedBookId = await resolveBookIdForStats();
+        if (!resolvedBookId) {
+          if (isActive) {
+            setCircleStats(null);
+          }
+          return;
+        }
+
+        const stats = await getBookCircles(resolvedBookId, user?.id);
+        if (isActive) {
+          setCircleStats(stats);
+        }
+      } catch (error) {
+        console.error('Error loading book circles:', error);
+        if (isActive) {
+          setCircleError(true);
+          setCircleStats(null);
+        }
+      } finally {
+        if (isActive) {
+          setCircleLoading(false);
+        }
+      }
+    };
+
+    loadCircles();
+
+    return () => {
+      isActive = false;
+    };
+  }, [resolveBookIdForStats, user?.id]);
 
   // Refresh status when returning from BookRanking screen
   useFocusEffect(
@@ -249,12 +325,35 @@ export default function BookDetailScreen() {
   };
 
   const metadata = [
-    book.average_rating ? `★ ${book.average_rating.toFixed(1)}` : null,
     book.page_count ? `${book.page_count} pages` : null,
     book.published_date ? book.published_date : null,
   ]
     .filter(Boolean)
     .join(' • ');
+
+  const formatCircleScore = (value: number | null | undefined) => {
+    if (circleLoading || circleError) return '--';
+    if (value === null || value === undefined) return '--';
+    return value.toFixed(1);
+  };
+
+  const formatCircleCount = (value: number | null | undefined) => {
+    if (circleLoading || circleError) return '--';
+    return String(value ?? 0);
+  };
+
+  const getScoreTierColor = (score: number | null | undefined, count: number) => {
+    if (!count || score === null || score === undefined) {
+      return colors.brownText;
+    }
+    if (score <= 3.5) {
+      return '#D96B6B';
+    }
+    if (score <= 6.5) {
+      return '#E2B34C';
+    }
+    return '#2FA463';
+  };
 
   return (
     <View style={styles.container}>
@@ -275,7 +374,7 @@ export default function BookDetailScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* Book Cover */}
-        {coverUrl && (
+        {hasCover ? (
           <Image source={{ uri: coverUrl }} style={styles.coverImage} resizeMode="contain" />
         )}
 
@@ -363,6 +462,52 @@ export default function BookDetailScreen() {
           </View>
         )}
 
+        {/* Rating Circles */}
+        <View style={styles.circlesSection}>
+          <View style={styles.circlesRow}>
+            <View style={[styles.circleCard, styles.circleCardGlobal]}>
+              <View
+                style={[
+                  styles.ratingCircle,
+                  { backgroundColor: getScoreTierColor(circleStats?.global.average ?? null, circleStats?.global.count ?? 0) },
+                ]}
+              >
+                <Text style={styles.circleScore}>
+                  {formatCircleScore(circleStats?.global.average)}
+                </Text>
+                {Boolean(circleStats?.global.count) && (
+                  <View style={styles.circleCountBadge}>
+                    <Text style={styles.circleCountText}>
+                      {formatCircleCount(circleStats?.global.count)}
+                    </Text>
+                  </View>
+                )}
+              </View>
+              <Text style={styles.circleLabel}>Across all{'\n'}Inkli users</Text>
+            </View>
+            <View style={[styles.circleCard, styles.circleCardFriends]}>
+              <View
+                style={[
+                  styles.ratingCircle,
+                  { backgroundColor: getScoreTierColor(circleStats?.friends.average ?? null, circleStats?.friends.count ?? 0) },
+                ]}
+              >
+                <Text style={styles.circleScore}>
+                  {formatCircleScore(circleStats?.friends.average)}
+                </Text>
+                {Boolean(circleStats?.friends.count) && (
+                  <View style={styles.circleCountBadge}>
+                    <Text style={styles.circleCountText}>
+                      {formatCircleCount(circleStats?.friends.count)}
+                    </Text>
+                  </View>
+                )}
+              </View>
+              <Text style={styles.circleLabel}>Across your{'\n'}friends</Text>
+            </View>
+          </View>
+        </View>
+
         {/* Description */}
         {book.description && (
           <View style={styles.descriptionSection}>
@@ -372,31 +517,34 @@ export default function BookDetailScreen() {
         )}
 
         {/* Additional Info */}
-        <View style={styles.infoSection}>
-          {book.publisher && (
-            <Text style={styles.infoText}>
-              <Text style={styles.infoLabel}>Publisher: </Text>
-              {book.publisher}
-            </Text>
-          )}
-          {book.language && (
-            <Text style={styles.infoText}>
-              <Text style={styles.infoLabel}>Language: </Text>
-              {book.language.toUpperCase()}
-            </Text>
-          )}
-          {book.isbn_10 && (
-            <Text style={styles.infoText}>
-              <Text style={styles.infoLabel}>ISBN-10: </Text>
-              {book.isbn_10}
-            </Text>
-          )}
-          {book.isbn_13 && (
-            <Text style={styles.infoText}>
-              <Text style={styles.infoLabel}>ISBN-13: </Text>
-              {book.isbn_13}
-            </Text>
-          )}
+        <View style={styles.descriptionSection}>
+          <Text style={styles.descriptionLabel}>Additional Information</Text>
+          <View style={styles.infoSection}>
+            {book.publisher && (
+              <Text style={styles.infoText}>
+                <Text style={styles.infoLabel}>Publisher: </Text>
+                {book.publisher}
+              </Text>
+            )}
+            {book.language && (
+              <Text style={styles.infoText}>
+                <Text style={styles.infoLabel}>Language: </Text>
+                {book.language.toUpperCase()}
+              </Text>
+            )}
+            {book.isbn_10 && (
+              <Text style={styles.infoText}>
+                <Text style={styles.infoLabel}>ISBN-10: </Text>
+                {book.isbn_10}
+              </Text>
+            )}
+            {book.isbn_13 && (
+              <Text style={styles.infoText}>
+                <Text style={styles.infoLabel}>ISBN-13: </Text>
+                {book.isbn_13}
+              </Text>
+            )}
+          </View>
         </View>
       </ScrollView>
 
@@ -465,6 +613,10 @@ const styles = StyleSheet.create({
     marginBottom: 24,
     alignSelf: 'center',
   },
+  coverPlaceholder: {
+    marginBottom: 24,
+    alignSelf: 'center',
+  },
   title: {
     fontSize: 32,
     fontFamily: typography.heroTitle,
@@ -527,6 +679,75 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 24,
     marginRight: -8,
+  },
+  circlesSection: {
+    marginBottom: 24,
+    alignItems: 'center',
+  },
+  circlesRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'flex-start',
+  },
+  circleCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: 170,
+    justifyContent: 'flex-start',
+  },
+  circleCardGlobal: {
+    marginRight: -8,
+    zIndex: 2,
+  },
+  circleCardFriends: {
+    marginLeft: -18,
+    zIndex: 1,
+  },
+  ratingCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: colors.brownText,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  circleScore: {
+    fontSize: 18,
+    fontFamily: typography.body,
+    color: colors.white,
+    fontWeight: '700',
+  },
+  circleCountBadge: {
+    position: 'absolute',
+    bottom: -6,
+    right: -6,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: colors.brownText,
+    borderWidth: 2,
+    borderColor: colors.creamBackground,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  circleCountText: {
+    fontSize: 11,
+    fontFamily: typography.body,
+    color: colors.white,
+    fontWeight: '600',
+  },
+  circleLabel: {
+    marginLeft: 10,
+    fontSize: 12,
+    fontFamily: typography.body,
+    color: colors.brownText,
+    textAlign: 'left',
+    lineHeight: 16,
+    opacity: 0.8,
   },
   categoryChip: {
     backgroundColor: colors.primaryBlue,
