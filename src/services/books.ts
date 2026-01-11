@@ -106,6 +106,16 @@ export interface UserBook {
   book?: Book;
 }
 
+export interface BookCircleStats {
+  average: number | null;
+  count: number;
+}
+
+export interface BookCirclesResult {
+  global: BookCircleStats;
+  friends: BookCircleStats;
+}
+
 const GOOGLE_BOOKS_API_BASE = 'https://www.googleapis.com/books/v1/volumes';
 
 // ============================================================================
@@ -517,6 +527,69 @@ export async function updateBookCommunityStats(bookId: string): Promise<{ succes
     console.error('Exception updating book community stats:', error)
     return { success: false, error }
   }
+}
+
+export async function getBookCircles(
+  bookId: string,
+  userId?: string | null
+): Promise<BookCirclesResult> {
+  const defaultStats: BookCircleStats = { average: null, count: 0 };
+
+  const { data: globalData, error: globalError } = await supabase
+    .from('books_stats')
+    .select('global_avg_score, global_review_count')
+    .eq('book_id', bookId)
+    .single();
+
+  if (globalError && globalError.code !== 'PGRST116') {
+    throw globalError;
+  }
+
+  const global: BookCircleStats = {
+    average: globalData?.global_avg_score ?? null,
+    count: globalData?.global_review_count ?? 0,
+  };
+
+  if (!userId) {
+    return { global, friends: defaultStats };
+  }
+
+  const { data: followsData, error: followsError } = await supabase
+    .from('user_follows')
+    .select('following_id')
+    .eq('follower_id', userId);
+
+  if (followsError) {
+    throw followsError;
+  }
+
+  const friendIds = (followsData || [])
+    .map((row) => row.following_id)
+    .filter((id): id is string => Boolean(id));
+
+  if (friendIds.length === 0) {
+    return { global, friends: defaultStats };
+  }
+
+  const { data: friendsData, error: friendsError } = await supabase.rpc(
+    'get_friends_book_stats',
+    {
+      p_book_id: bookId,
+      p_friend_ids: friendIds,
+    }
+  );
+
+  if (friendsError) {
+    throw friendsError;
+  }
+
+  const friendsRow = Array.isArray(friendsData) ? friendsData[0] : friendsData;
+  const friends: BookCircleStats = {
+    average: friendsRow?.avg_score ?? null,
+    count: friendsRow?.review_count ?? 0,
+  };
+
+  return { global, friends };
 }
 
 // ============================================================================
