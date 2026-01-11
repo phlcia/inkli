@@ -118,6 +118,18 @@ export interface BookCirclesResult {
   friends: BookCircleStats;
 }
 
+export interface BookShelfCounts {
+  read: number;
+  currently_reading: number;
+  want_to_read: number;
+}
+
+export function formatCount(count: number): string {
+  if (count < 1000) return String(count);
+  if (count < 1000000) return `${Math.floor(count / 1000)}k`;
+  return `${Math.floor(count / 1000000)}M`;
+}
+
 const GOOGLE_BOOKS_API_BASE = 'https://www.googleapis.com/books/v1/volumes';
 
 // ============================================================================
@@ -663,6 +675,38 @@ export async function getBookCircles(
   };
 
   return { global, friends };
+}
+
+export async function getBookShelfCounts(bookId: string): Promise<BookShelfCounts> {
+  const emptyCounts: BookShelfCounts = {
+    read: 0,
+    currently_reading: 0,
+    want_to_read: 0,
+  };
+
+  try {
+    const { data, error } = await supabase
+      .from('books_stats')
+      .select('shelf_count_read, shelf_count_currently_reading, shelf_count_want_to_read')
+      .eq('book_id', bookId)
+      .single();
+
+    if (error && error.code !== 'PGRST116') {
+      console.error('Error loading shelf counts:', error);
+      return emptyCounts;
+    }
+
+    if (!data) return emptyCounts;
+
+    return {
+      read: data.shelf_count_read ?? 0,
+      currently_reading: data.shelf_count_currently_reading ?? 0,
+      want_to_read: data.shelf_count_want_to_read ?? 0,
+    };
+  } catch (error) {
+    console.error('Error loading shelf counts:', error);
+    return emptyCounts;
+  }
 }
 
 // ============================================================================

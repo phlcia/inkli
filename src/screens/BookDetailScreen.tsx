@@ -15,7 +15,7 @@ import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navig
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, typography } from '../config/theme';
 import { BookCoverPlaceholder } from '../components/BookCoverPlaceholder';
-import { addBookToShelf, checkUserHasBook, getBookCircles, removeBookFromShelf, BookCirclesResult } from '../services/books';
+import { addBookToShelf, checkUserHasBook, getBookCircles, getBookShelfCounts, removeBookFromShelf, BookCirclesResult, BookShelfCounts, formatCount } from '../services/books';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../config/supabase';
 import { SearchStackParamList } from '../navigation/SearchStackNavigator';
@@ -38,6 +38,7 @@ export default function BookDetailScreen() {
   const [circleStats, setCircleStats] = useState<BookCirclesResult | null>(null);
   const [circleLoading, setCircleLoading] = useState(false);
   const [circleError, setCircleError] = useState(false);
+  const [shelfCounts, setShelfCounts] = useState<BookShelfCounts | null>(null);
   const fadeAnim = React.useRef(new Animated.Value(0)).current;
 
   const coverUrl = book.cover_url;
@@ -73,6 +74,25 @@ export default function BookDetailScreen() {
 
     return null;
   }, [book.id, book.open_library_id, book.google_books_id]);
+
+  const refreshShelfCounts = React.useCallback(async () => {
+    const resolvedBookId = await resolveBookIdForStats();
+    if (!resolvedBookId) {
+      setShelfCounts({
+        read: 0,
+        currently_reading: 0,
+        want_to_read: 0,
+      });
+      return;
+    }
+
+    try {
+      const counts = await getBookShelfCounts(resolvedBookId);
+      setShelfCounts(counts);
+    } catch (error) {
+      console.error('Failed to refresh shelf counts:', error);
+    }
+  }, [resolveBookIdForStats]);
 
   // Check if book already exists in user's shelf
   const refreshBookStatus = React.useCallback(async () => {
@@ -131,19 +151,33 @@ export default function BookDetailScreen() {
         if (!resolvedBookId) {
           if (isActive) {
             setCircleStats(null);
+            setShelfCounts({
+              read: 0,
+              currently_reading: 0,
+              want_to_read: 0,
+            });
           }
           return;
         }
 
-        const stats = await getBookCircles(resolvedBookId, user?.id);
+        const [stats, counts] = await Promise.all([
+          getBookCircles(resolvedBookId, user?.id),
+          getBookShelfCounts(resolvedBookId),
+        ]);
         if (isActive) {
           setCircleStats(stats);
+          setShelfCounts(counts);
         }
       } catch (error) {
         console.error('Error loading book circles:', error);
         if (isActive) {
           setCircleError(true);
           setCircleStats(null);
+          setShelfCounts({
+            read: 0,
+            currently_reading: 0,
+            want_to_read: 0,
+          });
         }
       } finally {
         if (isActive) {
@@ -198,6 +232,31 @@ export default function BookDetailScreen() {
     return labels[status] || status;
   };
 
+  const getEmptyShelfCounts = (): BookShelfCounts => ({
+    read: 0,
+    currently_reading: 0,
+    want_to_read: 0,
+  });
+
+  const updateShelfCountsOptimistically = (
+    fromStatus: 'read' | 'currently_reading' | 'want_to_read' | null,
+    toStatus: 'read' | 'currently_reading' | 'want_to_read' | null
+  ) => {
+    setShelfCounts((previous) => {
+      const next = { ...(previous ?? getEmptyShelfCounts()) };
+
+      if (fromStatus) {
+        next[fromStatus] = Math.max(0, next[fromStatus] - 1);
+      }
+
+      if (toStatus) {
+        next[toStatus] += 1;
+      }
+
+      return next;
+    });
+  };
+
   const handleIconPress = async (status: 'read' | 'currently_reading' | 'want_to_read') => {
     if (!user) {
       setToastMessage('You must be logged in to add books');
@@ -205,6 +264,13 @@ export default function BookDetailScreen() {
     }
 
     if (loading) return;
+
+    const previousStatus = currentStatus;
+    const previousCounts = shelfCounts;
+    const rollbackOptimisticUpdate = () => {
+      setCurrentStatus(previousStatus);
+      setShelfCounts(previousCounts);
+    };
 
     try {
       setLoading(status);
@@ -214,6 +280,8 @@ export default function BookDetailScreen() {
       const isCurrentlyOnThisStatus = currentStatus === status;
       
       if (isCurrentlyOnThisStatus) {
+        updateShelfCountsOptimistically(status, null);
+        setCurrentStatus(null);
         // Remove the book from shelf
         // First, get the book ID from the database
         let existingBook = null;
@@ -247,16 +315,20 @@ export default function BookDetailScreen() {
             }
             
             // Update UI
-            setCurrentStatus(null);
             setLoading(null);
             // Removed toast and navigation - no feedback needed for removing from shelf
+            void refreshShelfCounts();
           } else {
+            rollbackOptimisticUpdate();
             setToastMessage('Book not found on shelf');
           }
         } else {
+          rollbackOptimisticUpdate();
           setToastMessage('Book not found');
         }
       } else {
+        updateShelfCountsOptimistically(previousStatus, status);
+        setCurrentStatus(status);
         // Add or move the book
         // If status is 'currently_reading', set started_date to today
         const today = new Date();
@@ -277,6 +349,7 @@ export default function BookDetailScreen() {
         
         if (!result.userBookId || result.userBookId === '') {
           console.error('=== BookDetailScreen: ERROR - Empty userBookId from addBookToShelf ===');
+          rollbackOptimisticUpdate();
           setToastMessage('Failed to add book - missing book ID');
           setLoading(null);
           return;
@@ -299,15 +372,18 @@ export default function BookDetailScreen() {
             previousStatus: (result.previousStatus as 'read' | 'currently_reading' | 'want_to_read' | undefined) || null,
             wasNewBook: !result.isUpdate,
           });
+          void refreshShelfCounts();
         } else {
           // For 'currently_reading' or 'want_to_read', just update the UI without opening ranking screen
           setLoading(null);
+          void refreshShelfCounts();
         }
         
         // Removed toast messages - no feedback needed for adding to shelf
       }
     } catch (error: any) {
       console.error('Error managing book:', error);
+      rollbackOptimisticUpdate();
       setToastMessage(error.message || 'Failed to update book');
       setLoading(null);
     } finally {
@@ -339,7 +415,7 @@ export default function BookDetailScreen() {
 
   const formatCircleCount = (value: number | null | undefined) => {
     if (circleLoading || circleError) return '--';
-    return String(value ?? 0);
+    return formatCount(value ?? 0);
   };
 
   const getScoreTierColor = (score: number | null | undefined, count: number) => {
@@ -354,6 +430,12 @@ export default function BookDetailScreen() {
     }
     return '#2FA463';
   };
+
+  const ShelfCountStack = ({ count }: { count: number }) => (
+    <View style={styles.shelfCountBadge} pointerEvents="none">
+      <Text style={styles.shelfCountText}>{formatCount(count)}</Text>
+    </View>
+  );
 
   return (
     <View style={styles.container}>
@@ -398,61 +480,73 @@ export default function BookDetailScreen() {
         {/* Quick Action Icons */}
         <View style={styles.actionIconsContainer}>
           {/* Add to Read */}
-          <TouchableOpacity
-            style={[
-              styles.actionIcon,
-              isIconActive('read') && styles.actionIconActive,
-            ]}
-            onPress={() => handleIconPress('read')}
-            disabled={Boolean(loading)}
-          >
-            <Image
-              source={require('../../assets/add.png')}
+          <View style={styles.actionIconWrapper}>
+            <TouchableOpacity
               style={[
-                styles.actionIconImage,
-                isIconActive('read') && styles.actionIconImageActive,
+                styles.actionIcon,
+                isIconActive('read') && styles.actionIconActive,
               ]}
-              resizeMode="contain"
-            />
-          </TouchableOpacity>
+              onPress={() => handleIconPress('read')}
+              disabled={Boolean(loading)}
+            >
+              <Image
+                source={require('../../assets/add.png')}
+                style={[
+                  styles.actionIconImage,
+                  isIconActive('read') && styles.actionIconImageActive,
+                ]}
+                resizeMode="contain"
+              />
+            </TouchableOpacity>
+          </View>
 
           {/* Currently Reading */}
-          <TouchableOpacity
-            style={[
-              styles.actionIcon,
-              isIconActive('currently_reading') && styles.actionIconActive,
-            ]}
-            onPress={() => handleIconPress('currently_reading')}
-            disabled={Boolean(loading)}
-          >
-            <Image
-              source={require('../../assets/reading.png')}
+          <View style={styles.actionIconWrapper}>
+            <TouchableOpacity
               style={[
-                styles.actionIconImage,
-                isIconActive('currently_reading') && styles.actionIconImageActive,
+                styles.actionIcon,
+                isIconActive('currently_reading') && styles.actionIconActive,
               ]}
-              resizeMode="contain"
-            />
-          </TouchableOpacity>
+              onPress={() => handleIconPress('currently_reading')}
+              disabled={Boolean(loading)}
+            >
+              <Image
+                source={require('../../assets/reading.png')}
+                style={[
+                  styles.actionIconImage,
+                  isIconActive('currently_reading') && styles.actionIconImageActive,
+                ]}
+                resizeMode="contain"
+              />
+            </TouchableOpacity>
+            {shelfCounts && shelfCounts.currently_reading > 0 && (
+              <ShelfCountStack count={shelfCounts.currently_reading} />
+            )}
+          </View>
 
           {/* Want to Read */}
-          <TouchableOpacity
-            style={[
-              styles.actionIcon,
-              isIconActive('want_to_read') && styles.actionIconActive,
-            ]}
-            onPress={() => handleIconPress('want_to_read')}
-            disabled={Boolean(loading)}
-          >
-            <Image
-              source={require('../../assets/bookmark.png')}
+          <View style={styles.actionIconWrapper}>
+            <TouchableOpacity
               style={[
-                styles.actionIconImage,
-                isIconActive('want_to_read') && styles.actionIconImageActive,
+                styles.actionIcon,
+                isIconActive('want_to_read') && styles.actionIconActive,
               ]}
-              resizeMode="contain"
-            />
-          </TouchableOpacity>
+              onPress={() => handleIconPress('want_to_read')}
+              disabled={Boolean(loading)}
+            >
+              <Image
+                source={require('../../assets/bookmark.png')}
+                style={[
+                  styles.actionIconImage,
+                  isIconActive('want_to_read') && styles.actionIconImageActive,
+                ]}
+                resizeMode="contain"
+              />
+            </TouchableOpacity>
+            {shelfCounts && shelfCounts.want_to_read > 0 && (
+              <ShelfCountStack count={shelfCounts.want_to_read} />
+            )}
+          </View>
         </View>
 
         {/* Metadata */}
@@ -646,6 +740,9 @@ const styles = StyleSheet.create({
     gap: 16,
     marginBottom: 24,
   },
+  actionIconWrapper: {
+    position: 'relative',
+  },
   actionIcon: {
     width: 56,
     height: 56,
@@ -673,6 +770,25 @@ const styles = StyleSheet.create({
   },
   actionIconImageActive: {
     tintColor: colors.white,
+  },
+  shelfCountBadge: {
+    position: 'absolute',
+    right: -6,
+    bottom: -6,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: colors.brownText,
+    borderWidth: 2,
+    borderColor: colors.creamBackground,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  shelfCountText: {
+    fontSize: 11,
+    fontFamily: typography.body,
+    color: colors.white,
+    fontWeight: '700',
   },
   metadata: {
     fontSize: 14,
