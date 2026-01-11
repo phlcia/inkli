@@ -376,6 +376,15 @@ export default function BookDetailScreen() {
         {/* Book Cover */}
         {hasCover ? (
           <Image source={{ uri: coverUrl }} style={styles.coverImage} resizeMode="contain" />
+        ) : (
+          <View style={styles.coverPlaceholder}>
+            <BookCoverPlaceholder
+              title={book.title}
+              author={book.authors?.join(', ') || 'Unknown Author'}
+              width={200}
+              height={300}
+            />
+          </View>
         )}
 
         {/* Title */}
