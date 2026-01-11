@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { colors } from '../config/theme';
-import WelcomeScreen from '../screens/WelcomeScreen';
-import CreateAccountScreen from '../screens/CreateAccountScreen';
-import SignUpEmailScreen from '../screens/SignUpEmailScreen';
-import SetupProfileScreen from '../screens/SetupProfileScreen';
-import ReadingInterestsScreen from '../screens/ReadingInterestsScreen';
-import SignInScreen from '../screens/SignInScreen';
+import WelcomeScreen from '../features/auth/screens/WelcomeScreen';
+import CreateAccountScreen from '../features/auth/screens/CreateAccountScreen';
+import SignUpEmailScreen from '../features/auth/screens/SignUpEmailScreen';
+import SetupProfileScreen from '../features/auth/screens/SetupProfileScreen';
+import ReadingInterestsScreen from '../features/auth/screens/ReadingInterestsScreen';
+import SignInScreen from '../features/auth/screens/SignInScreen';
 import { useAuth } from '../contexts/AuthContext';
 
 export type AuthStackParamList = {
@@ -32,8 +32,8 @@ const Stack = createNativeStackNavigator<AuthStackParamList>();
 export default function AuthStackNavigator() {
   const { signUp, signInWithApple, signInWithGoogle } = useAuth();
   const [signUpData, setSignUpData] = useState<{
-    email: string;
-    password: string;
+    email?: string;
+    password?: string;
     firstName?: string;
     lastName?: string;
     username?: string;

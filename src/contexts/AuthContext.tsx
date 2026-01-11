@@ -171,7 +171,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
 
           idToken = credential.identityToken;
-          rawNonce = credential.nonce || null;
+          rawNonce = (credential as any).nonce || null;
 
           // Sign in with Supabase using the OAuth token
           const { data, error } = await supabase.auth.signInWithIdToken({
@@ -242,7 +242,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // If still not found, try to extract from the full URL string as fallback
         if (!code) {
           const codeMatch = result.url.match(/[#&]code=([^&]+)/);
-          code = codeMatch ? codeMatch[1] : null;
+          code = codeMatch?.[1] ?? null;
         }
 
         if (!code) {
@@ -322,7 +322,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // If still not found, try to extract from the full URL string as fallback
         if (!code) {
           const codeMatch = result.url.match(/[#&]code=([^&]+)/);
-          code = codeMatch ? codeMatch[1] : null;
+          code = codeMatch?.[1] ?? null;
         }
 
         if (!code) {

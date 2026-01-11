@@ -1,14 +1,14 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { colors } from '../config/theme';
-import SearchScreen from '../screens/SearchScreen';
-import BookDetailScreen from '../screens/BookDetailScreen';
-import BookRankingScreen from '../screens/BookRankingScreen';
-import UserProfileScreen from '../screens/UserProfileScreen';
-import UserShelfScreen from '../screens/UserShelfScreen';
-import FollowersFollowingScreen from '../screens/FollowersFollowingScreen';
-import ActivityLikesScreen from '../screens/ActivityLikesScreen';
-import ActivityCommentsScreen from '../screens/ActivityCommentsScreen';
+import SearchScreen from '../features/search/screens/SearchScreen';
+import BookDetailScreen from '../features/books/screens/BookDetailScreen';
+import BookRankingScreen from '../features/books/screens/BookRankingScreen';
+import UserProfileScreen from '../features/profile/screens/UserProfileScreen';
+import UserShelfScreen from '../features/social/screens/UserShelfScreen';
+import FollowersFollowingScreen from '../features/social/screens/FollowersFollowingScreen';
+import ActivityLikesScreen from '../features/social/screens/ActivityLikesScreen';
+import ActivityCommentsScreen from '../features/social/screens/ActivityCommentsScreen';
 import {
   FollowersFollowingParams,
   ActivityLikesParams,

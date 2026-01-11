@@ -68,7 +68,7 @@ export default function App() {
           // If still not found, try to extract from the full URL string as fallback
           if (!code) {
             const codeMatch = event.url.match(/[#&]code=([^&]+)/);
-            code = codeMatch ? codeMatch[1] : null;
+            code = codeMatch?.[1] ?? null;
           }
 
           if (code) {

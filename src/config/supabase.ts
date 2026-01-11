@@ -9,7 +9,6 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    redirectTo: 'inkli://auth/callback',
     detectSessionInUrl: true,
     flowType: 'pkce',
   },
