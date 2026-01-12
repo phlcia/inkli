@@ -558,8 +558,11 @@ export default function ActivityCommentsScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={styles.backButton}>←</Text>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Text style={styles.backButtonText}>←</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Comments</Text>
         <View style={styles.headerSpacer} />
@@ -714,9 +717,24 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
   },
   backButton: {
-    fontSize: 28,
-    color: colors.primaryBlue,
-    width: 32,
+    marginTop: Platform.OS === 'ios' ? 8 : 16,
+    marginLeft: 0,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.white,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: colors.brownText,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  backButtonText: {
+    fontSize: 24,
+    color: colors.brownText,
+    fontWeight: 'bold',
   },
   headerTitle: {
     flex: 1,
@@ -726,7 +744,7 @@ const styles = StyleSheet.create({
     color: colors.primaryBlue,
   },
   headerSpacer: {
-    width: 32,
+    width: 40,
   },
   loadingContainer: {
     flex: 1,
