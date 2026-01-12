@@ -40,6 +40,7 @@ export default function BookDetailScreen() {
   const [circleStats, setCircleStats] = useState<BookCirclesResult | null>(null);
   const [circleLoading, setCircleLoading] = useState(false);
   const [circleError, setCircleError] = useState(false);
+  const [userRankScore, setUserRankScore] = useState<number | null>(null);
   const [shelfCounts, setShelfCounts] = useState<BookShelfCounts | null>(null);
   const [friendsRankings, setFriendsRankings] = useState<Array<UserBook & { user_profile?: { user_id: string; username: string; profile_photo_url: string | null } }>>([]);
   const [friendsRankingsLoading, setFriendsRankingsLoading] = useState(false);
@@ -131,18 +132,28 @@ export default function BookDetailScreen() {
       }
 
       if (existingBook) {
-        const checkResult = await checkUserHasBook(existingBook.id, user.id);
-        if (checkResult.exists && checkResult.currentStatus) {
-          setCurrentStatus(checkResult.currentStatus as 'read' | 'currently_reading' | 'want_to_read');
+        const { data } = await supabase
+          .from('user_books')
+          .select('status, rank_score')
+          .eq('user_id', user.id)
+          .eq('book_id', existingBook.id)
+          .single();
+
+        if (data?.status) {
+          setCurrentStatus(data.status as 'read' | 'currently_reading' | 'want_to_read');
         } else {
           setCurrentStatus(null);
         }
+        setUserRankScore(data?.rank_score ?? null);
       } else {
         setCurrentStatus(null);
+        setUserRankScore(null);
       }
     } catch (error) {
       // Book doesn't exist yet, that's fine
       console.log('Book not in shelf yet');
+      setCurrentStatus(null);
+      setUserRankScore(null);
     }
   }, [user, book.open_library_id, book.google_books_id]);
 
@@ -391,6 +402,7 @@ export default function BookDetailScreen() {
       if (isCurrentlyOnThisStatus) {
         updateShelfCountsOptimistically(status, null);
         setCurrentStatus(null);
+        setUserRankScore(null);
         // Remove the book from shelf
         // First, get the book ID from the database
         let existingBook = null;
@@ -445,6 +457,7 @@ export default function BookDetailScreen() {
             if (checkResult.exists && checkResult.userBookId) {
               updateShelfCountsOptimistically(previousStatus, status);
               setCurrentStatus(status);
+              setUserRankScore(null);
               const { error } = await updateBookStatus(checkResult.userBookId, status, {
                 touchUpdatedAt: false,
               });
@@ -467,6 +480,7 @@ export default function BookDetailScreen() {
 
         updateShelfCountsOptimistically(previousStatus, status);
         setCurrentStatus(status);
+        setUserRankScore(null);
         // Add or move the book
         // If status is 'currently_reading', set started_date to today
         const today = new Date();
@@ -497,6 +511,7 @@ export default function BookDetailScreen() {
         const isMoving = isUpdate && result.previousStatus !== status;
         
         setCurrentStatus(status);
+        setUserRankScore(null);
         
         // Only open ranking screen if status is 'read'
         if (status === 'read') {
@@ -672,6 +687,8 @@ export default function BookDetailScreen() {
     </View>
   );
 
+  const hasUserCircle = userRankScore !== null;
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor={colors.creamBackground} />
@@ -802,8 +819,27 @@ export default function BookDetailScreen() {
 
         {/* Rating Circles */}
         <View style={styles.circlesSection}>
-          <View style={styles.circlesRow}>
-            <View style={[styles.circleCard, styles.circleCardGlobal]}>
+          <View style={[
+            styles.circlesRow,
+            hasUserCircle && styles.circlesRowCompact,
+            !hasUserCircle && styles.circlesRowTwo,
+          ]}>
+            {userRankScore !== null && (
+              <View style={[styles.circleCard, styles.circleCardCompact, styles.circleCardUser, styles.circleCardUserCompact]}>
+                <View
+                  style={[
+                    styles.ratingCircle,
+                    { backgroundColor: getScoreTierColor(userRankScore, 1) },
+                  ]}
+                >
+                  <Text style={styles.circleScore}>
+                    {formatCircleScore(userRankScore)}
+                  </Text>
+                </View>
+                <Text style={styles.circleLabel}>What you{'\n'}think</Text>
+              </View>
+            )}
+            <View style={[styles.circleCard, hasUserCircle && styles.circleCardCompact, styles.circleCardGlobal, hasUserCircle && styles.circleCardGlobalCompact]}>
               <View
                 style={[
                   styles.ratingCircle,
@@ -823,7 +859,7 @@ export default function BookDetailScreen() {
               </View>
               <Text style={styles.circleLabel}>What Inkli{'\n'}users think</Text>
             </View>
-            <View style={[styles.circleCard, styles.circleCardFriends]}>
+            <View style={[styles.circleCard, hasUserCircle && styles.circleCardCompact, styles.circleCardFriends, hasUserCircle && styles.circleCardFriendsCompact]}>
               <View
                 style={[
                   styles.ratingCircle,
@@ -997,7 +1033,7 @@ const styles = StyleSheet.create({
   },
   backButton: {
     marginTop: Platform.OS === 'ios' ? 8 : 16,
-    marginLeft: 0,
+    marginLeft: 16,
     width: 40,
     height: 40,
     borderRadius: 20,
@@ -1128,24 +1164,46 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'flex-start',
   },
+  circlesRowCompact: {
+    justifyContent: 'center',
+  },
+  circlesRowTwo: {
+    paddingLeft: 40,
+  },
   circleCard: {
     flexDirection: 'row',
     alignItems: 'center',
     width: 170,
     justifyContent: 'flex-start',
   },
+  circleCardCompact: {
+    width: 122,
+  },
+  circleCardUser: {
+    marginRight: -8,
+    zIndex: 3,
+  },
+  circleCardUserCompact: {
+    marginRight: 0,
+  },
   circleCardGlobal: {
     marginRight: -8,
     zIndex: 2,
+  },
+  circleCardGlobalCompact: {
+    marginRight: 0,
   },
   circleCardFriends: {
     marginLeft: -18,
     zIndex: 1,
   },
+  circleCardFriendsCompact: {
+    marginLeft: 0,
+  },
   ratingCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: colors.brownText,
@@ -1155,7 +1213,7 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   circleScore: {
-    fontSize: 18,
+    fontSize: 16,
     fontFamily: typography.body,
     color: colors.white,
     fontWeight: '700',
@@ -1180,8 +1238,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   circleLabel: {
-    marginLeft: 10,
-    fontSize: 12,
+    marginLeft: 6,
+    fontSize: 11,
     fontFamily: typography.body,
     color: colors.brownText,
     textAlign: 'left',
