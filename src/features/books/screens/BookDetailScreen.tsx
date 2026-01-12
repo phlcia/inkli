@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,16 +9,18 @@ import {
   Animated,
   Platform,
   StatusBar,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, typography } from '../../../config/theme';
 import { BookCoverPlaceholder } from '../components/BookCoverPlaceholder';
-import { addBookToShelf, checkUserHasBook, getBookCircles, getBookShelfCounts, removeBookFromShelf, BookCirclesResult, BookShelfCounts, formatCount } from '../../../services/books';
+import { addBookToShelf, checkUserHasBook, getBookCircles, getBookShelfCounts, removeBookFromShelf, getFriendsRankingsForBook, BookCirclesResult, BookShelfCounts, formatCount, UserBook } from '../../../services/books';
 import { useAuth } from '../../../contexts/AuthContext';
 import { supabase } from '../../../config/supabase';
 import { SearchStackParamList } from '../../../navigation/SearchStackNavigator';
+import RecentActivityCard from '../../social/components/RecentActivityCard';
 
 type BookDetailScreenRouteProp = RouteProp<SearchStackParamList, 'BookDetail'>;
 type BookDetailScreenNavigationProp = NativeStackNavigationProp<SearchStackParamList, 'BookDetail'>;
@@ -39,6 +41,15 @@ export default function BookDetailScreen() {
   const [circleLoading, setCircleLoading] = useState(false);
   const [circleError, setCircleError] = useState(false);
   const [shelfCounts, setShelfCounts] = useState<BookShelfCounts | null>(null);
+  const [friendsRankings, setFriendsRankings] = useState<Array<UserBook & { user_profile?: { user_id: string; username: string; profile_photo_url: string | null } }>>([]);
+  const [friendsRankingsLoading, setFriendsRankingsLoading] = useState(false);
+  const [friendsRankingsError, setFriendsRankingsError] = useState<string | null>(null);
+  const [friendsRankingsTotalCount, setFriendsRankingsTotalCount] = useState(0);
+  const [friendsRankingsOffset, setFriendsRankingsOffset] = useState(0);
+  const friendsRankingsCacheRef = useRef<Map<string, { rankings: Array<UserBook & { user_profile?: { user_id: string; username: string; profile_photo_url: string | null } }>; totalCount: number; timestamp: number }>>(new Map());
+  const friendsRankingsSectionRef = useRef<View>(null);
+  const friendsRankingsHasLoadedRef = useRef(false);
+  const friendsRankingsLoadingRef = useRef(false);
   const fadeAnim = React.useRef(new Animated.Value(0)).current;
 
   const coverUrl = book.cover_url;
@@ -199,6 +210,104 @@ export default function BookDetailScreen() {
       refreshBookStatus();
     }, [refreshBookStatus])
   );
+
+  // Load friends' rankings for this book (with caching and pagination)
+  const loadFriendsRankings = useCallback(async (offset: number = 0, append: boolean = false) => {
+    if (!user?.id || friendsRankingsLoadingRef.current) {
+      return;
+    }
+
+    try {
+      const resolvedBookId = await resolveBookIdForStats();
+      if (!resolvedBookId) {
+        setFriendsRankings([]);
+        setFriendsRankingsTotalCount(0);
+        setFriendsRankingsOffset(0);
+        return;
+      }
+
+      // Check cache (cache expires after 5 minutes)
+      const cacheKey = `${resolvedBookId}_${user.id}`;
+      const cached = friendsRankingsCacheRef.current.get(cacheKey);
+      const now = Date.now();
+      const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+      if (cached && (now - cached.timestamp) < CACHE_TTL && offset === 0 && !append) {
+        setFriendsRankings(cached.rankings);
+        setFriendsRankingsTotalCount(cached.totalCount);
+        setFriendsRankingsOffset(cached.rankings.length);
+        setFriendsRankingsError(null);
+        friendsRankingsHasLoadedRef.current = true;
+        return;
+      }
+
+      friendsRankingsLoadingRef.current = true;
+      setFriendsRankingsLoading(true);
+      setFriendsRankingsError(null);
+
+      const result = await getFriendsRankingsForBook(resolvedBookId, user.id, {
+        offset,
+        limit: 20,
+      });
+
+      if (append) {
+        setFriendsRankings((prev) => [...prev, ...result.rankings]);
+        setFriendsRankingsOffset((prev) => prev + result.rankings.length);
+      } else {
+        setFriendsRankings(result.rankings);
+        setFriendsRankingsOffset(result.rankings.length);
+        // Update cache
+        friendsRankingsCacheRef.current.set(cacheKey, {
+          rankings: result.rankings,
+          totalCount: result.totalCount,
+          timestamp: now,
+        });
+      }
+      setFriendsRankingsTotalCount(result.totalCount);
+      friendsRankingsHasLoadedRef.current = true;
+    } catch (error) {
+      console.error('Error loading friends rankings:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to load friends rankings';
+      setFriendsRankingsError(errorMessage);
+      if (!append) {
+        setFriendsRankings([]);
+        setFriendsRankingsTotalCount(0);
+        setFriendsRankingsOffset(0);
+      }
+    } finally {
+      friendsRankingsLoadingRef.current = false;
+      setFriendsRankingsLoading(false);
+    }
+  }, [resolveBookIdForStats, user?.id]);
+
+  // Reset cache and loading state when book changes
+  useEffect(() => {
+    friendsRankingsHasLoadedRef.current = false;
+    setFriendsRankings([]);
+    setFriendsRankingsTotalCount(0);
+    setFriendsRankingsOffset(0);
+    setFriendsRankingsError(null);
+  }, [book.id, book.open_library_id, book.google_books_id]);
+
+  // Initial load - only when component mounts and book ID is resolved
+  useEffect(() => {
+    if (friendsRankingsHasLoadedRef.current) {
+      return;
+    }
+    loadFriendsRankings(0, false);
+  }, [loadFriendsRankings]);
+
+  // Handle retry
+  const handleRetryFriendsRankings = useCallback(() => {
+    setFriendsRankingsError(null);
+    friendsRankingsHasLoadedRef.current = false;
+    loadFriendsRankings(0, false);
+  }, [loadFriendsRankings]);
+
+  // Handle "Show More"
+  const handleShowMoreFriendsRankings = useCallback(() => {
+    loadFriendsRankings(friendsRankingsOffset, true);
+  }, [loadFriendsRankings, friendsRankingsOffset]);
 
   // Toast animation
   useEffect(() => {
@@ -431,6 +540,103 @@ export default function BookDetailScreen() {
     return '#2FA463';
   };
 
+  const formatDateForDisplay = (dateString: string): string => {
+    const date = new Date(dateString + 'T00:00:00');
+    return date.toLocaleDateString('en-US', {
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
+    });
+  };
+
+  const formatDateRange = (
+    startDate: string | null,
+    endDate: string | null
+  ): string | null => {
+    if (!startDate && !endDate) return null;
+    if (startDate && endDate) {
+      return `${formatDateForDisplay(startDate)} - ${formatDateForDisplay(endDate)}`;
+    }
+    if (startDate) {
+      return formatDateForDisplay(startDate);
+    }
+    if (endDate) {
+      return formatDateForDisplay(endDate);
+    }
+    return null;
+  };
+
+  const getActionText = (status: string, username: string) => {
+    const displayName = username || 'User';
+    switch (status) {
+      case 'read':
+        return `${displayName} finished`;
+      case 'currently_reading':
+        return `${displayName} started reading`;
+      case 'want_to_read':
+        return `${displayName} bookmarked`;
+      default:
+        return `${displayName} added`;
+    }
+  };
+
+  const handleFriendBookPress = async (userBook: UserBook) => {
+    if (!userBook.book) return;
+
+    try {
+      const { data: fullBook, error } = await supabase
+        .from('books')
+        .select('*')
+        .eq('id', userBook.book_id)
+        .single();
+
+      if (error) throw error;
+
+      let userBookData = null;
+      if (user?.id) {
+        const { data } = await supabase
+          .from('user_books')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('book_id', fullBook.id)
+          .single();
+        userBookData = data;
+      }
+
+      navigation.navigate('BookDetail', {
+        book: {
+          ...fullBook,
+          userBook: userBookData || null,
+        },
+      });
+    } catch (error) {
+      console.error('Error loading book details:', error);
+    }
+  };
+
+  // Skeleton loading card component
+  const FriendsRankingSkeletonCard = () => (
+    <View style={styles.activityCard}>
+      <View style={styles.cardHeader}>
+        <View style={styles.cardHeaderLeft}>
+          <View style={[styles.cardAvatar, styles.skeleton]} />
+          <View style={styles.cardHeaderText}>
+            <View style={[styles.skeleton, styles.skeletonText, { width: '70%', marginBottom: 8 }]} />
+            <View style={[styles.skeleton, styles.skeletonText, { width: '50%' }]} />
+          </View>
+        </View>
+        <View style={[styles.scoreCircle, styles.skeleton]} />
+      </View>
+      <View style={styles.bookInfoSection}>
+        <View style={[styles.bookCover, styles.skeleton]} />
+        <View style={styles.bookInfo}>
+          <View style={[styles.skeleton, styles.skeletonText, { width: '80%', marginBottom: 8, height: 16 }]} />
+          <View style={[styles.skeleton, styles.skeletonText, { width: '60%', height: 14 }]} />
+        </View>
+      </View>
+    </View>
+  );
+
   const ShelfCountStack = ({ count }: { count: number }) => (
     <View style={styles.shelfCountBadge} pointerEvents="none">
       <Text style={styles.shelfCountText}>{formatCount(count)}</Text>
@@ -586,7 +792,7 @@ export default function BookDetailScreen() {
                   </View>
                 )}
               </View>
-              <Text style={styles.circleLabel}>Across all{'\n'}Inkli users</Text>
+              <Text style={styles.circleLabel}>What Inkli{'\n'}users think</Text>
             </View>
             <View style={[styles.circleCard, styles.circleCardFriends]}>
               <View
@@ -606,7 +812,7 @@ export default function BookDetailScreen() {
                   </View>
                 )}
               </View>
-              <Text style={styles.circleLabel}>Across your{'\n'}friends</Text>
+              <Text style={styles.circleLabel}>What your{'\n'}friends think</Text>
             </View>
           </View>
         </View>
@@ -649,6 +855,85 @@ export default function BookDetailScreen() {
             )}
           </View>
         </View>
+
+        {/* What Your Friends Think */}
+        {(friendsRankings.length > 0 || friendsRankingsLoading || friendsRankingsError) && (
+          <View 
+            style={styles.descriptionSection}
+            ref={friendsRankingsSectionRef}
+          >
+            <Text style={styles.descriptionLabel}>What your friends think</Text>
+            
+            {friendsRankingsError && (
+              <View style={styles.errorContainer}>
+                <Text style={styles.errorText}>{friendsRankingsError}</Text>
+                <TouchableOpacity
+                  style={styles.retryButton}
+                  onPress={handleRetryFriendsRankings}
+                >
+                  <Text style={styles.retryButtonText}>Retry</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {friendsRankingsLoading && friendsRankings.length === 0 && (
+              <>
+                <FriendsRankingSkeletonCard />
+                <FriendsRankingSkeletonCard />
+                <FriendsRankingSkeletonCard />
+              </>
+            )}
+
+            {friendsRankings.map((friendRanking) => {
+              const userProfile = friendRanking.user_profile;
+              if (!userProfile || !friendRanking.book) return null;
+
+              return (
+                <RecentActivityCard
+                  key={friendRanking.id}
+                  userBook={friendRanking}
+                  actionText={getActionText(friendRanking.status, userProfile.username)}
+                  userDisplayName={userProfile.username}
+                  avatarUrl={userProfile.profile_photo_url}
+                  avatarFallback={userProfile.username?.charAt(0).toUpperCase() || 'U'}
+                  onPressBook={handleFriendBookPress}
+                  onPressUser={() =>
+                    navigation.navigate('UserProfile', {
+                      userId: userProfile.user_id,
+                      username: userProfile.username,
+                    })
+                  }
+                  formatDateRange={formatDateRange}
+                  viewerStatus={null}
+                  showCommentsLink={true}
+                  showCommentIcon={true}
+                  hideActionText={true}
+                  hideBookInfo={true}
+                />
+              );
+            })}
+
+            {friendsRankingsLoading && friendsRankings.length > 0 && (
+              <FriendsRankingSkeletonCard />
+            )}
+
+            {!friendsRankingsError && friendsRankings.length > 0 && friendsRankings.length < friendsRankingsTotalCount && (
+              <TouchableOpacity
+                style={styles.showMoreButton}
+                onPress={handleShowMoreFriendsRankings}
+                disabled={friendsRankingsLoading}
+              >
+                {friendsRankingsLoading ? (
+                  <ActivityIndicator size="small" color={colors.white} />
+                ) : (
+                  <Text style={styles.showMoreButtonText}>
+                    Show More ({friendsRankingsTotalCount - friendsRankings.length} remaining)
+                  </Text>
+                )}
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
       </ScrollView>
 
       {/* Toast Message */}
@@ -938,5 +1223,124 @@ const styles = StyleSheet.create({
     fontFamily: typography.body,
     fontSize: 16,
     fontWeight: '500',
+  },
+  skeleton: {
+    backgroundColor: colors.brownText,
+    opacity: 0.1,
+  },
+  skeletonText: {
+    height: 12,
+    borderRadius: 4,
+  },
+  errorContainer: {
+    padding: 16,
+    backgroundColor: colors.white,
+    borderRadius: 12,
+    marginBottom: 12,
+    alignItems: 'center',
+  },
+  errorText: {
+    fontSize: 14,
+    fontFamily: typography.body,
+    color: colors.brownText,
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  retryButton: {
+    backgroundColor: colors.primaryBlue,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+  },
+  retryButtonText: {
+    color: colors.white,
+    fontFamily: typography.body,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  showMoreButton: {
+    backgroundColor: colors.primaryBlue,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+    minHeight: 44,
+  },
+  showMoreButtonText: {
+    color: colors.white,
+    fontFamily: typography.body,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  activityCard: {
+    backgroundColor: colors.white,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  cardHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 12,
+  },
+  cardAvatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: colors.primaryBlue,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  cardHeaderText: {
+    flex: 1,
+  },
+  scoreCircle: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  bookInfoSection: {
+    flexDirection: 'row',
+    backgroundColor: colors.white,
+    borderRadius: 8,
+    padding: 12,
+    marginVertical: 8,
+    shadowColor: colors.brownText,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  bookCover: {
+    width: 60,
+    aspectRatio: 2 / 3,
+    borderRadius: 4,
+    marginRight: 12,
+  },
+  bookInfo: {
+    flex: 1,
+    justifyContent: 'center',
   },
 });
