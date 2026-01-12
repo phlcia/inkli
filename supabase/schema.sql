@@ -130,7 +130,7 @@ CREATE TABLE IF NOT EXISTS user_books (
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   book_id UUID NOT NULL REFERENCES books(id) ON DELETE CASCADE,
   rank_score NUMERIC(6,3) DEFAULT NULL,
-  status TEXT NOT NULL CHECK (status IN ('read', 'currently_reading', 'want_to_read')),
+  status TEXT CHECK (status IN ('read', 'currently_reading', 'want_to_read')),
   rating TEXT CHECK (rating IN ('liked', 'fine', 'disliked')),
   notes TEXT,
   started_date DATE,

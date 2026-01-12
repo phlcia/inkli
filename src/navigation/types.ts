@@ -19,3 +19,11 @@ export type ActivityCommentsParams = {
   avatarFallback?: string;
   viewerStatus?: 'read' | 'currently_reading' | 'want_to_read' | null;
 };
+
+export type BookRankingParams = {
+  book: any;
+  userBookId: string;
+  initialStatus: 'read' | 'currently_reading' | 'want_to_read';
+  previousStatus?: 'read' | 'currently_reading' | 'want_to_read' | null;
+  wasNewBook?: boolean;
+};

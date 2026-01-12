@@ -16,7 +16,7 @@ import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navig
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, typography } from '../../../config/theme';
 import { BookCoverPlaceholder } from '../components/BookCoverPlaceholder';
-import { addBookToShelf, checkUserHasBook, getBookCircles, getBookShelfCounts, removeBookFromShelf, getFriendsRankingsForBook, BookCirclesResult, BookShelfCounts, formatCount, UserBook } from '../../../services/books';
+import { addBookToShelf, checkUserHasBook, getBookCircles, getBookShelfCounts, removeBookFromShelf, getFriendsRankingsForBook, updateBookStatus, BookCirclesResult, BookShelfCounts, formatCount, UserBook } from '../../../services/books';
 import { useAuth } from '../../../contexts/AuthContext';
 import { supabase } from '../../../config/supabase';
 import { SearchStackParamList } from '../../../navigation/SearchStackNavigator';
@@ -332,7 +332,7 @@ export default function BookDetailScreen() {
     }
   }, [toastMessage, fadeAnim]);
 
-  const getStatusLabel = (status: string) => {
+  const getStatusLabel = (status: string | null) => {
     const labels: Record<string, string> = {
       'want_to_read': 'Want to Read',
       'currently_reading': 'Currently Reading',
@@ -416,8 +416,10 @@ export default function BookDetailScreen() {
           const checkResult = await checkUserHasBook(existingBook.id, user.id);
           
           if (checkResult.exists && checkResult.userBookId) {
-            // Remove the book
-            const { error } = await removeBookFromShelf(checkResult.userBookId);
+            const shouldKeepDetails = status === 'read';
+            const { error } = shouldKeepDetails
+              ? await updateBookStatus(checkResult.userBookId, null, { clearRankScore: true })
+              : await removeBookFromShelf(checkResult.userBookId);
             
             if (error) {
               throw error;
@@ -436,6 +438,33 @@ export default function BookDetailScreen() {
           setToastMessage('Book not found');
         }
       } else {
+        if (status === 'read') {
+          const resolvedBookId = await resolveBookIdForStats();
+          if (resolvedBookId) {
+            const checkResult = await checkUserHasBook(resolvedBookId, user.id);
+            if (checkResult.exists && checkResult.userBookId) {
+              updateShelfCountsOptimistically(previousStatus, status);
+              setCurrentStatus(status);
+              const { error } = await updateBookStatus(checkResult.userBookId, status, {
+                touchUpdatedAt: false,
+              });
+              if (error) {
+                throw error;
+              }
+              setLoading(null);
+              navigation.navigate('BookRanking', {
+                book,
+                userBookId: checkResult.userBookId,
+                initialStatus: status,
+                previousStatus: (checkResult.currentStatus as 'read' | 'currently_reading' | 'want_to_read' | undefined) || null,
+                wasNewBook: false,
+              });
+              void refreshShelfCounts();
+              return;
+            }
+          }
+        }
+
         updateShelfCountsOptimistically(previousStatus, status);
         setCurrentStatus(status);
         // Add or move the book
@@ -566,7 +595,7 @@ export default function BookDetailScreen() {
     return null;
   };
 
-  const getActionText = (status: string, username: string) => {
+  const getActionText = (status: string | null, username: string) => {
     const displayName = username || 'User';
     switch (status) {
       case 'read':

@@ -204,7 +204,10 @@ export default function BookRankingScreen() {
         }
       } else if (previousStatus && previousStatus !== initialStatus) {
         // Book was moved from another shelf - restore previous status and clear changes
-        await updateBookStatus(userBookId, previousStatus);
+        await updateBookStatus(userBookId, previousStatus, {
+          clearRankScore: true,
+          touchUpdatedAt: false,
+        });
         // Clear any rating, notes, dates that were added
         if (initialState && (
           rating !== initialState.rating ||
@@ -217,7 +220,7 @@ export default function BookRankingScreen() {
             notes: initialState.notes || null,
             started_date: initialState.startedDate || null,
             finished_date: initialState.finishedDate || null,
-          });
+          }, { touchUpdatedAt: false });
         }
       } else if (initialState) {
         // Book already existed - restore previous rating, notes, dates
@@ -232,7 +235,7 @@ export default function BookRankingScreen() {
             notes: initialState.notes || null,
             started_date: initialState.startedDate || null,
             finished_date: initialState.finishedDate || null,
-          });
+          }, { touchUpdatedAt: false });
         }
       }
     } catch (error) {
@@ -855,4 +858,3 @@ const styles = StyleSheet.create({
     lineHeight: 28,
   },
 });
-

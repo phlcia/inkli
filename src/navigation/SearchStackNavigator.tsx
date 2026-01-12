@@ -13,18 +13,13 @@ import {
   FollowersFollowingParams,
   ActivityLikesParams,
   ActivityCommentsParams,
+  BookRankingParams,
 } from './types';
 
 export type SearchStackParamList = {
   SearchMain: undefined;
   BookDetail: { book: any }; // Enriched book data
-  BookRanking: {
-    book: any;
-    userBookId: string;
-    initialStatus: 'read' | 'currently_reading' | 'want_to_read';
-    previousStatus?: 'read' | 'currently_reading' | 'want_to_read' | null;
-    wasNewBook?: boolean;
-  };
+  BookRanking: BookRankingParams;
   UserProfile: { userId: string; username?: string };
   UserShelf: {
     userId: string;

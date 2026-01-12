@@ -120,7 +120,7 @@ export default function ActivityCommentsScreen() {
     }, [loadComments])
   );
 
-  const getActionText = (status: string) => {
+  const getActionText = (status: string | null) => {
     switch (status) {
       case 'read':
         return 'You finished';
@@ -128,8 +128,6 @@ export default function ActivityCommentsScreen() {
         return 'You started reading';
       case 'want_to_read':
         return 'You bookmarked';
-      default:
-        return 'You added';
     }
   };
 
