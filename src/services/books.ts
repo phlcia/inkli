@@ -96,7 +96,7 @@ export interface UserBook {
   user_id: string;
   book_id: string;
   rank_score: number | null;
-  status: 'read' | 'currently_reading' | 'want_to_read';
+  status: 'read' | 'currently_reading' | 'want_to_read' | null;
   rating?: 'liked' | 'fine' | 'disliked';
   notes?: string | null;
   started_date?: string | null;
@@ -1059,6 +1059,9 @@ export async function addBookToShelf(
         updated_at: new Date().toISOString(),
       };
 
+      if (existingCheck.currentStatus === 'read' && status !== 'read') {
+        updateData.rank_score = null;
+      }
       if (options?.rating !== undefined) {
         updateData.rating = options.rating;
       }
@@ -1201,9 +1204,16 @@ export function formatRankScore(score: number | null): string {
 export async function updateTierScoresBatch(
   userId: string,
   tier: 'liked' | 'fine' | 'disliked',
-  updatedBooks: { id: string; score: number }[]
+  updatedBooks: { id: string; score: number }[],
+  options?: {
+    touchUpdatedAt?: boolean;
+  }
 ): Promise<void> {
   try {
+    if (updatedBooks.length === 0) {
+      return;
+    }
+
     // Verify all books belong to this user
     const { data: existingBooks, error: fetchError } = await supabase
       .from('user_books')
@@ -1217,7 +1227,18 @@ export async function updateTierScoresBatch(
     if (!existingBooks || existingBooks.length !== updatedBooks.length) {
       throw new Error('Not all books belong to user or tier');
     }
-    
+
+    if (options?.touchUpdatedAt === false) {
+      const { error: rpcError } = await supabase.rpc('update_user_book_rank_scores_no_touch', {
+        p_user_id: userId,
+        p_updates: updatedBooks,
+      });
+      if (rpcError) {
+        throw rpcError;
+      }
+      return;
+    }
+
     const updatePromises = updatedBooks.map(book =>
       supabase
         .from('user_books')
@@ -1245,15 +1266,51 @@ export async function updateTierScoresBatch(
  */
 export async function updateBookStatus(
   userBookId: string,
-  newStatus: 'read' | 'currently_reading' | 'want_to_read'
+  newStatus: 'read' | 'currently_reading' | 'want_to_read' | null,
+  options?: {
+    clearRankScore?: boolean;
+    touchUpdatedAt?: boolean;
+  }
 ): Promise<{ data: any; error: any }> {
   try {
+    if (options?.touchUpdatedAt === false) {
+      console.log('updateBookStatus: using no-touch RPC', {
+        userBookId,
+        newStatus,
+        clearRankScore: options?.clearRankScore ?? false,
+      });
+      const { data, error } = await supabase.rpc('update_user_book_status_no_touch', {
+        p_user_book_id: userBookId,
+        p_status: newStatus,
+        p_clear_rank_score: options?.clearRankScore ?? false,
+      });
+      if (error) {
+        console.error('updateBookStatus: no-touch RPC error', error);
+      } else {
+        console.log('updateBookStatus: no-touch RPC success');
+      }
+      return { data, error };
+    }
+
+    const updateData: {
+      status: 'read' | 'currently_reading' | 'want_to_read' | null;
+      updated_at?: string;
+      rank_score?: null;
+    } = {
+      status: newStatus,
+    };
+
+    if (options?.touchUpdatedAt !== false) {
+      updateData.updated_at = new Date().toISOString();
+    }
+
+    if (options?.clearRankScore) {
+      updateData.rank_score = null;
+    }
+
     const { data, error } = await supabase
       .from('user_books')
-      .update({
-        status: newStatus,
-        updated_at: new Date().toISOString(),
-      })
+      .update(updateData)
       .eq('id', userBookId);
 
     return { data, error };
@@ -1286,17 +1343,47 @@ export async function updateUserBookDetails(
   userBookId: string,
   userId: string,
   updates: {
-    status?: 'read' | 'currently_reading' | 'want_to_read';
+    status?: 'read' | 'currently_reading' | 'want_to_read' | null;
     rating?: 'liked' | 'fine' | 'disliked' | null;
     notes?: string | null;
     started_date?: string | null;
     finished_date?: string | null;
+  },
+  options?: {
+    touchUpdatedAt?: boolean;
   }
 ): Promise<{ data: any; error: any }> {
   try {
+    if (options?.touchUpdatedAt === false) {
+      console.log('updateUserBookDetails: using no-touch RPC', {
+        userBookId,
+        updates,
+      });
+      const { data, error } = await supabase.rpc('update_user_book_details_no_touch', {
+        p_user_book_id: userBookId,
+        p_set_rating: updates.rating !== undefined,
+        p_rating: updates.rating ?? null,
+        p_set_notes: updates.notes !== undefined,
+        p_notes: updates.notes ?? null,
+        p_set_started_date: updates.started_date !== undefined,
+        p_started_date: updates.started_date ?? null,
+        p_set_finished_date: updates.finished_date !== undefined,
+        p_finished_date: updates.finished_date ?? null,
+      });
+      if (error) {
+        console.error('updateUserBookDetails: no-touch RPC error', error);
+      } else {
+        console.log('updateUserBookDetails: no-touch RPC success');
+      }
+      return { data, error };
+    }
+
     const updateData: any = {
-      updated_at: new Date().toISOString(),
     };
+
+    if (options?.touchUpdatedAt !== false) {
+      updateData.updated_at = new Date().toISOString();
+    }
 
     if (updates.status !== undefined) updateData.status = updates.status;
     if (updates.rating !== undefined) {

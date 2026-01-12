@@ -3,16 +3,18 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { colors } from '../config/theme';
 import HomeScreen from '../features/home/screens/HomeScreen';
 import BookDetailScreen from '../features/books/screens/BookDetailScreen';
+import BookRankingScreen from '../features/books/screens/BookRankingScreen';
 import ActivityLikesScreen from '../features/social/screens/ActivityLikesScreen';
 import ActivityCommentsScreen from '../features/social/screens/ActivityCommentsScreen';
 import UserProfileScreen from '../features/profile/screens/UserProfileScreen';
 import UserShelfScreen from '../features/social/screens/UserShelfScreen';
 import NotificationsScreen from '../features/social/screens/NotificationsScreen';
-import { ActivityLikesParams, ActivityCommentsParams } from './types';
+import { ActivityLikesParams, ActivityCommentsParams, BookRankingParams } from './types';
 
 export type HomeStackParamList = {
   HomeMain: undefined;
   BookDetail: { book: any };
+  BookRanking: BookRankingParams;
   ActivityLikes: ActivityLikesParams;
   ActivityComments: ActivityCommentsParams;
   UserProfile: { userId: string; username?: string };
@@ -48,6 +50,14 @@ export default function HomeStackNavigator() {
       <Stack.Screen
         name="BookDetail"
         component={BookDetailScreen}
+        options={{
+          presentation: 'card',
+          animation: 'slide_from_right',
+        }}
+      />
+      <Stack.Screen
+        name="BookRanking"
+        component={BookRankingScreen}
         options={{
           presentation: 'card',
           animation: 'slide_from_right',

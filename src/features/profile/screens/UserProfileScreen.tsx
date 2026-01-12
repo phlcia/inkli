@@ -204,7 +204,7 @@ export default function UserProfileScreen() {
     </View>
   );
 
-  const getActionText = (status: string) => {
+  const getActionText = (status: string | null) => {
     const firstName = userProfile?.first_name || 'User';
     switch (status) {
       case 'read':

@@ -71,6 +71,21 @@ const mapRowsToItems = (rows: ActivityCardRow[]): ActivityFeedItem[] =>
     };
   });
 
+const dedupeByShelf = (cards: ActivityFeedItem[]): ActivityFeedItem[] => {
+  const seen = new Set<string>();
+  const result: ActivityFeedItem[] = [];
+
+  for (const card of cards) {
+    const status = card.userBook.status ?? 'unknown';
+    const key = `${card.userBook.id}:${status}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(card);
+  }
+
+  return result;
+};
+
 async function fetchActivityCardsFromActivityTable(
   userId: string,
   limit: number,
@@ -88,7 +103,7 @@ async function fetchActivityCardsFromActivityTable(
   }
 
   const rows = (data as ActivityCardRow[]) || [];
-  const cards = mapRowsToItems(rows);
+  const cards = dedupeByShelf(mapRowsToItems(rows));
 
   const last = cards[cards.length - 1];
   const nextCursor = last
@@ -115,7 +130,7 @@ async function fetchActivityCardsFromUserBooks(
   }
 
   const rows = (data as ActivityCardRow[]) || [];
-  const cards = mapRowsToItems(rows);
+  const cards = dedupeByShelf(mapRowsToItems(rows));
 
   const last = cards[cards.length - 1];
   const nextCursor = last
@@ -150,4 +165,68 @@ export async function fetchFollowedActivityCards(
   }
 
   return primary;
+}
+
+type UserActivityCardRow = {
+  id: string;
+  created_at: string;
+  content: string;
+  image_url: string | null;
+  user_id: string;
+  user_book_id: string | null;
+  user_book: UserBook | null;
+};
+
+export async function fetchUserActivityCards(
+  userId: string,
+  options?: { limit?: number }
+): Promise<ActivityFeedItem[]> {
+  const limit = options?.limit ?? 20;
+
+  const { data, error } = await supabase
+    .from('activity_cards')
+    .select(
+      `
+      id,
+      created_at,
+      content,
+      image_url,
+      user_id,
+      user_book_id,
+      user_book:user_book_id (
+        *,
+        book:books(*)
+      )
+    `
+    )
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    throw error;
+  }
+
+  const rows = (data as UserActivityCardRow[]) || [];
+
+  return dedupeByShelf(rows
+    .map((row) => {
+      if (!row.user_book || !row.user_book.book) return null;
+      return {
+        id: row.id,
+        created_at: row.created_at,
+        content: row.content,
+        image_url: row.image_url,
+        user: {
+          user_id: row.user_id,
+          username: '',
+          profile_photo_url: null,
+        },
+        userBook: {
+          ...row.user_book,
+          book: row.user_book.book as Book,
+        },
+      } as ActivityFeedItem;
+    })
+    .filter((item): item is ActivityFeedItem => Boolean(item)));
 }

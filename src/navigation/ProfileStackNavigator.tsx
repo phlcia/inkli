@@ -4,6 +4,7 @@ import { colors } from '../config/theme';
 import ProfileScreen from '../features/profile/screens/ProfileScreen';
 import EditProfileScreen from '../features/profile/screens/EditProfileScreen';
 import BookDetailScreen from '../features/books/screens/BookDetailScreen';
+import BookRankingScreen from '../features/books/screens/BookRankingScreen';
 import FollowersFollowingScreen from '../features/social/screens/FollowersFollowingScreen';
 import ActivityLikesScreen from '../features/social/screens/ActivityLikesScreen';
 import ActivityCommentsScreen from '../features/social/screens/ActivityCommentsScreen';
@@ -12,12 +13,14 @@ import {
   FollowersFollowingParams,
   ActivityLikesParams,
   ActivityCommentsParams,
+  BookRankingParams,
 } from './types';
 
 export type ProfileStackParamList = {
   ProfileMain: undefined;
   EditProfile: undefined;
   BookDetail: { book: any }; // Enriched book data
+  BookRanking: BookRankingParams;
   FollowersFollowing: FollowersFollowingParams;
   ActivityLikes: ActivityLikesParams;
   ActivityComments: ActivityCommentsParams;
@@ -48,6 +51,14 @@ export default function ProfileStackNavigator() {
       <Stack.Screen
         name="BookDetail"
         component={BookDetailScreen}
+        options={{
+          presentation: 'card',
+          animation: 'slide_from_right',
+        }}
+      />
+      <Stack.Screen
+        name="BookRanking"
+        component={BookRankingScreen}
         options={{
           presentation: 'card',
           animation: 'slide_from_right',

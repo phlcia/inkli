@@ -222,14 +222,8 @@ export default function BookComparisonModal({
   // Check if ranking completed and we need to save
   useEffect(() => {
     if (rankingComplete && !processing && !showRankedConfirmation) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/41ad2e02-a6eb-49a5-925b-c7ac80e7e179',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'BookComparisonModal.tsx:223',message:'Ranking complete, checking result',data:{rankingComplete,processing,showRankedConfirmation},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
       console.log('=== RANKING DEBUG: Ranking completed, saving result ===');
       const result = ranking.getResult();
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/41ad2e02-a6eb-49a5-925b-c7ac80e7e179',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'BookComparisonModal.tsx:227',message:'getResult returned',data:{hasResult:!!result,resultDetails:result?{score:result.score,positionInTier:result.positionInTier,hasUpdatedTierBooks:!!result.updatedTierBooks,insertedBookId:result.insertedBook?.id}:null},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
       console.log('Ranking result:', result);
       
       if (result) {
@@ -242,25 +236,16 @@ export default function BookComparisonModal({
         console.log('Has updatedTierBooks?', !!result.updatedTierBooks);
         
         if (!currentBook.id || currentBook.id === '') {
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/41ad2e02-a6eb-49a5-925b-c7ac80e7e179',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'BookComparisonModal.tsx:238',message:'Empty book ID detected',data:{currentBookId:currentBook.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-          // #endregion
           console.error('=== RANKING DEBUG: ERROR - Empty book ID ===');
           Alert.alert('Error', 'Book ID is missing');
           return;
         }
         
         setProcessing(true);
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/41ad2e02-a6eb-49a5-925b-c7ac80e7e179',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'BookComparisonModal.tsx:245',message:'About to call saveFinalRank',data:{currentBookId:currentBook.id,score:result.score,positionInTier:result.positionInTier,hasUpdatedTierBooks:!!result.updatedTierBooks},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-        // #endregion
         
         // Save the final rank_score
         saveFinalRank(result)
           .then(() => {
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/41ad2e02-a6eb-49a5-925b-c7ac80e7e179',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'BookComparisonModal.tsx:248',message:'saveFinalRank promise resolved',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-            // #endregion
             console.log('=== RANKING DEBUG: After saveFinalRank ===');
             console.log('saveFinalRank completed, showing confirmation');
             setShowRankedConfirmation(true);
@@ -274,9 +259,6 @@ export default function BookComparisonModal({
             }, 2000);
           })
           .catch((error) => {
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/41ad2e02-a6eb-49a5-925b-c7ac80e7e179',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'BookComparisonModal.tsx:261',message:'saveFinalRank promise rejected',data:{error:error?.message,errorStack:error?.stack},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-            // #endregion
             console.error('=== RANKING DEBUG: ERROR saving final rank ===', error);
             setProcessing(false);
             Alert.alert('Error', 'Failed to save ranking');
@@ -320,13 +302,7 @@ export default function BookComparisonModal({
   };
 
   const saveFinalRank = async (result: ReturnType<typeof ranking.getResult>) => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/41ad2e02-a6eb-49a5-925b-c7ac80e7e179',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'BookComparisonModal.tsx:304',message:'saveFinalRank called',data:{hasUser:!!user,hasResult:!!result,resultScore:result?.score,resultPosition:result?.positionInTier,hasUpdatedTierBooks:!!result?.updatedTierBooks,currentBookId:currentBook?.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
     if (!user || !result) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/41ad2e02-a6eb-49a5-925b-c7ac80e7e179',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'BookComparisonModal.tsx:305',message:'saveFinalRank early return',data:{hasUser:!!user,hasResult:!!result},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
       console.error('=== RANKING DEBUG: saveFinalRank - No user or result ===');
       return;
     }
@@ -337,9 +313,6 @@ export default function BookComparisonModal({
       console.log('Has updatedTierBooks?', !!result.updatedTierBooks);
       
       if (!currentBook.id || currentBook.id === '' || currentBook.id.trim() === '') {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/41ad2e02-a6eb-49a5-925b-c7ac80e7e179',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'BookComparisonModal.tsx:315',message:'Empty book ID validation failed',data:{currentBookId:currentBook.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-        // #endregion
         console.error('=== RANKING DEBUG: ERROR - Empty or invalid book ID ===');
         console.error('Current book object:', currentBook);
         Alert.alert('Error', 'Book ID is missing. Please try again.');
@@ -348,9 +321,6 @@ export default function BookComparisonModal({
       
       // Validate position
       if (result.positionInTier < 0 || isNaN(result.positionInTier)) {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/41ad2e02-a6eb-49a5-925b-c7ac80e7e179',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'BookComparisonModal.tsx:323',message:'Invalid position validation failed',data:{positionInTier:result.positionInTier},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-        // #endregion
         console.error('=== RANKING DEBUG: ERROR - Invalid position ===', result.positionInTier);
         throw new Error(`Invalid position: ${result.positionInTier}`);
       }
@@ -358,50 +328,38 @@ export default function BookComparisonModal({
       // Check if redistribution happened (has updatedTierBooks)
       if (result.updatedTierBooks && result.updatedTierBooks.length > 0) {
         // Batch update all tier books
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/41ad2e02-a6eb-49a5-925b-c7ac80e7e179',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'BookComparisonModal.tsx:329',message:'Taking batch update path',data:{updatedTierBooksCount:result.updatedTierBooks.length,currentBookId:currentBook.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-        // #endregion
         console.log('=== RANKING DEBUG: Batch updating tier books ===');
         const updates = result.updatedTierBooks.map(book => ({
           id: book.id,
           score: book.score,
         }));
+        const otherUpdates = updates.filter((book) => book.id !== result.insertedBook.id);
         
         try {
-          await updateTierScoresBatch(user.id, rating, updates);
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/41ad2e02-a6eb-49a5-925b-c7ac80e7e179',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'BookComparisonModal.tsx:338',message:'Batch update succeeded',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-          // #endregion
+          if (otherUpdates.length > 0) {
+            await updateTierScoresBatch(user.id, rating, otherUpdates, { touchUpdatedAt: false });
+          }
           console.log('=== RANKING DEBUG: Batch update completed ===');
         } catch (error) {
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/41ad2e02-a6eb-49a5-925b-c7ac80e7e179',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'BookComparisonModal.tsx:340',message:'Batch update failed, falling back to direct update',data:{error:error?.message},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-          // #endregion
-          console.error('Batch update failed, trying direct update with calculated score:', error);
-          // Fallback: update the new book directly with its calculated score
-          // Use result.insertedBook.id to ensure correct ID
-          const bookIdToUpdate = result.insertedBook.id;
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/41ad2e02-a6eb-49a5-925b-c7ac80e7e179',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'BookComparisonModal.tsx:382',message:'Batch fallback: updating with bookId',data:{bookIdToUpdate,currentBookId:currentBook.id,idsMatch:bookIdToUpdate===currentBook.id,score:result.score},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-          // #endregion
-          const { data: updateData, error: updateError } = await supabase
-            .from('user_books')
-            .update({ rank_score: result.score })
-            .eq('id', bookIdToUpdate)
-            .eq('user_id', user.id)
-            .select('id, rank_score')
-            .single();
-          
-          if (updateError) throw updateError;
-          if (!updateData || updateData.rank_score !== result.score) {
-            throw new Error(`Score mismatch: expected ${result.score}, got ${updateData?.rank_score}`);
-          }
+          console.error('Batch update failed; proceeding with current book update:', error);
+        }
+        // Ensure the current book gets the normal update (activity + updated_at)
+        const { data: currentUpdateData, error: currentUpdateError } = await supabase
+          .from('user_books')
+          .update({ rank_score: result.score })
+          .eq('id', result.insertedBook.id)
+          .eq('user_id', user.id)
+          .select('id, rank_score')
+          .single();
+        
+        if (currentUpdateError) {
+          throw currentUpdateError;
+        }
+        if (!currentUpdateData || currentUpdateData.rank_score !== result.score) {
+          throw new Error(`Score mismatch: expected ${result.score}, got ${currentUpdateData?.rank_score}`);
         }
       } else {
         // Fast path: single book update - use the calculated score directly
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/41ad2e02-a6eb-49a5-925b-c7ac80e7e179',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'BookComparisonModal.tsx:351',message:'Taking fast path single update',data:{currentBookId:currentBook.id,resultInsertedBookId:result.insertedBook.id,userId:user.id,rating,positionInTier:result.positionInTier,calculatedScore:result.score,idsMatch:currentBook.id===result.insertedBook.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-        // #endregion
         console.log('=== RANKING DEBUG: Single book update ===');
         console.log('Using calculated score:', result.score);
         console.log('currentBook.id:', currentBook.id);
@@ -410,9 +368,6 @@ export default function BookComparisonModal({
         // Use result.insertedBook.id instead of currentBook.id to ensure we're using the correct ID
         const bookIdToUpdate = result.insertedBook.id;
         
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/41ad2e02-a6eb-49a5-925b-c7ac80e7e179',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'BookComparisonModal.tsx:361',message:'About to update with bookId',data:{bookIdToUpdate,score:result.score},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-        // #endregion
         
         // Update the book directly with the calculated score
         const { data: updateData, error: updateError } = await supabase
@@ -423,37 +378,19 @@ export default function BookComparisonModal({
           .select('id, rank_score')
           .single();
         
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/41ad2e02-a6eb-49a5-925b-c7ac80e7e179',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'BookComparisonModal.tsx:365',message:'Direct Supabase update result',data:{hasError:!!updateError,errorMessage:updateError?.message,hasData:!!updateData,returnedScore:updateData?.rank_score,expectedScore:result.score},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-        // #endregion
         
         if (updateError) {
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/41ad2e02-a6eb-49a5-925b-c7ac80e7e179',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'BookComparisonModal.tsx:368',message:'Direct update error',data:{error:updateError.message},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-          // #endregion
           throw updateError;
         }
         
         if (!updateData || updateData.rank_score !== result.score) {
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/41ad2e02-a6eb-49a5-925b-c7ac80e7e179',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'BookComparisonModal.tsx:373',message:'Score mismatch after direct update',data:{expectedScore:result.score,actualScore:updateData?.rank_score},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-          // #endregion
           throw new Error(`Score mismatch: expected ${result.score}, got ${updateData?.rank_score}`);
         }
         
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/41ad2e02-a6eb-49a5-925b-c7ac80e7e179',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'BookComparisonModal.tsx:378',message:'Single update call completed successfully',data:{savedScore:updateData.rank_score},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-        // #endregion
       }
       
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/41ad2e02-a6eb-49a5-925b-c7ac80e7e179',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'BookComparisonModal.tsx:361',message:'saveFinalRank completed successfully',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
       console.log('=== RANKING DEBUG: saveFinalRank completed ===');
     } catch (error) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/41ad2e02-a6eb-49a5-925b-c7ac80e7e179',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'BookComparisonModal.tsx:363',message:'saveFinalRank error caught',data:{error:error?.message,errorStack:error?.stack},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
       console.error('=== RANKING DEBUG: ERROR in saveFinalRank ===', error);
       Alert.alert('Error', 'Failed to save ranking, but your comparison was saved.');
       // Don't throw - let user continue

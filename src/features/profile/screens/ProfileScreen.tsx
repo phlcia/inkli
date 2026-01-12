@@ -17,11 +17,12 @@ import { colors, typography } from '../../../config/theme';
 import { useAuth } from '../../../contexts/AuthContext';
 import {
   getUserBookCounts,
-  getRecentUserBooks,
   UserBook,
   addBookToShelf,
   removeBookFromShelf,
 } from '../../../services/books';
+import { fetchUserActivityCards } from '../../../services/activityFeed';
+import { ActivityFeedItem } from '../../../types/activityCards';
 import { getFollowerCount, getFollowingCount } from '../../../services/userProfile';
 import RecentActivityCard from '../../social/components/RecentActivityCard';
 import { supabase } from '../../../config/supabase';
@@ -40,7 +41,7 @@ export default function ProfileScreen() {
     currently_reading: 0,
     want_to_read: 0,
   });
-  const [recentBooks, setRecentBooks] = useState<UserBook[]>([]);
+  const [recentBooks, setRecentBooks] = useState<ActivityFeedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'activity' | 'profile'>('activity');
   const [viewerShelfMap, setViewerShelfMap] = useState<Record<string, { id: string; status: UserBook['status'] }>>({});
@@ -116,22 +117,22 @@ export default function ProfileScreen() {
       console.log('=== ProfileScreen: Loading profile data ===');
       const [counts, recent, profile, followers, following] = await Promise.all([
         getUserBookCounts(user.id),
-        getRecentUserBooks(user.id, 20),
+        fetchUserActivityCards(user.id, { limit: 20 }),
         fetchUserProfile(user.id),
         getFollowerCount(user.id),
         getFollowingCount(user.id),
       ]);
       console.log('=== ProfileScreen: Data loaded ===');
       console.log('Recent books count:', recent.length);
-      recent.forEach((book, idx) => {
-        console.log(`  ${idx}: ${book.book?.title} - rank_score: ${book.rank_score}, rating: ${book.rating}`);
+      recent.forEach((item, idx) => {
+        console.log(`  ${idx}: ${item.userBook.book?.title} - rank_score: ${item.userBook.rank_score}, rating: ${item.userBook.rating}`);
       });
       setBookCounts(counts);
       setRecentBooks(recent);
       const map: Record<string, { id: string; status: UserBook['status'] }> = {};
       recent.forEach((item) => {
-        if (item.book_id) {
-          map[item.book_id] = { id: item.id, status: item.status };
+        if (item.userBook.book_id) {
+          map[item.userBook.book_id] = { id: item.userBook.id, status: item.userBook.status };
         }
       });
       setViewerShelfMap(map);
@@ -260,7 +261,7 @@ export default function ProfileScreen() {
     </View>
   );
 
-  const getActionText = (status: string) => {
+  const getActionText = (status: string | null) => {
     switch (status) {
       case 'read':
         return 'You finished';
@@ -327,17 +328,17 @@ export default function ProfileScreen() {
     }
   };
 
-  const renderRecentActivityItem = (userBook: UserBook) => (
+  const renderRecentActivityItem = (item: ActivityFeedItem) => (
     <RecentActivityCard
-      key={userBook.id}
-      userBook={userBook}
-      actionText={getActionText(userBook.status)}
+      key={item.id}
+      userBook={item.userBook}
+      actionText={getActionText(item.userBook.status)}
       avatarUrl={userProfile?.profile_photo_url}
       avatarFallback={getUsername()?.charAt(0)?.toUpperCase() || 'U'}
       onPressBook={handleBookPress}
       formatDateRange={formatDateRange}
-      viewerStatus={viewerShelfMap[userBook.book_id]?.status || null}
-      onToggleWantToRead={() => handleToggleWantToRead(userBook)}
+      viewerStatus={viewerShelfMap[item.userBook.book_id]?.status || null}
+      onToggleWantToRead={() => handleToggleWantToRead(item.userBook)}
     />
   );
 

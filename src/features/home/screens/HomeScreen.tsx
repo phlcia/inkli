@@ -137,7 +137,7 @@ export default function HomeScreen() {
     }
   }, [user, hasMore, paginating, refreshing, initialLoading, cursor]);
 
-  const getActionText = useCallback((status: string, username: string) => {
+  const getActionText = useCallback((status: string | null, username: string) => {
     const displayName = username || 'User';
     switch (status) {
       case 'read':
