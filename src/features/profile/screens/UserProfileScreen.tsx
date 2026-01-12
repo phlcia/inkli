@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -570,14 +571,24 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
   },
   backButton: {
+    marginTop: Platform.OS === 'ios' ? 8 : 16,
+    marginLeft: 0,
     width: 40,
     height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.white,
     justifyContent: 'center',
     alignItems: 'center',
+    shadowColor: colors.brownText,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   backButtonText: {
-    fontSize: 28,
-    color: colors.primaryBlue,
+    fontSize: 24,
+    color: colors.brownText,
+    fontWeight: 'bold',
   },
   logoContainer: {
     flex: 1,

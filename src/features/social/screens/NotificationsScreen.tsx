@@ -7,6 +7,8 @@ import {
   StyleSheet,
   Text,
   View,
+  TouchableOpacity,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -228,16 +230,12 @@ export default function NotificationsScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <View style={styles.header}>
-        <Pressable
+        <TouchableOpacity
           onPress={() => navigation.goBack()}
-          style={({ pressed }) => [
-            styles.backButton,
-            pressed && styles.cardPressed,
-          ]}
-          android_ripple={{ color: 'rgba(0, 0, 0, 0.06)' }}
+          style={styles.backButton}
         >
-          <Text style={styles.backIcon}>←</Text>
-        </Pressable>
+          <Text style={styles.backButtonText}>←</Text>
+        </TouchableOpacity>
         <Text style={styles.headerTitle}>Updates</Text>
         <View style={styles.headerSpacer} />
       </View>
@@ -287,13 +285,24 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
   },
   backButton: {
-    width: 32,
+    marginTop: Platform.OS === 'ios' ? 8 : 16,
+    marginLeft: 0,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.white,
     justifyContent: 'center',
-    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: colors.brownText,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  backIcon: {
-    fontSize: 28,
-    color: colors.primaryBlue,
+  backButtonText: {
+    fontSize: 24,
+    color: colors.brownText,
+    fontWeight: 'bold',
   },
   headerTitle: {
     flex: 1,
@@ -303,7 +312,7 @@ const styles = StyleSheet.create({
     color: colors.primaryBlue,
   },
   headerSpacer: {
-    width: 32,
+    width: 40,
   },
   listContent: {
     paddingHorizontal: 20,

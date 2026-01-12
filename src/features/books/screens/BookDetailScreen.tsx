@@ -997,7 +997,7 @@ const styles = StyleSheet.create({
   },
   backButton: {
     marginTop: Platform.OS === 'ios' ? 8 : 16,
-    marginLeft: 16,
+    marginLeft: 0,
     width: 40,
     height: 40,
     borderRadius: 20,
