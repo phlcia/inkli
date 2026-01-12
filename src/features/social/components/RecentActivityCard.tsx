@@ -26,6 +26,8 @@ type RecentActivityCardProps = {
   onToggleWantToRead?: () => void;
   showCommentsLink?: boolean;
   showCommentIcon?: boolean;
+  hideActionText?: boolean;
+  hideBookInfo?: boolean;
 };
 
 export default function RecentActivityCard({
@@ -42,6 +44,8 @@ export default function RecentActivityCard({
   onToggleWantToRead,
   showCommentsLink = true,
   showCommentIcon = true,
+  hideActionText = false,
+  hideBookInfo = false,
 }: RecentActivityCardProps) {
   const book = userBook.book;
   if (!book) return null;
@@ -181,18 +185,30 @@ export default function RecentActivityCard({
             </View>
           )}
           <View style={styles.cardHeaderText}>
-            <Text style={styles.cardActionText}>
-              {userDisplayName ? (
-                <Text style={styles.cardUserText} onPress={onPressUser}>
-                  {userDisplayName}
+            {hideActionText ? (
+              // Show just username when action text is hidden
+              userDisplayName ? (
+                <Text style={styles.cardActionText}>
+                  <Text style={styles.cardUserText} onPress={onPressUser}>
+                    {userDisplayName}
+                  </Text>
                 </Text>
-              ) : null}
-              {userDisplayName ? ' ' : ''}
-              {actionSuffix}{' '}
-              <Text style={styles.cardBookTitle} onPress={onPressBookTitle || (() => onPressBook(userBook))}>
-                {book.title}
+              ) : null
+            ) : (
+              // Show full action text when not hidden
+              <Text style={styles.cardActionText}>
+                {userDisplayName ? (
+                  <Text style={styles.cardUserText} onPress={onPressUser}>
+                    {userDisplayName}
+                  </Text>
+                ) : null}
+                {userDisplayName ? ' ' : ''}
+                {actionSuffix}{' '}
+                <Text style={styles.cardBookTitle} onPress={onPressBookTitle || (() => onPressBook(userBook))}>
+                  {book.title}
+                </Text>
               </Text>
-            </Text>
+            )}
           </View>
         </View>
         {userBook.rank_score !== null && (
@@ -208,29 +224,31 @@ export default function RecentActivityCard({
       </View>
 
       {/* Book info section */}
-      <TouchableOpacity
-        style={styles.bookInfoSection}
-        onPress={() => onPressBook(userBook)}
-        activeOpacity={0.7}
-      >
-        {book.cover_url && (
-          <Image
-            source={{ uri: book.cover_url }}
-            style={styles.bookCover}
-            resizeMode="contain"
-          />
-        )}
-        <View style={styles.bookInfo}>
-          <View style={styles.bookTextInfo}>
-            <Text style={styles.bookTitle} numberOfLines={2}>
-              {book.title}
-            </Text>
-            <Text style={styles.bookAuthor} numberOfLines={1}>
-              {book.authors?.join(', ') || 'Unknown Author'}
-            </Text>
+      {!hideBookInfo && (
+        <TouchableOpacity
+          style={styles.bookInfoSection}
+          onPress={() => onPressBook(userBook)}
+          activeOpacity={0.7}
+        >
+          {book.cover_url && (
+            <Image
+              source={{ uri: book.cover_url }}
+              style={styles.bookCover}
+              resizeMode="contain"
+            />
+          )}
+          <View style={styles.bookInfo}>
+            <View style={styles.bookTextInfo}>
+              <Text style={styles.bookTitle} numberOfLines={2}>
+                {book.title}
+              </Text>
+              <Text style={styles.bookAuthor} numberOfLines={1}>
+                {book.authors?.join(', ') || 'Unknown Author'}
+              </Text>
+            </View>
           </View>
-        </View>
-      </TouchableOpacity>
+        </TouchableOpacity>
+      )}
 
       {/* Dates Read Section */}
       {(userBook.started_date || userBook.finished_date) && (

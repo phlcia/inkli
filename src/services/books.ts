@@ -1521,3 +1521,115 @@ export async function getRecentUserBooks(
     throw error;
   }
 }
+
+/**
+ * Get friends' user_books for a specific book that have been ranked
+ * Returns user_books with user profile data, ordered by rank_score (highest first)
+ * Supports pagination with offset and limit parameters
+ */
+export async function getFriendsRankingsForBook(
+  bookId: string,
+  userId: string,
+  options?: {
+    offset?: number;
+    limit?: number;
+  }
+): Promise<{
+  rankings: Array<UserBook & { user_profile?: { user_id: string; username: string; profile_photo_url: string | null } }>;
+  totalCount: number;
+}> {
+  try {
+    // First, get the list of users the current user follows
+    const { data: followingData, error: followingError } = await supabase
+      .from('user_follows')
+      .select('following_id')
+      .eq('follower_id', userId);
+
+    if (followingError) {
+      console.error('Error fetching following list:', followingError);
+      throw new Error('Failed to fetch following list');
+    }
+
+    const friendIds = (followingData || [])
+      .map((row) => row.following_id)
+      .filter((id): id is string => Boolean(id));
+
+    if (friendIds.length === 0) {
+      return { rankings: [], totalCount: 0 };
+    }
+
+    const limit = options?.limit ?? 20;
+    const offset = options?.offset ?? 0;
+
+    // First, get total count
+    const { count: totalCount, error: countError } = await supabase
+      .from('user_books')
+      .select('*', { count: 'exact', head: true })
+      .eq('book_id', bookId)
+      .in('user_id', friendIds)
+      .not('rank_score', 'is', null);
+
+    if (countError) {
+      console.error('Error fetching friends rankings count:', countError);
+      throw new Error('Failed to fetch rankings count');
+    }
+
+    // Query user_books for friends who have ranked this book (with pagination)
+    const query = supabase
+      .from('user_books')
+      .select(
+        `
+        *,
+        book:books(*)
+      `
+      )
+      .eq('book_id', bookId)
+      .in('user_id', friendIds)
+      .not('rank_score', 'is', null)
+      .order('rank_score', { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    const { data: userBooksData, error: userBooksError } = await query;
+
+    if (userBooksError) {
+      console.error('Error fetching friends rankings:', userBooksError);
+      throw new Error('Failed to fetch friends rankings');
+    }
+
+    if (!userBooksData || userBooksData.length === 0) {
+      return { rankings: [], totalCount: totalCount ?? 0 };
+    }
+
+    // Fetch user profiles for all the users
+    const userIds = Array.from(new Set(userBooksData.map((ub) => ub.user_id)));
+    const { data: profilesData, error: profilesError } = await supabase
+      .from('user_profiles')
+      .select('user_id, username, profile_photo_url')
+      .in('user_id', userIds);
+
+    if (profilesError) {
+      console.error('Error fetching user profiles:', profilesError);
+      // Still return rankings even if profile fetch fails (profiles will be undefined)
+    }
+
+    // Create a map of user_id to profile
+    const profileMap = new Map(
+      (profilesData || []).map((profile) => [profile.user_id, profile])
+    );
+
+    // Merge user_books with profiles
+    const rankings = userBooksData.map((item) => ({
+      ...item,
+      book: item.book as Book,
+      user_profile: profileMap.get(item.user_id),
+    })) as Array<UserBook & { user_profile?: { user_id: string; username: string; profile_photo_url: string | null } }>;
+
+    return {
+      rankings,
+      totalCount: totalCount ?? 0,
+    };
+  } catch (error) {
+    console.error('Error fetching friends rankings for book:', error);
+    throw error;
+  }
+}
