@@ -553,12 +553,7 @@ export default function BookDetailScreen() {
     return animatedIcon === status;
   };
 
-  const metadata = [
-    book.page_count ? `${book.page_count} pages` : null,
-    book.published_date ? book.published_date : null,
-  ]
-    .filter(Boolean)
-    .join(' • ');
+  const metadata = book.page_count ? `${book.page_count} pages` : null;
 
   const formatCircleScore = (value: number | null | undefined) => {
     if (circleLoading || circleError) return '--';
@@ -721,90 +716,79 @@ export default function BookDetailScreen() {
           </View>
         )}
 
-        {/* Title */}
-        <Text style={styles.title}>{book.title}</Text>
-
-        {/* Author */}
-        <Text style={styles.author}>
-          {book.authors?.join(', ') || 'Unknown Author'}
-        </Text>
-
-        {/* Quick Action Icons */}
-        <View style={styles.actionIconsContainer}>
-          {/* Add to Read */}
-          <View style={styles.actionIconWrapper}>
-            <TouchableOpacity
-              style={[
-                styles.actionIcon,
-                isIconActive('read') && styles.actionIconActive,
-              ]}
-              onPress={() => handleIconPress('read')}
-              disabled={Boolean(loading)}
-            >
-              <Image
-                source={require('../../../../assets/add.png')}
-                style={[
-                  styles.actionIconImage,
-                  isIconActive('read') && styles.actionIconImageActive,
-                ]}
-                resizeMode="contain"
-              />
-            </TouchableOpacity>
+        {/* Header Row: Title/Author on left, Icons on right */}
+        <View style={styles.headerRow}>
+          <View style={styles.headerLeft}>
+            <Text style={styles.title}>{book.title}</Text>
+            <Text style={styles.authorMetadata}>
+              {book.authors?.join(', ') || 'Unknown Author'}
+              {metadata && ` | ${metadata}`}
+            </Text>
           </View>
+          
+          {/* Quick Action Icons */}
+          <View style={styles.actionIconsContainer}>
+            {/* Add to Read */}
+            <View style={styles.actionIconWrapper}>
+              <TouchableOpacity
+                style={styles.actionIcon}
+                onPress={() => handleIconPress('read')}
+                disabled={Boolean(loading)}
+              >
+                <Image
+                  source={require('../../../../assets/add.png')}
+                  style={[
+                    styles.actionIconImage,
+                    isIconActive('read') && styles.actionIconImageActiveBlue,
+                  ]}
+                  resizeMode="contain"
+                />
+              </TouchableOpacity>
+            </View>
 
-          {/* Currently Reading */}
-          <View style={styles.actionIconWrapper}>
-            <TouchableOpacity
-              style={[
-                styles.actionIcon,
-                isIconActive('currently_reading') && styles.actionIconActive,
-              ]}
-              onPress={() => handleIconPress('currently_reading')}
-              disabled={Boolean(loading)}
-            >
-              <Image
-                source={require('../../../../assets/reading.png')}
-                style={[
-                  styles.actionIconImage,
-                  isIconActive('currently_reading') && styles.actionIconImageActive,
-                ]}
-                resizeMode="contain"
-              />
-            </TouchableOpacity>
-            {shelfCounts && shelfCounts.currently_reading > 0 && (
-              <ShelfCountStack count={shelfCounts.currently_reading} />
-            )}
-          </View>
+            {/* Currently Reading */}
+            <View style={styles.actionIconWrapper}>
+              <TouchableOpacity
+                style={styles.actionIcon}
+                onPress={() => handleIconPress('currently_reading')}
+                disabled={Boolean(loading)}
+              >
+                <Image
+                  source={require('../../../../assets/reading.png')}
+                  style={[
+                    styles.actionIconImage,
+                    isIconActive('currently_reading') && styles.actionIconImageActiveBlue,
+                  ]}
+                  resizeMode="contain"
+                />
+              </TouchableOpacity>
+              {shelfCounts && shelfCounts.currently_reading > 0 && (
+                <ShelfCountStack count={shelfCounts.currently_reading} />
+              )}
+            </View>
 
-          {/* Want to Read */}
-          <View style={styles.actionIconWrapper}>
-            <TouchableOpacity
-              style={[
-                styles.actionIcon,
-                isIconActive('want_to_read') && styles.actionIconActive,
-              ]}
-              onPress={() => handleIconPress('want_to_read')}
-              disabled={Boolean(loading)}
-            >
-              <Image
-                source={require('../../../../assets/bookmark.png')}
-                style={[
-                  styles.actionIconImage,
-                  isIconActive('want_to_read') && styles.actionIconImageActive,
-                ]}
-                resizeMode="contain"
-              />
-            </TouchableOpacity>
-            {shelfCounts && shelfCounts.want_to_read > 0 && (
-              <ShelfCountStack count={shelfCounts.want_to_read} />
-            )}
+            {/* Want to Read */}
+            <View style={styles.actionIconWrapper}>
+              <TouchableOpacity
+                style={styles.actionIcon}
+                onPress={() => handleIconPress('want_to_read')}
+                disabled={Boolean(loading)}
+              >
+                <Image
+                  source={require('../../../../assets/bookmark.png')}
+                  style={[
+                    styles.actionIconImage,
+                    isIconActive('want_to_read') && styles.actionIconImageActiveBlue,
+                  ]}
+                  resizeMode="contain"
+                />
+              </TouchableOpacity>
+              {shelfCounts && shelfCounts.want_to_read > 0 && (
+                <ShelfCountStack count={shelfCounts.want_to_read} />
+              )}
+            </View>
           </View>
         </View>
-
-        {/* Metadata */}
-        {metadata && (
-          <Text style={styles.metadata}>{metadata}</Text>
-        )}
 
         {/* Categories */}
         {book.categories && book.categories.length > 0 && (
@@ -819,67 +803,69 @@ export default function BookDetailScreen() {
 
         {/* Rating Circles */}
         <View style={styles.circlesSection}>
-          <View style={[
-            styles.circlesRow,
-            hasUserCircle && styles.circlesRowCompact,
-            !hasUserCircle && styles.circlesRowTwo,
-          ]}>
-            {userRankScore !== null && (
-              <View style={[styles.circleCard, styles.circleCardCompact, styles.circleCardUser, styles.circleCardUserCompact]}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.circlesScrollContent}
+          >
+            <View style={styles.circlesRow}>
+              {userRankScore !== null && (
+                <View style={styles.circleCard}>
+                  <View
+                    style={[
+                      styles.ratingCircle,
+                      { backgroundColor: getScoreTierColor(userRankScore, 1) },
+                    ]}
+                  >
+                    <Text style={styles.circleScore}>
+                      {formatCircleScore(userRankScore)}
+                    </Text>
+                  </View>
+                  <Text style={styles.circleLabel}>What you{'\n'}think</Text>
+                </View>
+              )}
+              <View style={styles.circleCard}>
                 <View
                   style={[
                     styles.ratingCircle,
-                    { backgroundColor: getScoreTierColor(userRankScore, 1) },
+                    { backgroundColor: getScoreTierColor(circleStats?.global.average ?? null, circleStats?.global.count ?? 0) },
                   ]}
                 >
                   <Text style={styles.circleScore}>
-                    {formatCircleScore(userRankScore)}
+                    {formatCircleScore(circleStats?.global.average)}
                   </Text>
+                  {Boolean(circleStats?.global.count) && (
+                    <View style={styles.circleCountBadge}>
+                      <Text style={styles.circleCountText}>
+                        {formatCircleCount(circleStats?.global.count)}
+                      </Text>
+                    </View>
+                  )}
                 </View>
-                <Text style={styles.circleLabel}>What you{'\n'}think</Text>
+                <Text style={styles.circleLabel}>What Inkli{'\n'}users think</Text>
               </View>
-            )}
-            <View style={[styles.circleCard, hasUserCircle && styles.circleCardCompact, styles.circleCardGlobal, hasUserCircle && styles.circleCardGlobalCompact]}>
-              <View
-                style={[
-                  styles.ratingCircle,
-                  { backgroundColor: getScoreTierColor(circleStats?.global.average ?? null, circleStats?.global.count ?? 0) },
-                ]}
-              >
-                <Text style={styles.circleScore}>
-                  {formatCircleScore(circleStats?.global.average)}
-                </Text>
-                {Boolean(circleStats?.global.count) && (
-                  <View style={styles.circleCountBadge}>
-                    <Text style={styles.circleCountText}>
-                      {formatCircleCount(circleStats?.global.count)}
-                    </Text>
-                  </View>
-                )}
+              <View style={styles.circleCard}>
+                <View
+                  style={[
+                    styles.ratingCircle,
+                    { backgroundColor: getScoreTierColor(circleStats?.friends.average ?? null, circleStats?.friends.count ?? 0) },
+                  ]}
+                >
+                  <Text style={styles.circleScore}>
+                    {formatCircleScore(circleStats?.friends.average)}
+                  </Text>
+                  {Boolean(circleStats?.friends.count) && (
+                    <View style={styles.circleCountBadge}>
+                      <Text style={styles.circleCountText}>
+                        {formatCircleCount(circleStats?.friends.count)}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={styles.circleLabel}>What your{'\n'}friends think</Text>
               </View>
-              <Text style={styles.circleLabel}>What Inkli{'\n'}users think</Text>
             </View>
-            <View style={[styles.circleCard, hasUserCircle && styles.circleCardCompact, styles.circleCardFriends, hasUserCircle && styles.circleCardFriendsCompact]}>
-              <View
-                style={[
-                  styles.ratingCircle,
-                  { backgroundColor: getScoreTierColor(circleStats?.friends.average ?? null, circleStats?.friends.count ?? 0) },
-                ]}
-              >
-                <Text style={styles.circleScore}>
-                  {formatCircleScore(circleStats?.friends.average)}
-                </Text>
-                {Boolean(circleStats?.friends.count) && (
-                  <View style={styles.circleCountBadge}>
-                    <Text style={styles.circleCountText}>
-                      {formatCircleCount(circleStats?.friends.count)}
-                    </Text>
-                  </View>
-                )}
-              </View>
-              <Text style={styles.circleLabel}>What your{'\n'}friends think</Text>
-            </View>
-          </View>
+          </ScrollView>
         </View>
 
         {/* Description */}
@@ -898,6 +884,12 @@ export default function BookDetailScreen() {
               <Text style={styles.infoText}>
                 <Text style={styles.infoLabel}>Publisher: </Text>
                 {book.publisher}
+              </Text>
+            )}
+            {book.published_date && (
+              <Text style={styles.infoText}>
+                <Text style={styles.infoLabel}>Publish Date: </Text>
+                {book.published_date}
               </Text>
             )}
             {book.language && (
@@ -1070,56 +1062,52 @@ const styles = StyleSheet.create({
     marginBottom: 24,
     alignSelf: 'center',
   },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+  },
+  headerLeft: {
+    flex: 1,
+    marginRight: 16,
+  },
   title: {
     fontSize: 32,
     fontFamily: typography.heroTitle,
     color: colors.brownText,
     marginBottom: 8,
-    textAlign: 'center',
+    textAlign: 'left',
   },
-  author: {
+  authorMetadata: {
     fontSize: 18,
     fontFamily: typography.body,
     color: colors.brownText,
-    marginBottom: 24,
-    textAlign: 'center',
+    textAlign: 'left',
+    opacity: 0.8,
   },
   actionIconsContainer: {
     flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 16,
-    marginBottom: 24,
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    gap: 8,
+    flexShrink: 0,
   },
   actionIconWrapper: {
     position: 'relative',
   },
   actionIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    borderWidth: 2,
-    borderColor: colors.primaryBlue,
-    backgroundColor: colors.white,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  actionIconActive: {
-    backgroundColor: colors.primaryBlue,
-  },
-  actionIconText: {
-    fontSize: 24,
-    color: colors.brownText,
-  },
-  actionIconTextActive: {
-    color: colors.white,
+    padding: 4,
   },
   actionIconImage: {
-    width: 24,
-    height: 24,
+    width: 30,
+    height: 30,
     tintColor: colors.brownText,
   },
-  actionIconImageActive: {
-    tintColor: colors.white,
+  actionIconImageActiveBlue: {
+    tintColor: colors.primaryBlue,
   },
   shelfCountBadge: {
     position: 'absolute',
@@ -1140,70 +1128,35 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontWeight: '700',
   },
-  metadata: {
-    fontSize: 14,
-    fontFamily: typography.body,
-    color: colors.brownText,
-    opacity: 0.7,
-    marginBottom: 16,
-    textAlign: 'center',
-  },
   categoriesContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'center',
-    marginBottom: 24,
+    justifyContent: 'flex-start',
+    marginBottom: 10,
     marginRight: -8,
   },
   circlesSection: {
-    marginBottom: 24,
-    alignItems: 'center',
+    marginBottom: 10,
+    alignItems: 'flex-start',
+  },
+  circlesScrollContent: {
+    paddingRight: 24,
+    paddingVertical: 8,
   },
   circlesRow: {
     flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'flex-start',
-  },
-  circlesRowCompact: {
-    justifyContent: 'center',
-  },
-  circlesRowTwo: {
-    paddingLeft: 40,
+    alignItems: 'center',
   },
   circleCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    width: 170,
-    justifyContent: 'flex-start',
-  },
-  circleCardCompact: {
-    width: 122,
-  },
-  circleCardUser: {
-    marginRight: -8,
-    zIndex: 3,
-  },
-  circleCardUserCompact: {
-    marginRight: 0,
-  },
-  circleCardGlobal: {
-    marginRight: -8,
-    zIndex: 2,
-  },
-  circleCardGlobalCompact: {
-    marginRight: 0,
-  },
-  circleCardFriends: {
-    marginLeft: -18,
-    zIndex: 1,
-  },
-  circleCardFriendsCompact: {
-    marginLeft: 0,
+    marginRight: 12,
+    minWidth: 100,
   },
   ratingCircle: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 60,
+    height: 60,
+    borderRadius: 36,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: colors.brownText,
@@ -1238,7 +1191,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   circleLabel: {
-    marginLeft: 6,
+    marginLeft: 10,
     fontSize: 11,
     fontFamily: typography.body,
     color: colors.brownText,
@@ -1277,7 +1230,7 @@ const styles = StyleSheet.create({
     opacity: 0.9,
   },
   infoSection: {
-    marginTop: 8,
+    marginTop: 0,
   },
   infoText: {
     fontSize: 14,
