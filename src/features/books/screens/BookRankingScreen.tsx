@@ -19,7 +19,7 @@ import { colors, typography } from '../../../config/theme';
 import { updateUserBookDetails, removeBookFromShelf, updateBookStatus } from '../../../services/books';
 import { useAuth } from '../../../contexts/AuthContext';
 import BookComparisonModal from '../components/BookComparisonModal';
-import DatePickerModal from '../../../components/ui/DatePickerModal';
+import DateRangePickerModal from '../../../components/ui/DateRangePickerModal';
 import { supabase } from '../../../config/supabase';
 import { SearchStackParamList } from '../../../navigation/SearchStackNavigator';
 
@@ -47,8 +47,7 @@ export default function BookRankingScreen() {
   
   const [saving, setSaving] = useState(false);
   const [showComparison, setShowComparison] = useState(false);
-  const [showDatePickerModal, setShowDatePickerModal] = useState(false);
-  const [datePickerType, setDatePickerType] = useState<'started' | 'finished' | null>(null);
+  const [showDateRangePickerModal, setShowDateRangePickerModal] = useState(false);
   const notesSaveTimerRef = React.useRef<NodeJS.Timeout | null>(null);
 
   if (!book) return null;
@@ -354,47 +353,27 @@ export default function BookRankingScreen() {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
-  const handleDatePicker = (type: 'started' | 'finished') => {
-    setDatePickerType(type);
-    setShowDatePickerModal(true);
+  const handleDateRangePicker = () => {
+    setShowDateRangePickerModal(true);
   };
 
-  const handleDateSelected = async (date: string | null) => {
-    if (datePickerType === 'started') {
-      // Validate: start date must be <= end date (if end date is set)
-      if (date && finishedDate && date > finishedDate) {
-        Alert.alert(
-          'Invalid Date',
-          'Start date must be on or before the end date. Please adjust your dates.',
-          [{ text: 'OK' }]
-        );
-        setShowDatePickerModal(false);
-        setDatePickerType(null);
-        return;
-      }
-      
-      setStartedDate(date);
-      // Auto-save when date is set (regardless of rating)
-      await saveBookDetails();
-    } else if (datePickerType === 'finished') {
-      // Validate: end date must be >= start date (if start date is set)
-      if (date && startedDate && date < startedDate) {
-        Alert.alert(
-          'Invalid Date',
-          'End date must be on or after the start date. Please adjust your dates.',
-          [{ text: 'OK' }]
-        );
-        setShowDatePickerModal(false);
-        setDatePickerType(null);
-        return;
-      }
-      
-      setFinishedDate(date);
-      // Auto-save when date is set (regardless of rating)
-      await saveBookDetails();
+  const handleDateRangeSelected = async (newStartDate: string | null, newEndDate: string | null) => {
+    // Validation is handled by DateRangePickerModal, but double-check here
+    if (newStartDate && newEndDate && newEndDate < newStartDate) {
+      Alert.alert(
+        'Invalid Date Range',
+        'End date must be on or after the start date. Please adjust your dates.',
+        [{ text: 'OK' }]
+      );
+      setShowDateRangePickerModal(false);
+      return;
     }
-    setShowDatePickerModal(false);
-    setDatePickerType(null);
+    
+    setStartedDate(newStartDate);
+    setFinishedDate(newEndDate);
+    // Auto-save when dates are set (regardless of rating)
+    await saveBookDetails();
+    setShowDateRangePickerModal(false);
   };
 
   return (
@@ -510,27 +489,17 @@ export default function BookRankingScreen() {
             </View>
           </View>
 
-          {/* Date Started / Date Ended */}
+          {/* Read Dates */}
           <View style={styles.section}>
             <TouchableOpacity
               style={styles.dateButton}
-              onPress={() => handleDatePicker('started')}
+              onPress={handleDateRangePicker}
             >
-              <Text style={styles.dateButtonLabel}>Date started</Text>
-              {startedDate ? (
-                <Text style={styles.dateButtonValue}>{formatDateForDisplay(startedDate)}</Text>
-              ) : (
-                <Text style={styles.dateButtonPlaceholder}>Tap to set</Text>
-              )}
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.dateButton}
-              onPress={() => handleDatePicker('finished')}
-            >
-              <Text style={styles.dateButtonLabel}>Date ended</Text>
-              {finishedDate ? (
-                <Text style={styles.dateButtonValue}>{formatDateForDisplay(finishedDate)}</Text>
+              <Text style={styles.dateButtonLabel}>Read dates</Text>
+              {startedDate || finishedDate ? (
+                <Text style={styles.dateButtonValue}>
+                  {startedDate ? formatDateForDisplay(startedDate) : '...'} - {finishedDate ? formatDateForDisplay(finishedDate) : '...'}
+                </Text>
               ) : (
                 <Text style={styles.dateButtonPlaceholder}>Tap to set</Text>
               )}
@@ -608,24 +577,16 @@ export default function BookRankingScreen() {
         />
       ) : null}
 
-      {/* Date Picker Modal */}
-      <DatePickerModal
-        visible={showDatePickerModal}
+      {/* Date Range Picker Modal */}
+      <DateRangePickerModal
+        visible={showDateRangePickerModal}
         onClose={() => {
-          setShowDatePickerModal(false);
-          setDatePickerType(null);
+          setShowDateRangePickerModal(false);
         }}
-        onDateSelected={handleDateSelected}
-        initialDate={
-          datePickerType === 'started' ? startedDate : 
-          datePickerType === 'finished' ? finishedDate : 
-          null
-        }
-        title={
-          datePickerType === 'started' ? 'Select Start Date' :
-          datePickerType === 'finished' ? 'Select End Date' :
-          'Select Date'
-        }
+        onDateRangeSelected={handleDateRangeSelected}
+        initialStartDate={startedDate}
+        initialEndDate={finishedDate}
+        title="Select Read Dates"
       />
     </SafeAreaView>
   );

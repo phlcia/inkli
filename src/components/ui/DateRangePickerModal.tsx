@@ -9,42 +9,55 @@ import {
 import { Calendar, DateData } from 'react-native-calendars';
 import { colors, typography } from '../../config/theme';
 
-interface DatePickerModalProps {
+interface DateRangePickerModalProps {
   visible: boolean;
   onClose: () => void;
-  onDateSelected: (date: string | null) => void;
-  initialDate?: string | null;
+  onDateRangeSelected: (startDate: string | null, endDate: string | null) => void;
+  initialStartDate?: string | null;
+  initialEndDate?: string | null;
   title?: string;
 }
 
-export default function DatePickerModal({
+export default function DateRangePickerModal({
   visible,
   onClose,
-  onDateSelected,
-  initialDate,
-  title = 'Select Date',
-}: DatePickerModalProps) {
-  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  onDateRangeSelected,
+  initialStartDate,
+  initialEndDate,
+  title = 'Select Date Range',
+}: DateRangePickerModalProps) {
+  const [startDate, setStartDate] = useState<string | null>(null);
+  const [endDate, setEndDate] = useState<string | null>(null);
 
-  // Initialize with initial date if provided
+  // Initialize with initial dates if provided
   useEffect(() => {
     if (visible) {
-      // Convert initial date to local date string (YYYY-MM-DD) to avoid timezone issues
-      if (initialDate) {
-        const date = new Date(initialDate + 'T00:00:00'); // Add time to avoid timezone shift
+      // Convert initial dates to local date strings (YYYY-MM-DD)
+      if (initialStartDate) {
+        const date = new Date(initialStartDate + 'T00:00:00');
         const year = date.getFullYear();
         const month = String(date.getMonth() + 1).padStart(2, '0');
         const day = String(date.getDate()).padStart(2, '0');
-        const localDateString = `${year}-${month}-${day}`;
-        setSelectedDate(localDateString);
+        setStartDate(`${year}-${month}-${day}`);
       } else {
-        setSelectedDate(null);
+        setStartDate(null);
+      }
+
+      if (initialEndDate) {
+        const date = new Date(initialEndDate + 'T00:00:00');
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        setEndDate(`${year}-${month}-${day}`);
+      } else {
+        setEndDate(null);
       }
     } else {
       // Reset when modal closes
-      setSelectedDate(null);
+      setStartDate(null);
+      setEndDate(null);
     }
-  }, [visible, initialDate]);
+  }, [visible, initialStartDate, initialEndDate]);
 
   const handleDayPress = (day: DateData) => {
     // day.dateString is already in YYYY-MM-DD format (local timezone)
@@ -56,36 +69,85 @@ export default function DatePickerModal({
     if (day.dateString > todayString) {
       return;
     }
-    
-    setSelectedDate(day.dateString);
+
+    // If no start date selected, or if clicking before start date, set as start
+    // If start date exists and clicking after start date, set as end
+    if (!startDate || day.dateString < startDate) {
+      setStartDate(day.dateString);
+      setEndDate(null); // Reset end date when changing start
+    } else if (startDate && !endDate) {
+      // Setting end date
+      if (day.dateString >= startDate) {
+        setEndDate(day.dateString);
+      }
+    } else {
+      // Both dates exist - reset and start over
+      setStartDate(day.dateString);
+      setEndDate(null);
+    }
   };
 
   const handleDone = () => {
-    onDateSelected(selectedDate);
+    onDateRangeSelected(startDate, endDate);
     onClose();
   };
 
   const handleClear = () => {
-    setSelectedDate(null);
-    onDateSelected(null);
+    setStartDate(null);
+    setEndDate(null);
+    onDateRangeSelected(null, null);
     onClose();
   };
 
-  // Build markedDates for calendar
+  // Build markedDates for calendar with period marking
   const getMarkedDates = () => {
     const marked: any = {};
     
-    // Get today's date in YYYY-MM-DD format
-    const today = new Date();
-    const todayString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-    
-    // Mark selected date
-    if (selectedDate) {
-      marked[selectedDate] = {
-        selected: true,
-        selectedColor: colors.primaryBlue,
-        selectedTextColor: colors.white,
+    if (startDate) {
+      marked[startDate] = {
+        startingDay: true,
+        color: colors.primaryBlue,
+        textColor: colors.white,
       };
+
+      if (endDate) {
+        // Mark all dates between start and end
+        const start = new Date(startDate + 'T00:00:00');
+        const end = new Date(endDate + 'T00:00:00');
+        const current = new Date(start);
+        
+        while (current <= end) {
+          const dateString = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}-${String(current.getDate()).padStart(2, '0')}`;
+          
+          if (dateString === startDate) {
+            marked[dateString] = {
+              startingDay: true,
+              color: colors.primaryBlue,
+              textColor: colors.white,
+            };
+          } else if (dateString === endDate) {
+            marked[dateString] = {
+              endingDay: true,
+              color: colors.primaryBlue,
+              textColor: colors.white,
+            };
+          } else {
+            marked[dateString] = {
+              color: colors.primaryBlue + '40',
+              textColor: colors.brownText,
+            };
+          }
+          
+          current.setDate(current.getDate() + 1);
+        }
+      } else {
+        // Only start date selected
+        marked[startDate] = {
+          startingDay: true,
+          color: colors.primaryBlue,
+          textColor: colors.white,
+        };
+      }
     }
 
     return marked;
@@ -95,6 +157,11 @@ export default function DatePickerModal({
   const getMaxDate = (): string => {
     const today = new Date();
     return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  };
+
+  const formatDateForDisplay = (dateString: string): string => {
+    const date = new Date(dateString + 'T00:00:00');
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   return (
@@ -114,11 +181,12 @@ export default function DatePickerModal({
             </TouchableOpacity>
           </View>
 
-          {/* Calendar - Outside ScrollView for proper rendering */}
+          {/* Calendar */}
           <View style={styles.calendarContainer}>
             <Calendar
               onDayPress={handleDayPress}
               markedDates={getMarkedDates()}
+              markingType="period"
               maxDate={getMaxDate()}
               enableSwipeMonths={true}
               theme={{
@@ -146,11 +214,11 @@ export default function DatePickerModal({
             />
           </View>
 
-          {/* Selected Date Display */}
-          {selectedDate && (
+          {/* Selected Date Range Display */}
+          {(startDate || endDate) && (
             <View style={styles.selectedDateContainer}>
               <Text style={styles.selectedDateText}>
-                Selected: {formatDateForDisplay(selectedDate)}
+                {startDate ? formatDateForDisplay(startDate) : '...'} - {endDate ? formatDateForDisplay(endDate) : '...'}
               </Text>
             </View>
           )}
@@ -169,12 +237,6 @@ export default function DatePickerModal({
     </Modal>
   );
 }
-
-const formatDateForDisplay = (dateString: string): string => {
-  // dateString is already in YYYY-MM-DD format (local timezone)
-  const date = new Date(dateString + 'T00:00:00'); // Add time to avoid timezone shift
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-};
 
 const styles = StyleSheet.create({
   modalOverlay: {

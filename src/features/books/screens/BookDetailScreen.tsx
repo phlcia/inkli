@@ -10,17 +10,19 @@ import {
   Platform,
   StatusBar,
   ActivityIndicator,
+  TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, typography } from '../../../config/theme';
 import { BookCoverPlaceholder } from '../components/BookCoverPlaceholder';
-import { addBookToShelf, checkUserHasBook, getBookCircles, getBookShelfCounts, removeBookFromShelf, getFriendsRankingsForBook, updateBookStatus, redistributeRanksForRating, BookCirclesResult, BookShelfCounts, formatCount, UserBook } from '../../../services/books';
+import { addBookToShelf, checkUserHasBook, getBookCircles, getBookShelfCounts, removeBookFromShelf, getFriendsRankingsForBook, updateBookStatus, redistributeRanksForRating, BookCirclesResult, BookShelfCounts, formatCount, UserBook, updateUserBookDetails } from '../../../services/books';
 import { useAuth } from '../../../contexts/AuthContext';
 import { supabase } from '../../../config/supabase';
 import { SearchStackParamList } from '../../../navigation/SearchStackNavigator';
 import RecentActivityCard from '../../social/components/RecentActivityCard';
+import DateRangePickerModal from '../../../components/ui/DateRangePickerModal';
 
 type BookDetailScreenRouteProp = RouteProp<SearchStackParamList, 'BookDetail'>;
 type BookDetailScreenNavigationProp = NativeStackNavigationProp<SearchStackParamList, 'BookDetail'>;
@@ -52,6 +54,17 @@ export default function BookDetailScreen() {
   const friendsRankingsHasLoadedRef = useRef(false);
   const friendsRankingsLoadingRef = useRef(false);
   const fadeAnim = React.useRef(new Animated.Value(0)).current;
+
+  // "What you think" section state
+  const [userBookId, setUserBookId] = useState<string | null>(null);
+  const [userNotes, setUserNotes] = useState<string>('');
+  const [startedDate, setStartedDate] = useState<string | null>(null);
+  const [finishedDate, setFinishedDate] = useState<string | null>(null);
+  const [savingNotes, setSavingNotes] = useState(false);
+  const [savingDates, setSavingDates] = useState(false);
+  const [notesSaved, setNotesSaved] = useState(false);
+  const [showDateRangePickerModal, setShowDateRangePickerModal] = useState(false);
+  const notesSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const coverUrl = book.cover_url;
   const hasCover =
@@ -106,7 +119,7 @@ export default function BookDetailScreen() {
     }
   }, [resolveBookIdForStats]);
 
-  // Check if book already exists in user's shelf
+  // Check if book already exists in user's shelf and fetch notes/dates
   const refreshBookStatus = React.useCallback(async () => {
     if (!user || (!book.open_library_id && !book.google_books_id)) return;
 
@@ -134,26 +147,48 @@ export default function BookDetailScreen() {
       if (existingBook) {
         const { data } = await supabase
           .from('user_books')
-          .select('status, rank_score')
+          .select('id, status, rank_score, notes, started_date, finished_date')
           .eq('user_id', user.id)
           .eq('book_id', existingBook.id)
           .single();
 
-        if (data?.status) {
-          setCurrentStatus(data.status as 'read' | 'currently_reading' | 'want_to_read');
+        if (data) {
+          if (data.status) {
+            setCurrentStatus(data.status as 'read' | 'currently_reading' | 'want_to_read');
+          } else {
+            setCurrentStatus(null);
+          }
+          setUserRankScore(data.rank_score ?? null);
+          // Set "What you think" section data
+          setUserBookId(data.id);
+          setUserNotes(data.notes || '');
+          setStartedDate(data.started_date || null);
+          setFinishedDate(data.finished_date || null);
         } else {
           setCurrentStatus(null);
+          setUserRankScore(null);
+          setUserBookId(null);
+          setUserNotes('');
+          setStartedDate(null);
+          setFinishedDate(null);
         }
-        setUserRankScore(data?.rank_score ?? null);
       } else {
         setCurrentStatus(null);
         setUserRankScore(null);
+        setUserBookId(null);
+        setUserNotes('');
+        setStartedDate(null);
+        setFinishedDate(null);
       }
     } catch (error) {
       // Book doesn't exist yet, that's fine
       console.log('Book not in shelf yet');
       setCurrentStatus(null);
       setUserRankScore(null);
+      setUserBookId(null);
+      setUserNotes('');
+      setStartedDate(null);
+      setFinishedDate(null);
     }
   }, [user, book.open_library_id, book.google_books_id]);
 
@@ -637,6 +672,135 @@ export default function BookDetailScreen() {
     return null;
   };
 
+  // Save notes with debouncing
+  const saveNotes = React.useCallback(async (notesText: string) => {
+    if (!user || !userBookId) {
+      // If book not on shelf yet, we'll need to add it first
+      // For now, just return - user needs to add book to shelf first
+      return;
+    }
+
+    try {
+      setSavingNotes(true);
+      setNotesSaved(false);
+      
+      const { error } = await updateUserBookDetails(userBookId, user.id, {
+        notes: notesText.trim() || null,
+      });
+
+      if (error) {
+        console.error('Error saving notes:', error);
+        setToastMessage('Couldn\'t save your notes. Please try again.');
+        setSavingNotes(false);
+        return;
+      }
+
+      setSavingNotes(false);
+      setNotesSaved(true);
+      
+      // Fade out "Saved ✓" after 2 seconds
+      setTimeout(() => {
+        setNotesSaved(false);
+      }, 2000);
+
+      // Refresh book status to ensure sync
+      void refreshBookStatus();
+    } catch (error) {
+      console.error('Error saving notes:', error);
+      setToastMessage('Couldn\'t save your notes. Please try again.');
+      setSavingNotes(false);
+    }
+  }, [user, userBookId, refreshBookStatus]);
+
+  // Handle notes change with debouncing
+  const handleNotesChange = React.useCallback((text: string) => {
+    setUserNotes(text);
+    setNotesSaved(false);
+
+    // Clear existing timer
+    if (notesSaveTimerRef.current) {
+      clearTimeout(notesSaveTimerRef.current);
+    }
+
+    // Set new timer for debounced save
+    notesSaveTimerRef.current = setTimeout(() => {
+      void saveNotes(text);
+    }, 800);
+  }, [saveNotes]);
+
+  // Handle notes blur - save immediately
+  const handleNotesBlur = React.useCallback(() => {
+    if (notesSaveTimerRef.current) {
+      clearTimeout(notesSaveTimerRef.current);
+    }
+    void saveNotes(userNotes);
+  }, [userNotes, saveNotes]);
+
+  // Save dates
+  const saveDates = React.useCallback(async (newStartedDate: string | null, newFinishedDate: string | null) => {
+    if (!user) return;
+
+    // Validate: finished_date should not be before started_date
+    if (newStartedDate && newFinishedDate && newFinishedDate < newStartedDate) {
+      setToastMessage('Finished date must be after started date');
+      return;
+    }
+
+    // If book not on shelf, we need to add it first
+    if (!userBookId) {
+      // For now, show message that book needs to be on shelf
+      setToastMessage('Please add this book to your shelf first');
+      return;
+    }
+
+    try {
+      setSavingDates(true);
+      
+      const { error } = await updateUserBookDetails(userBookId, user.id, {
+        started_date: newStartedDate,
+        finished_date: newFinishedDate,
+      });
+
+      if (error) {
+        console.error('Error saving dates:', error);
+        setToastMessage('Couldn\'t save dates. Please try again.');
+        setSavingDates(false);
+        return;
+      }
+
+      setStartedDate(newStartedDate);
+      setFinishedDate(newFinishedDate);
+      setSavingDates(false);
+
+      // Refresh book status to ensure sync
+      void refreshBookStatus();
+    } catch (error) {
+      console.error('Error saving dates:', error);
+      setToastMessage('Couldn\'t save dates. Please try again.');
+      setSavingDates(false);
+    }
+  }, [user, userBookId, refreshBookStatus]);
+
+  // Handle date range picker selection
+  const handleDateRangeSelected = React.useCallback((newStartDate: string | null, newEndDate: string | null) => {
+    void saveDates(newStartDate, newEndDate);
+    setShowDateRangePickerModal(false);
+  }, [saveDates]);
+
+  // Open date range picker
+  const openDateRangePicker = React.useCallback(() => {
+    setShowDateRangePickerModal(true);
+  }, []);
+
+  // Cleanup notes save timer on unmount
+  useEffect(() => {
+    return () => {
+      if (notesSaveTimerRef.current) {
+        clearTimeout(notesSaveTimerRef.current);
+      }
+    };
+  }, []);
+
   const getActionText = (status: string | null, username: string) => {
     const displayName = username || 'User';
     switch (status) {
@@ -860,26 +1024,6 @@ export default function BookDetailScreen() {
                 <View
                   style={[
                     styles.ratingCircle,
-                    { backgroundColor: getScoreTierColor(circleStats?.global.average ?? null, circleStats?.global.count ?? 0) },
-                  ]}
-                >
-                  <Text style={styles.circleScore}>
-                    {formatCircleScore(circleStats?.global.average)}
-                  </Text>
-                  {Boolean(circleStats?.global.count) && (
-                    <View style={styles.circleCountBadge}>
-                      <Text style={styles.circleCountText}>
-                        {formatCircleCount(circleStats?.global.count)}
-                      </Text>
-                    </View>
-                  )}
-                </View>
-                <Text style={styles.circleLabel}>What Inkli{'\n'}users think</Text>
-              </View>
-              <View style={styles.circleCard}>
-                <View
-                  style={[
-                    styles.ratingCircle,
                     { backgroundColor: getScoreTierColor(circleStats?.friends.average ?? null, circleStats?.friends.count ?? 0) },
                   ]}
                 >
@@ -895,6 +1039,26 @@ export default function BookDetailScreen() {
                   )}
                 </View>
                 <Text style={styles.circleLabel}>What your{'\n'}friends think</Text>
+              </View>
+              <View style={styles.circleCard}>
+                <View
+                  style={[
+                    styles.ratingCircle,
+                    { backgroundColor: getScoreTierColor(circleStats?.global.average ?? null, circleStats?.global.count ?? 0) },
+                  ]}
+                >
+                  <Text style={styles.circleScore}>
+                    {formatCircleScore(circleStats?.global.average)}
+                  </Text>
+                  {Boolean(circleStats?.global.count) && (
+                    <View style={styles.circleCountBadge}>
+                      <Text style={styles.circleCountText}>
+                        {formatCircleCount(circleStats?.global.count)}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={styles.circleLabel}>What Inkli{'\n'}users think</Text>
               </View>
             </View>
           </ScrollView>
@@ -944,6 +1108,92 @@ export default function BookDetailScreen() {
             )}
           </View>
         </View>
+
+        {/* What You Think */}
+        {user && (
+          <View style={styles.descriptionSection}>
+            <Text style={styles.descriptionLabel}>What you think</Text>
+            
+            {/* Add shelves - Placeholder */}
+            <View style={styles.whatYouThinkSlot}>
+              <Text style={styles.whatYouThinkSlotLabel}>Shelf</Text>
+              <TouchableOpacity 
+                style={[styles.whatYouThinkSlotContent, styles.disabledSlot]}
+                disabled={true}
+              >
+                <Text style={styles.disabledSlotText}>Coming soon - Add to shelf</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Add read dates */}
+            <View style={styles.whatYouThinkSlot}>
+              <Text style={styles.whatYouThinkSlotLabel}>Read dates</Text>
+              {startedDate || finishedDate ? (
+                <View style={styles.dateChip}>
+                  <Text style={styles.dateChipText}>
+                    {startedDate ? formatDateForDisplay(startedDate) : '...'} - {finishedDate ? formatDateForDisplay(finishedDate) : '...'}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setStartedDate(null);
+                      setFinishedDate(null);
+                      void saveDates(null, null);
+                    }}
+                    style={styles.dateChipClose}
+                  >
+                    <Text style={styles.dateChipCloseText}>×</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <Text style={styles.whatYouThinkSlotPlaceholder}>
+                  Add when you started/finished reading
+                </Text>
+              )}
+              <TouchableOpacity
+                style={[styles.dateRangeButton, (startedDate || finishedDate) && styles.dateRangeButtonActive]}
+                onPress={openDateRangePicker}
+                disabled={savingDates}
+              >
+                <Text style={[styles.dateRangeButtonText, (startedDate || finishedDate) && styles.dateRangeButtonTextActive]}>
+                  Add read dates
+                </Text>
+              </TouchableOpacity>
+              {savingDates && (
+                <View style={styles.savingContainer}>
+                  <ActivityIndicator size="small" color={colors.primaryBlue} />
+                  <Text style={styles.savingText}>Saving...</Text>
+                </View>
+              )}
+            </View>
+
+            {/* Notes */}
+            <View style={styles.whatYouThinkSlot}>
+              <View style={styles.notesHeader}>
+                <Text style={styles.whatYouThinkSlotLabel}>Notes</Text>
+              </View>
+              <View style={styles.notesContainer}>
+                <TextInput
+                  style={styles.notesInput}
+                  placeholder="Tap to add your thoughts about this book..."
+                  placeholderTextColor={colors.brownText}
+                  multiline
+                  value={userNotes}
+                  onChangeText={handleNotesChange}
+                  onBlur={handleNotesBlur}
+                  editable={!savingNotes}
+                />
+                <View style={styles.notesFooter}>
+                  {savingNotes && (
+                    <Text style={styles.savingText}>Saving...</Text>
+                  )}
+                  {notesSaved && !savingNotes && (
+                    <Text style={styles.savedText}>Saved ✓</Text>
+                  )}
+                </View>
+              </View>
+            </View>
+          </View>
+        )}
 
         {/* What Your Friends Think */}
         {(friendsRankings.length > 0 || friendsRankingsLoading || friendsRankingsError) && (
@@ -1038,6 +1288,18 @@ export default function BookDetailScreen() {
           <Text style={styles.toastText}>{toastMessage}</Text>
         </Animated.View>
       )}
+
+      {/* Date Range Picker Modal */}
+      <DateRangePickerModal
+        visible={showDateRangePickerModal}
+        onClose={() => {
+          setShowDateRangePickerModal(false);
+        }}
+        onDateRangeSelected={handleDateRangeSelected}
+        initialStartDate={startedDate}
+        initialEndDate={finishedDate}
+        title="Select Read Dates"
+      />
 
     </View>
   );
@@ -1414,5 +1676,148 @@ const styles = StyleSheet.create({
   bookInfo: {
     flex: 1,
     justifyContent: 'center',
+  },
+  whatYouThinkSlot: {
+    marginBottom: 20,
+  },
+  whatYouThinkSlotLabel: {
+    fontSize: 14,
+    fontFamily: typography.body,
+    color: colors.brownText,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  whatYouThinkSlotContent: {
+    backgroundColor: colors.white,
+    borderRadius: 8,
+    padding: 12,
+    minHeight: 44,
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.brownText + '20',
+  },
+  whatYouThinkSlotPlaceholder: {
+    fontSize: 14,
+    fontFamily: typography.body,
+    color: colors.brownText,
+    opacity: 0.5,
+  },
+  disabledSlot: {
+    opacity: 0.5,
+    backgroundColor: colors.creamBackground,
+  },
+  disabledSlotText: {
+    fontSize: 14,
+    fontFamily: typography.body,
+    color: colors.brownText,
+    opacity: 0.7,
+  },
+  dateChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primaryBlue,
+    paddingLeft: 12,
+    paddingRight: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginBottom: 12,
+  },
+  dateChipText: {
+    fontSize: 12,
+    flex: 1,
+    fontFamily: typography.body,
+    color: colors.white,
+    fontWeight: '500',
+  },
+  dateChipClose: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: colors.white + '40',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  dateChipCloseText: {
+    fontSize: 14,
+    color: colors.white,
+    fontWeight: 'bold',
+    lineHeight: 14,
+  },
+  dateRangeButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: colors.primaryBlue + '20',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.primaryBlue + '40',
+    marginTop: 8,
+  },
+  dateRangeButtonActive: {
+    backgroundColor: colors.primaryBlue,
+  },
+  dateRangeButtonText: {
+    fontSize: 12,
+    fontFamily: typography.body,
+    color: colors.primaryBlue,
+    fontWeight: '500',
+  },
+  dateRangeButtonTextActive: {
+    color: colors.white,
+  },
+  savingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    gap: 8,
+  },
+  notesHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  publicIndicator: {
+    fontSize: 11,
+    fontFamily: typography.body,
+    color: colors.brownText,
+    opacity: 0.7,
+  },
+  notesContainer: {
+    backgroundColor: colors.white,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.brownText + '20',
+    minHeight: 100,
+  },
+  notesInput: {
+    fontSize: 14,
+    fontFamily: typography.body,
+    color: colors.brownText,
+    padding: 12,
+    minHeight: 100,
+    textAlignVertical: 'top',
+  },
+  notesFooter: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    paddingHorizontal: 12,
+    paddingBottom: 8,
+    minHeight: 20,
+  },
+  savingIndicator: {
+    marginLeft: 8,
+  },
+  savingText: {
+    fontSize: 11,
+    fontFamily: typography.body,
+    color: colors.brownText,
+    opacity: 0.7,
+  },
+  savedText: {
+    fontSize: 11,
+    fontFamily: typography.body,
+    color: '#2FA463',
+    fontWeight: '500',
   },
 });
