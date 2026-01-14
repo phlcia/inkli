@@ -21,9 +21,8 @@ import { colors, typography } from '../../../config/theme';
 import { useAuth } from '../../../contexts/AuthContext';
 import {
   getUserProfile,
-  updateUserProfile,
-  uploadProfilePhoto,
-  deleteProfilePhoto,
+  saveProfileWithPicture,
+  getProfilePictureUrl,
   checkUsernameAvailability,
 } from '../../../services/userProfile';
 import ProfilePhotoActionSheet from '../components/ProfilePhotoActionSheet';
@@ -48,6 +47,7 @@ export default function EditProfileScreen() {
   const [bio, setBio] = useState('');
   const [profilePhotoUrl, setProfilePhotoUrl] = useState<string | null>(null);
   const [tempPhotoUri, setTempPhotoUri] = useState<string | null>(null);
+  const [deleteProfilePicture, setDeleteProfilePicture] = useState(false);
 
   // Original values for comparison
   const [originalUsername, setOriginalUsername] = useState('');
@@ -112,6 +112,7 @@ export default function EditProfileScreen() {
 
       if (!result.canceled && result.assets[0]) {
         setTempPhotoUri(result.assets[0].uri);
+        setDeleteProfilePicture(false); // Clear delete flag when selecting new image
         setShowActionSheet(false);
       }
     } catch (error) {
@@ -136,6 +137,7 @@ export default function EditProfileScreen() {
 
       if (!result.canceled && result.assets[0]) {
         setTempPhotoUri(result.assets[0].uri);
+        setDeleteProfilePicture(false); // Clear delete flag when selecting new image
         setShowActionSheet(false);
       }
     } catch (error) {
@@ -144,14 +146,19 @@ export default function EditProfileScreen() {
     }
   };
 
-  const handleDeletePhoto = async () => {
-    if (profilePhotoUrl) {
-      // Delete from storage
-      await deleteProfilePhoto(profilePhotoUrl);
-    }
-    setProfilePhotoUrl(null);
-    setTempPhotoUri(null);
+  const handleDeletePhoto = () => {
+    // Set delete flag - actual deletion happens on save
+    setDeleteProfilePicture(true);
+    setTempPhotoUri(null); // Clear any new image selection
     setShowActionSheet(false);
+  };
+
+  const handleCancel = () => {
+    // Reset all photo-related state
+    setTempPhotoUri(null);
+    setDeleteProfilePicture(false);
+    // Reload original profile data
+    loadProfileData();
   };
 
   const handleSave = async () => {
@@ -188,45 +195,50 @@ export default function EditProfileScreen() {
     try {
       setSaving(true);
 
-      // Upload photo if new one selected
-      let finalPhotoUrl = profilePhotoUrl;
-      if (tempPhotoUri) {
-        const { url, error: uploadError } = await uploadProfilePhoto(
-          user.id,
-          tempPhotoUri
-        );
-
-        if (uploadError) {
-          Alert.alert('Error', 'Failed to upload profile photo');
-          setSaving(false);
-          return;
-        }
-
-        finalPhotoUrl = url;
-      }
-
       // Split name into first and last
       const nameParts = name.trim().split(' ');
       const firstName = nameParts[0] || '';
       const lastName = nameParts.slice(1).join(' ') || '';
 
-      // Update profile
-      const { profile, error } = await updateUserProfile(user.id, {
-        firstName,
-        lastName,
-        username: username.trim(),
-        bio: bio.trim() || null,
-        profilePhotoUrl: finalPhotoUrl,
-      });
+      // Use the new saveProfileWithPicture function that handles all scenarios
+      const { profile, error } = await saveProfileWithPicture(
+        user.id,
+        {
+          firstName,
+          lastName,
+          username: username.trim(),
+          bio: bio.trim() || null,
+        },
+        tempPhotoUri, // null if no new image selected
+        deleteProfilePicture // true if user wants to delete
+      );
 
       if (error) {
-        if (error.code === '23505') {
-          Alert.alert('Error', 'Username is already taken');
-        } else {
-          Alert.alert('Error', 'Failed to update profile');
+        // Show user-friendly error messages
+        let errorMessage = 'Failed to update profile';
+        if (error.message) {
+          if (error.message.includes('too large')) {
+            errorMessage = 'Image file is too large. Maximum size is 5MB.';
+          } else if (error.message.includes('Unsupported')) {
+            errorMessage = 'Unsupported image format. Please use JPG, PNG, or WEBP.';
+          } else if (error.message.includes('not authenticated')) {
+            errorMessage = 'Authentication error. Please try again.';
+          } else if (error.code === '23505') {
+            errorMessage = 'Username is already taken';
+          } else {
+            errorMessage = error.message;
+          }
         }
+        Alert.alert('Error', errorMessage);
         setSaving(false);
         return;
+      }
+
+      // Reset photo-related state after successful save
+      setTempPhotoUri(null);
+      setDeleteProfilePicture(false);
+      if (profile) {
+        setProfilePhotoUrl(profile.profile_photo_url);
       }
 
       Alert.alert('Success', 'Profile updated successfully', [
@@ -259,7 +271,10 @@ export default function EditProfileScreen() {
     return 'U';
   };
 
-  const displayPhotoUri = tempPhotoUri || profilePhotoUrl;
+  // Determine what to display: preview, current photo, or placeholder
+  const displayPhotoUri = deleteProfilePicture 
+    ? null 
+    : (tempPhotoUri || (profilePhotoUrl ? getProfilePictureUrl(profilePhotoUrl) : null));
 
   if (loading) {
     return (
@@ -275,7 +290,7 @@ export default function EditProfileScreen() {
       
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
+        <TouchableOpacity onPress={handleCancel}>
           <Text style={styles.cancelButton}>Cancel</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Settings</Text>

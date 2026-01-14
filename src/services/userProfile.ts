@@ -54,7 +54,7 @@ export async function checkUsernameAvailability(
   username: string
 ): Promise<{ available: boolean; error: any }> {
   try {
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from('user_profiles')
       .select('username')
       .eq('username', username.toLowerCase())
@@ -68,7 +68,7 @@ export async function checkUsernameAvailability(
       return { available: false, error };
     }
 
-    // If data exists, username is taken
+    // If no error, username is taken
     return { available: false, error: null };
   } catch (error) {
     console.error('Exception checking username:', error);
@@ -142,13 +142,57 @@ export async function updateUserProfile(
 }
 
 /**
+ * Delete old profile picture from storage before uploading a new one
+ * This ensures only one profile picture exists per user
+ */
+async function deleteOldProfilePicture(userId: string): Promise<{ success: boolean; error: any }> {
+  try {
+    // Get the current profile to find the existing profile picture path
+    const { data: profile, error: fetchError } = await supabase
+      .from('user_profiles')
+      .select('profile_photo_url')
+      .eq('user_id', userId)
+      .single();
+
+    // Suppress unused variable warning - we check fetchError below
+    void profile;
+
+    if (fetchError && fetchError.code !== 'PGRST116') {
+      // PGRST116 is "no rows returned" - that's OK, means no profile yet
+      console.error('Error fetching profile for deletion:', fetchError);
+      return { success: false, error: fetchError };
+    }
+
+    // If there's an existing profile picture, delete it
+    if (profile?.profile_photo_url) {
+      const deleteResult = await deleteProfilePhoto(profile.profile_photo_url);
+      if (!deleteResult.success) {
+        console.warn('Failed to delete old profile picture, but continuing with upload:', deleteResult.error);
+        // Don't throw - we can still proceed with upload
+        // The old file will remain orphaned but new file will be primary
+      } else {
+        console.log('✓ Old profile picture deleted successfully');
+      }
+    }
+
+    return { success: true, error: null };
+  } catch (error) {
+    console.error('Exception in deleteOldProfilePicture:', error);
+    // Don't throw - allow the upload to continue
+    return { success: false, error };
+  }
+}
+
+/**
  * Upload profile photo to Supabase Storage
  * Uses expo-file-system for reliable cross-platform file reading
+ * Uses timestamped filename pattern: {userId}/{userId}-{timestamp}.{ext}
+ * Deletes old profile picture before uploading new one
  */
 export async function uploadProfilePhoto(
   userId: string,
   imageUri: string
-): Promise<{ url: string | null; error: any }> {
+): Promise<{ url: string | null; path: string | null; error: any }> {
   try {
     console.log('=== UPLOAD PROFILE PHOTO START ===');
     console.log('1. Image URI:', imageUri);
@@ -164,32 +208,64 @@ export async function uploadProfilePhoto(
     
     if (!session || session.user.id !== userId) {
       console.error('3. ERROR: Authentication failed');
-      return { url: null, error: new Error('User not authenticated or user ID mismatch') };
+      return { url: null, path: null, error: new Error('User not authenticated or user ID mismatch') };
     }
     console.log('3. ✓ Authentication OK');
 
+    // Get file info to validate type and size
+    const fileInfo = await FileSystem.getInfoAsync(imageUri);
+    if (!fileInfo.exists) {
+      console.error('4. ERROR: File does not exist');
+      return { url: null, path: null, error: new Error('Image file does not exist') };
+    }
+
+    // Validate file size (max 5MB)
+    const maxSizeBytes = 5 * 1024 * 1024; // 5MB
+    if (fileInfo.size && fileInfo.size > maxSizeBytes) {
+      console.error('4. ERROR: File too large:', fileInfo.size);
+      return { url: null, path: null, error: new Error('Image file is too large. Maximum size is 5MB.') };
+    }
+    console.log('4. ✓ File size OK:', fileInfo.size, 'bytes');
+
     // Read file using expo-file-system (reliable across all platforms and build types)
-    console.log('4. Reading file with FileSystem...');
-    console.log('4a. File URI:', imageUri);
+    console.log('5. Reading file with FileSystem...');
+    console.log('5a. File URI:', imageUri);
     
     const base64 = await FileSystem.readAsStringAsync(imageUri, {
       encoding: 'base64',
     });
 
-    console.log('5. File read result:', {
+    console.log('6. File read result:', {
       hasBase64: !!base64,
       base64Length: base64?.length || 0,
       firstChars: base64?.substring(0, 50) || 'none',
     });
 
     if (!base64 || base64.length === 0) {
-      console.error('5. ERROR: Base64 is empty!');
-      return { url: null, error: new Error('Failed to read image file') };
+      console.error('6. ERROR: Base64 is empty!');
+      return { url: null, path: null, error: new Error('Failed to read image file') };
     }
-    console.log('5. ✓ File read successfully, length:', base64.length);
+    console.log('6. ✓ File read successfully, length:', base64.length);
 
-    // Determine file extension and MIME type
-    const fileExt = imageUri.split('.').pop()?.toLowerCase() || 'jpg';
+    // Determine file extension and MIME type from URI
+    // Extract extension from URI (handles various formats like file:///path/image.jpg or content://...)
+    let fileExt = 'jpg'; // default
+    const uriLower = imageUri.toLowerCase();
+    const supportedExtensions = ['jpg', 'jpeg', 'png', 'webp'];
+    
+    for (const ext of supportedExtensions) {
+      if (uriLower.includes(`.${ext}`)) {
+        fileExt = ext === 'jpeg' ? 'jpg' : ext; // normalize jpeg to jpg
+        break;
+      }
+    }
+
+    // Validate file type
+    if (!supportedExtensions.includes(fileExt) && !supportedExtensions.includes(fileExt + 'eg')) {
+      console.error('7. ERROR: Unsupported file type:', fileExt);
+      return { url: null, path: null, error: new Error('Unsupported image format. Please use JPG, PNG, or WEBP.') };
+    }
+
     const mimeTypes: Record<string, string> = {
       jpg: 'image/jpeg',
       jpeg: 'image/jpeg',
@@ -197,19 +273,19 @@ export async function uploadProfilePhoto(
       webp: 'image/webp',
     };
     const contentType = mimeTypes[fileExt] || 'image/jpeg';
-    console.log('6. File info:', { fileExt, contentType });
+    console.log('7. File info:', { fileExt, contentType });
 
     // Convert base64 to Uint8Array for upload
-    console.log('7. Converting base64 to bytes...');
-    console.log('7a. Checking if atob is available:', typeof atob !== 'undefined');
+    console.log('8. Converting base64 to bytes...');
+    console.log('8a. Checking if atob is available:', typeof atob !== 'undefined');
     
     let binaryString: string;
     try {
       if (typeof atob !== 'undefined') {
         binaryString = atob(base64);
-        console.log('7b. Used atob, binary string length:', binaryString.length);
+        console.log('8b. Used atob, binary string length:', binaryString.length);
       } else {
-        console.log('7b. atob not available, using manual decode');
+        console.log('8b. atob not available, using manual decode');
         // Manual base64 decoding
         const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
         let output = '';
@@ -227,11 +303,11 @@ export async function uploadProfilePhoto(
           if (enc4 !== 64) output += String.fromCharCode(chr3);
         }
         binaryString = output;
-        console.log('7b. Manual decode complete, binary string length:', binaryString.length);
+        console.log('8b. Manual decode complete, binary string length:', binaryString.length);
       }
     } catch (decodeError) {
-      console.error('7. ERROR: Failed to decode base64:', decodeError);
-      return { url: null, error: decodeError };
+      console.error('8. ERROR: Failed to decode base64:', decodeError);
+      return { url: null, path: null, error: decodeError };
     }
 
     const bytes = new Uint8Array(binaryString.length);
@@ -239,37 +315,48 @@ export async function uploadProfilePhoto(
       bytes[i] = binaryString.charCodeAt(i);
     }
     
-    console.log('8. Bytes conversion result:', {
+    console.log('9. Bytes conversion result:', {
       bytesLength: bytes.length,
       firstBytes: Array.from(bytes.slice(0, 10)),
     });
 
     if (bytes.length === 0) {
-      console.error('8. ERROR: Bytes array is empty!');
-      return { url: null, error: new Error('Failed to convert image to bytes') };
+      console.error('9. ERROR: Bytes array is empty!');
+      return { url: null, path: null, error: new Error('Failed to convert image to bytes') };
     }
-    console.log('8. ✓ Bytes conversion successful, length:', bytes.length);
+    console.log('9. ✓ Bytes conversion successful, length:', bytes.length);
 
-    // Generate unique filename with user folder structure
-    const fileName = `${Date.now()}.${fileExt}`;
+    // Step 1: Delete old profile picture before uploading new one
+    console.log('10. Deleting old profile picture...');
+    const deleteResult = await deleteOldProfilePicture(userId);
+    if (deleteResult.error) {
+      console.warn('10. Warning: Could not delete old picture, but continuing:', deleteResult.error);
+    } else {
+      console.log('10. ✓ Old profile picture deletion completed');
+    }
+
+    // Step 2: Create timestamped filename pattern: {userId}/{userId}-{timestamp}.{ext}
+    const timestamp = Date.now();
+    const fileName = `${userId}-${timestamp}.${fileExt}`;
     const filePath = `${userId}/${fileName}`;
-    console.log('9. Upload path:', filePath);
+    console.log('11. Upload path:', filePath);
+    console.log('11a. Timestamped filename:', fileName);
 
-    // Upload to Supabase Storage
-    console.log('10. Uploading to Supabase Storage...');
-    console.log('10a. Bucket: profile-photos');
-    console.log('10b. Path:', filePath);
-    console.log('10c. Content-Type:', contentType);
-    console.log('10d. Bytes length:', bytes.length);
+    // Step 3: Upload the new profile picture
+    console.log('12. Uploading to Supabase Storage...');
+    console.log('12a. Bucket: profile-photos');
+    console.log('12b. Path:', filePath);
+    console.log('12c. Content-Type:', contentType);
+    console.log('12d. Bytes length:', bytes.length);
     
     const { data, error } = await supabase.storage
       .from('profile-photos')
       .upload(filePath, bytes, {
         contentType,
-        upsert: false,
+        cacheControl: '3600',
       });
 
-    console.log('11. Upload response:', {
+    console.log('13. Upload response:', {
       hasData: !!data,
       hasError: !!error,
       errorMessage: error?.message,
@@ -278,42 +365,61 @@ export async function uploadProfilePhoto(
     });
 
     if (error) {
-      console.error('11. ERROR: Upload failed:', error);
-      return { url: null, error };
+      console.error('13. ERROR: Upload failed:', error);
+      return { url: null, path: null, error };
     }
-    console.log('11. ✓ Upload successful!');
+    console.log('13. ✓ Upload successful!');
 
     // Get public URL
     const { data: urlData } = supabase.storage
       .from('profile-photos')
       .getPublicUrl(filePath);
 
-    console.log('12. Public URL:', urlData.publicUrl);
+    console.log('14. Public URL:', urlData.publicUrl);
+    console.log('14a. Storage path:', filePath);
     console.log('=== UPLOAD PROFILE PHOTO SUCCESS ===');
-    return { url: urlData.publicUrl, error: null };
+    
+    // Return both URL and path - path is stored in DB, URL is for display
+    return { url: urlData.publicUrl, path: filePath, error: null };
   } catch (error) {
     console.error('=== EXCEPTION IN UPLOAD PROFILE PHOTO ===');
     console.error('Error:', error);
     console.error('Error message:', error instanceof Error ? error.message : String(error));
     console.error('Stack:', error instanceof Error ? error.stack : 'No stack');
-    return { url: null, error };
+    return { url: null, path: null, error };
   }
 }
 
 /**
  * Delete profile photo from Supabase Storage
+ * Works with both full URLs and storage paths
+ * Supports both old format ({userId}/profile.{ext}) and new format ({userId}/{userId}-{timestamp}.{ext})
  */
 export async function deleteProfilePhoto(
-  photoUrl: string
+  photoUrlOrPath: string
 ): Promise<{ success: boolean; error: any }> {
   try {
-    // Extract file path from URL
-    const urlParts = photoUrl.split('/profile-photos/');
-    if (urlParts.length < 2) {
-      return { success: false, error: 'Invalid photo URL' };
+    let filePath: string;
+
+    // Check if it's a full URL or just a path
+    if (photoUrlOrPath.includes('/profile-photos/')) {
+      // Extract file path from URL (format: .../profile-photos/{userId}/...)
+      const urlParts = photoUrlOrPath.split('/profile-photos/');
+      if (urlParts.length < 2) {
+        return { success: false, error: 'Invalid photo URL' };
+      }
+      // Path should be just {userId}/..., not including bucket name
+      const pathPart = urlParts[1];
+      if (!pathPart) {
+        return { success: false, error: 'Invalid photo URL - no path found' };
+      }
+      filePath = pathPart.split('?')[0] || ''; // Remove query params if any
+    } else {
+      // Assume it's already a storage path (format: {userId}/...)
+      filePath = photoUrlOrPath;
     }
 
-    const filePath = `profile-photos/${urlParts[1]}`;
+    console.log('Deleting profile photo from path:', filePath);
 
     // Delete from Supabase Storage
     const { error } = await supabase.storage
@@ -325,10 +431,124 @@ export async function deleteProfilePhoto(
       return { success: false, error };
     }
 
+    console.log('✓ Profile photo deleted successfully');
     return { success: true, error: null };
   } catch (error) {
     console.error('Exception deleting profile photo:', error);
     return { success: false, error };
+  }
+}
+
+/**
+ * Get profile picture public URL from storage path or full URL
+ * @param profilePicturePathOrUrl Storage path (e.g., "user-123/user-123-1704123456789.jpg") or full URL
+ * @returns Public URL or null if path is invalid
+ */
+export function getProfilePictureUrl(profilePicturePathOrUrl: string | null): string | null {
+  if (!profilePicturePathOrUrl) return null;
+  
+  // If it's already a full URL, return it (for backward compatibility)
+  if (profilePicturePathOrUrl.startsWith('http://') || profilePicturePathOrUrl.startsWith('https://')) {
+    return profilePicturePathOrUrl;
+  }
+  
+  // Otherwise, generate public URL from storage path
+  const { data } = supabase.storage
+    .from('profile-photos')
+    .getPublicUrl(profilePicturePathOrUrl);
+  
+  return data.publicUrl;
+}
+
+/**
+ * Save profile with profile picture handling
+ * Handles three scenarios: upload new, delete, or no change
+ */
+export async function saveProfileWithPicture(
+  userId: string,
+  profileData: {
+    firstName?: string;
+    lastName?: string;
+    username?: string;
+    bio?: string | null;
+    readingInterests?: string[];
+  },
+  newImageUri: string | null,
+  deleteProfilePicture: boolean
+): Promise<{ profile: UserProfile | null; error: any }> {
+  try {
+    let newProfilePhotoUrl: string | null = null;
+
+    // Get current profile to preserve existing photo if no changes
+    const { data: currentProfile } = await supabase
+      .from('user_profiles')
+      .select('profile_photo_url')
+      .eq('user_id', userId)
+      .single();
+
+    const currentPhotoUrl = (currentProfile as { profile_photo_url: string | null } | null)?.profile_photo_url || null;
+
+    // Handle profile picture changes
+    if (deleteProfilePicture) {
+      // Scenario 1: User wants to delete their profile picture
+      console.log('Deleting profile picture...');
+      if (currentPhotoUrl) {
+        await deleteProfilePhoto(currentPhotoUrl);
+      }
+      newProfilePhotoUrl = null;
+    } else if (newImageUri) {
+      // Scenario 2: User is uploading a new profile picture
+      console.log('Uploading new profile picture...');
+      const uploadResult = await uploadProfilePhoto(userId, newImageUri);
+      
+      if (uploadResult.error) {
+        return { profile: null, error: uploadResult.error };
+      }
+      
+      newProfilePhotoUrl = uploadResult.url;
+      // Note: We store the full URL in profile_photo_url for backward compatibility
+      // The storage path is available in uploadResult.path if needed in the future
+    } else {
+      // Scenario 3: No change to profile picture
+      newProfilePhotoUrl = currentPhotoUrl;
+    }
+
+    // Update the profile in the database
+    const updateData: any = {
+      updated_at: new Date().toISOString(),
+    };
+
+    if (profileData.firstName !== undefined) updateData.first_name = profileData.firstName;
+    if (profileData.lastName !== undefined) updateData.last_name = profileData.lastName;
+    if (profileData.username !== undefined) updateData.username = profileData.username;
+    if (profileData.bio !== undefined) updateData.bio = profileData.bio;
+    if (profileData.readingInterests !== undefined)
+      updateData.reading_interests = profileData.readingInterests;
+    
+    // Store the URL in profile_photo_url
+    // For new uploads, this is the full public URL
+    // For deletions, this is null
+    // For no change, we don't update this field
+    if (deleteProfilePicture || newImageUri) {
+      updateData.profile_photo_url = newProfilePhotoUrl;
+    }
+
+    const { data: profile, error } = await supabase
+      .from('user_profiles')
+      .update(updateData)
+      .eq('user_id', userId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error updating user profile:', error);
+      return { profile: null, error };
+    }
+
+    return { profile: profile as UserProfile, error: null };
+  } catch (error) {
+    console.error('Exception saving profile with picture:', error);
+    return { profile: null, error };
   }
 }
 
