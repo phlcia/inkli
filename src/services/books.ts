@@ -1480,6 +1480,70 @@ export async function removeBookFromShelf(
 }
 
 /**
+ * Redistribute ranks for all books in a specific rating category
+ * Called when a book with max score (10.0, 6.5, or 3.5) is removed
+ */
+export async function redistributeRanksForRating(
+  userId: string,
+  rating: 'liked' | 'fine' | 'disliked'
+): Promise<{ error: any }> {
+  try {
+    // Tier score boundaries
+    const TIER_BOUNDARIES = {
+      disliked: { min: 0, max: 3.5 },
+      fine: { min: 3.5, max: 6.5 },
+      liked: { min: 6.5, max: 10.0 },
+    } as const;
+
+    const roundScore = (score: number): number => {
+      return Math.round(score * 1000) / 1000;
+    };
+
+    // Get all books with this rating for the user that have rank_score
+    const { data: books, error: fetchError } = await supabase
+      .from('user_books')
+      .select('id, rank_score')
+      .eq('user_id', userId)
+      .eq('rating', rating)
+      .eq('status', 'read')
+      .not('rank_score', 'is', null)
+      .order('rank_score', { ascending: false });
+
+    if (fetchError) {
+      console.error('Error fetching books for redistribution:', fetchError);
+      return { error: fetchError };
+    }
+
+    if (!books || books.length === 0) {
+      // No books to redistribute
+      return { error: null };
+    }
+
+    // Determine tier boundaries
+    const tier = rating === 'liked' ? 'liked' : rating === 'fine' ? 'fine' : 'disliked';
+    const { min, max } = TIER_BOUNDARIES[tier];
+    const n = books.length;
+
+    // Calculate new scores: range*(n)/n + min, range*(n-1)/n + min, ..., range*1/n + min
+    const range = max - min;
+    const updatedBooks = books.map((book, index) => ({
+      id: book.id,
+      score: roundScore(range * (n - index) / n + min),
+    }));
+
+    // Use updateTierScoresBatch with touchUpdatedAt: false to avoid updating timestamps
+    await updateTierScoresBatch(userId, tier, updatedBooks, {
+      touchUpdatedAt: false,
+    });
+
+    return { error: null };
+  } catch (error) {
+    console.error('Error redistributing ranks:', error);
+    return { error };
+  }
+}
+
+/**
  * Get book counts by status for a user
  */
 export async function getUserBookCounts(

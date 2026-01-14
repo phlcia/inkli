@@ -16,7 +16,7 @@ import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navig
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, typography } from '../../../config/theme';
 import { BookCoverPlaceholder } from '../components/BookCoverPlaceholder';
-import { addBookToShelf, checkUserHasBook, getBookCircles, getBookShelfCounts, removeBookFromShelf, getFriendsRankingsForBook, updateBookStatus, BookCirclesResult, BookShelfCounts, formatCount, UserBook } from '../../../services/books';
+import { addBookToShelf, checkUserHasBook, getBookCircles, getBookShelfCounts, removeBookFromShelf, getFriendsRankingsForBook, updateBookStatus, redistributeRanksForRating, BookCirclesResult, BookShelfCounts, formatCount, UserBook } from '../../../services/books';
 import { useAuth } from '../../../contexts/AuthContext';
 import { supabase } from '../../../config/supabase';
 import { SearchStackParamList } from '../../../navigation/SearchStackNavigator';
@@ -429,12 +429,44 @@ export default function BookDetailScreen() {
           
           if (checkResult.exists && checkResult.userBookId) {
             const shouldKeepDetails = status === 'read';
-            const { error } = shouldKeepDetails
-              ? await updateBookStatus(checkResult.userBookId, null, { clearRankScore: true })
-              : await removeBookFromShelf(checkResult.userBookId);
             
-            if (error) {
-              throw error;
+            // If removing from "read" shelf, check if redistribution is needed
+            if (shouldKeepDetails) {
+              // Fetch the book's rank_score and rating before removing
+              const { data: userBookData } = await supabase
+                .from('user_books')
+                .select('rank_score, rating')
+                .eq('id', checkResult.userBookId)
+                .single();
+              
+              const rankScore = userBookData?.rank_score;
+              const rating = userBookData?.rating as 'liked' | 'fine' | 'disliked' | null;
+              
+              // Remove the book - use touchUpdatedAt: false to skip activity card creation
+              const { error } = await updateBookStatus(checkResult.userBookId, null, { 
+                clearRankScore: true,
+                touchUpdatedAt: false,
+              });
+              
+              if (error) {
+                throw error;
+              }
+              
+              // If the book had a max score (10.0, 6.5, or 3.5) and a rating, redistribute
+              // Use Math.abs to handle floating point precision issues
+              if (rating && rankScore !== null && (
+                (rating === 'liked' && Math.abs(rankScore - 10.0) < 0.001) ||
+                (rating === 'fine' && Math.abs(rankScore - 6.5) < 0.001) ||
+                (rating === 'disliked' && Math.abs(rankScore - 3.5) < 0.001)
+              )) {
+                // Redistribute ranks for this rating category
+                await redistributeRanksForRating(user.id, rating);
+              }
+            } else {
+              const { error } = await removeBookFromShelf(checkResult.userBookId);
+              if (error) {
+                throw error;
+              }
             }
             
             // Update UI
