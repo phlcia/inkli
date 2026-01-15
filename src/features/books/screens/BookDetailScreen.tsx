@@ -17,7 +17,7 @@ import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navig
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, typography } from '../../../config/theme';
 import { BookCoverPlaceholder } from '../components/BookCoverPlaceholder';
-import { addBookToShelf, checkUserHasBook, getBookCircles, getBookShelfCounts, removeBookFromShelf, getFriendsRankingsForBook, updateBookStatus, redistributeRanksForRating, BookCirclesResult, BookShelfCounts, formatCount, UserBook, updateUserBookDetails } from '../../../services/books';
+import { addBookToShelf, checkUserHasBook, getBookCircles, getBookShelfCounts, removeBookFromShelf, getFriendsRankingsForBook, updateBookStatus, redistributeRanksForRating, BookCirclesResult, BookShelfCounts, formatCount, UserBook, updateUserBookDetails, getReadSessions, addReadSession, updateReadSession, deleteReadSession, ReadSession } from '../../../services/books';
 import { useAuth } from '../../../contexts/AuthContext';
 import { supabase } from '../../../config/supabase';
 import { SearchStackParamList } from '../../../navigation/SearchStackNavigator';
@@ -58,12 +58,12 @@ export default function BookDetailScreen() {
   // "What you think" section state
   const [userBookId, setUserBookId] = useState<string | null>(null);
   const [userNotes, setUserNotes] = useState<string>('');
-  const [startedDate, setStartedDate] = useState<string | null>(null);
-  const [finishedDate, setFinishedDate] = useState<string | null>(null);
+  const [readSessions, setReadSessions] = useState<ReadSession[]>([]);
   const [savingNotes, setSavingNotes] = useState(false);
   const [savingDates, setSavingDates] = useState(false);
   const [notesSaved, setNotesSaved] = useState(false);
   const [showDateRangePickerModal, setShowDateRangePickerModal] = useState(false);
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const notesSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const coverUrl = book.cover_url;
@@ -147,7 +147,7 @@ export default function BookDetailScreen() {
       if (existingBook) {
         const { data } = await supabase
           .from('user_books')
-          .select('id, status, rank_score, notes, started_date, finished_date')
+          .select('id, status, rank_score, notes')
           .eq('user_id', user.id)
           .eq('book_id', existingBook.id)
           .single();
@@ -162,23 +162,28 @@ export default function BookDetailScreen() {
           // Set "What you think" section data
           setUserBookId(data.id);
           setUserNotes(data.notes || '');
-          setStartedDate(data.started_date || null);
-          setFinishedDate(data.finished_date || null);
+          
+          // Fetch read sessions
+          try {
+            const sessions = await getReadSessions(data.id);
+            setReadSessions(sessions);
+          } catch (error) {
+            console.error('Error fetching read sessions:', error);
+            setReadSessions([]);
+          }
         } else {
           setCurrentStatus(null);
           setUserRankScore(null);
           setUserBookId(null);
           setUserNotes('');
-          setStartedDate(null);
-          setFinishedDate(null);
+          setReadSessions([]);
         }
       } else {
         setCurrentStatus(null);
         setUserRankScore(null);
         setUserBookId(null);
         setUserNotes('');
-        setStartedDate(null);
-        setFinishedDate(null);
+        setReadSessions([]);
       }
     } catch (error) {
       // Book doesn't exist yet, that's fine
@@ -187,8 +192,7 @@ export default function BookDetailScreen() {
       setUserRankScore(null);
       setUserBookId(null);
       setUserNotes('');
-      setStartedDate(null);
-      setFinishedDate(null);
+      setReadSessions([]);
     }
   }, [user, book.open_library_id, book.google_books_id]);
 
@@ -620,7 +624,7 @@ export default function BookDetailScreen() {
     return animatedIcon === status;
   };
 
-  const metadata = book.page_count ? `${book.page_count} pages` : null;
+  const metadata = book.page_count ? `${book.page_count}p` : null;
 
   const formatCircleScore = (value: number | null | undefined) => {
     if (circleLoading || circleError) return '--';
@@ -736,19 +740,9 @@ export default function BookDetailScreen() {
     void saveNotes(userNotes);
   }, [userNotes, saveNotes]);
 
-  // Save dates
-  const saveDates = React.useCallback(async (newStartedDate: string | null, newFinishedDate: string | null) => {
-    if (!user) return;
-
-    // Validate: finished_date should not be before started_date
-    if (newStartedDate && newFinishedDate && newFinishedDate < newStartedDate) {
-      setToastMessage('Finished date must be after started date');
-      return;
-    }
-
-    // If book not on shelf, we need to add it first
-    if (!userBookId) {
-      // For now, show message that book needs to be on shelf
+  // Add a new read session
+  const handleAddReadSession = React.useCallback(async (newStartDate: string | null, newEndDate: string | null) => {
+    if (!user || !userBookId) {
       setToastMessage('Please add this book to your shelf first');
       return;
     }
@@ -756,41 +750,131 @@ export default function BookDetailScreen() {
     try {
       setSavingDates(true);
       
-      const { error } = await updateUserBookDetails(userBookId, user.id, {
-        started_date: newStartedDate,
-        finished_date: newFinishedDate,
+      const { data, error } = await addReadSession(userBookId, {
+        started_date: newStartDate,
+        finished_date: newEndDate,
       });
 
       if (error) {
-        console.error('Error saving dates:', error);
-        setToastMessage('Couldn\'t save dates. Please try again.');
+        console.error('Error adding read session:', error);
+        setToastMessage(error.message || 'Couldn\'t save dates. Please try again.');
         setSavingDates(false);
         return;
       }
 
-      setStartedDate(newStartedDate);
-      setFinishedDate(newFinishedDate);
+      if (data) {
+        setReadSessions((prev) => [data, ...prev]);
+      }
       setSavingDates(false);
 
       // Refresh book status to ensure sync
       void refreshBookStatus();
     } catch (error) {
-      console.error('Error saving dates:', error);
+      console.error('Error adding read session:', error);
       setToastMessage('Couldn\'t save dates. Please try again.');
       setSavingDates(false);
     }
   }, [user, userBookId, refreshBookStatus]);
 
+  // Update an existing read session
+  const handleUpdateReadSession = React.useCallback(async (sessionId: string, newStartDate: string | null, newEndDate: string | null) => {
+    if (!user) return;
+
+    try {
+      setSavingDates(true);
+      
+      const { data, error } = await updateReadSession(sessionId, {
+        started_date: newStartDate,
+        finished_date: newEndDate,
+      });
+
+      if (error) {
+        console.error('Error updating read session:', error);
+        setToastMessage(error.message || 'Couldn\'t update dates. Please try again.');
+        setSavingDates(false);
+        return;
+      }
+
+      if (data) {
+        setReadSessions((prev) => 
+          prev.map((session) => session.id === sessionId ? data : session)
+        );
+      }
+      setSavingDates(false);
+
+      // Refresh book status to ensure sync
+      void refreshBookStatus();
+    } catch (error) {
+      console.error('Error updating read session:', error);
+      setToastMessage('Couldn\'t update dates. Please try again.');
+      setSavingDates(false);
+    }
+  }, [user, refreshBookStatus]);
+
+  // Delete a read session
+  const handleDeleteReadSession = React.useCallback(async (sessionId: string) => {
+    if (!user) return;
+
+    try {
+      setSavingDates(true);
+      
+      const { error } = await deleteReadSession(sessionId);
+
+      if (error) {
+        console.error('Error deleting read session:', error);
+        setToastMessage('Couldn\'t delete dates. Please try again.');
+        setSavingDates(false);
+        return;
+      }
+
+      setReadSessions((prev) => prev.filter((session) => session.id !== sessionId));
+      setSavingDates(false);
+
+      // Refresh book status to ensure sync
+      void refreshBookStatus();
+    } catch (error) {
+      console.error('Error deleting read session:', error);
+      setToastMessage('Couldn\'t delete dates. Please try again.');
+      setSavingDates(false);
+    }
+  }, [user, refreshBookStatus]);
+
   // Handle date range picker selection
   const handleDateRangeSelected = React.useCallback((newStartDate: string | null, newEndDate: string | null) => {
-    void saveDates(newStartDate, newEndDate);
+    if (editingSessionId) {
+      void handleUpdateReadSession(editingSessionId, newStartDate, newEndDate);
+    } else {
+      void handleAddReadSession(newStartDate, newEndDate);
+    }
     setShowDateRangePickerModal(false);
-  }, [saveDates]);
+    setEditingSessionId(null);
+  }, [editingSessionId, handleAddReadSession, handleUpdateReadSession]);
 
-  // Open date range picker
+  // Open date range picker (for adding new session)
   const openDateRangePicker = React.useCallback(() => {
+    setEditingSessionId(null);
     setShowDateRangePickerModal(true);
   }, []);
+
+  // Open date range picker (for editing existing session)
+  const openDateRangePickerForEdit = React.useCallback((sessionId: string) => {
+    setEditingSessionId(sessionId);
+    setShowDateRangePickerModal(true);
+  }, []);
+
+  // Sort sessions: unfinished first, then by most recent finished date
+  const sortedSessions = React.useMemo(() => {
+    return [...readSessions].sort((a, b) => {
+      // Unfinished sessions (currently reading) come first
+      if (!a.finished_date && b.finished_date) return -1;
+      if (a.finished_date && !b.finished_date) return 1;
+      
+      // Both unfinished or both finished - sort by most recent date
+      const dateA = a.finished_date || a.started_date || a.created_at;
+      const dateB = b.finished_date || b.started_date || b.created_at;
+      return new Date(dateB).getTime() - new Date(dateA).getTime();
+    });
+  }, [readSessions]);
 
   // Cleanup notes save timer on unmount
   useEffect(() => {
@@ -1116,45 +1200,54 @@ export default function BookDetailScreen() {
             
             {/* Add shelves - Placeholder */}
             <View style={styles.whatYouThinkSlot}>
-              <Text style={styles.whatYouThinkSlotLabel}>Shelf</Text>
+              <Text style={styles.whatYouThinkSlotLabel}>Add to shelf</Text>
               <TouchableOpacity 
                 style={[styles.whatYouThinkSlotContent, styles.disabledSlot]}
                 disabled={true}
               >
-                <Text style={styles.disabledSlotText}>Coming soon - Add to shelf</Text>
+                <Text style={styles.disabledSlotText}>Coming soon!</Text>
               </TouchableOpacity>
             </View>
 
             {/* Add read dates */}
             <View style={styles.whatYouThinkSlot}>
               <Text style={styles.whatYouThinkSlotLabel}>Read dates</Text>
-              {startedDate || finishedDate ? (
-                <View style={styles.dateChip}>
-                  <Text style={styles.dateChipText}>
-                    {startedDate ? formatDateForDisplay(startedDate) : '...'} - {finishedDate ? formatDateForDisplay(finishedDate) : '...'}
-                  </Text>
-                  <TouchableOpacity
-                    onPress={() => {
-                      setStartedDate(null);
-                      setFinishedDate(null);
-                      void saveDates(null, null);
-                    }}
-                    style={styles.dateChipClose}
-                  >
-                    <Text style={styles.dateChipCloseText}>×</Text>
-                  </TouchableOpacity>
+
+              {/* Date range chips */}
+              {sortedSessions.length > 0 ? (
+                <View style={styles.dateChipsContainer}>
+                  {sortedSessions.map((session) => (
+                    <View key={session.id} style={styles.dateChip}>
+                      <TouchableOpacity
+                        onPress={() => openDateRangePickerForEdit(session.id)}
+                        style={styles.dateChipContent}
+                      >
+                        <Text style={styles.dateChipText}>
+                          {session.started_date ? formatDateForDisplay(session.started_date) : '...'} - {session.finished_date ? formatDateForDisplay(session.finished_date) : '...'}
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => handleDeleteReadSession(session.id)}
+                        style={styles.dateChipClose}
+                        disabled={savingDates}
+                      >
+                        <Text style={styles.dateChipCloseText}>×</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
                 </View>
               ) : (
                 <Text style={styles.whatYouThinkSlotPlaceholder}>
                   Add when you started/finished reading
                 </Text>
               )}
+
               <TouchableOpacity
-                style={[styles.dateRangeButton, (startedDate || finishedDate) && styles.dateRangeButtonActive]}
+                style={[styles.dateRangeButton, readSessions.length > 0 && styles.dateRangeButtonActive]}
                 onPress={openDateRangePicker}
                 disabled={savingDates}
               >
-                <Text style={[styles.dateRangeButtonText, (startedDate || finishedDate) && styles.dateRangeButtonTextActive]}>
+                <Text style={[styles.dateRangeButtonText, readSessions.length > 0 && styles.dateRangeButtonTextActive]}>
                   Add read dates
                 </Text>
               </TouchableOpacity>
@@ -1294,11 +1387,12 @@ export default function BookDetailScreen() {
         visible={showDateRangePickerModal}
         onClose={() => {
           setShowDateRangePickerModal(false);
+          setEditingSessionId(null);
         }}
         onDateRangeSelected={handleDateRangeSelected}
-        initialStartDate={startedDate}
-        initialEndDate={finishedDate}
-        title="Select Read Dates"
+        initialStartDate={editingSessionId ? readSessions.find(s => s.id === editingSessionId)?.started_date || null : null}
+        initialEndDate={editingSessionId ? readSessions.find(s => s.id === editingSessionId)?.finished_date || null : null}
+        title={editingSessionId ? "Edit Read Dates" : "Select Read Dates"}
       />
 
     </View>
@@ -1712,6 +1806,24 @@ const styles = StyleSheet.create({
     color: colors.brownText,
     opacity: 0.7,
   },
+  readCountBadge: {
+    backgroundColor: '#E8F5E9',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+    marginBottom: 12,
+  },
+  readCountText: {
+    fontSize: 12,
+    fontFamily: typography.body,
+    fontWeight: '600',
+    color: '#2E7D32',
+  },
+  dateChipsContainer: {
+    marginBottom: 12,
+    gap: 8,
+  },
   dateChip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1720,11 +1832,12 @@ const styles = StyleSheet.create({
     paddingRight: 12,
     paddingVertical: 6,
     borderRadius: 16,
-    marginBottom: 12,
+  },
+  dateChipContent: {
+    flex: 1,
   },
   dateChipText: {
     fontSize: 12,
-    flex: 1,
     fontFamily: typography.body,
     color: colors.white,
     fontWeight: '500',

@@ -91,6 +91,15 @@ export interface Book {
   created_at: string;
 }
 
+export interface ReadSession {
+  id: string;
+  user_book_id: string;
+  started_date: string | null;
+  finished_date: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface UserBook {
   id: string;
   user_id: string;
@@ -99,8 +108,9 @@ export interface UserBook {
   status: 'read' | 'currently_reading' | 'want_to_read' | null;
   rating?: 'liked' | 'fine' | 'disliked';
   notes?: string | null;
-  started_date?: string | null;
-  finished_date?: string | null;
+  started_date?: string | null; // DEPRECATED: Use read_sessions instead
+  finished_date?: string | null; // DEPRECATED: Use read_sessions instead
+  read_sessions?: ReadSession[]; // NEW: Multiple date ranges
   likes_count?: number | null;
   comments_count?: number | null;
   created_at: string;
@@ -1338,6 +1348,9 @@ function getDefaultScoreForRating(rating: 'liked' | 'fine' | 'disliked'): number
  * Update user book with rating, notes, and dates
  * If rating is set and rank_score is null, check if this is the first book in category
  * If so, set default score; otherwise leave null for ranking process
+ * 
+ * NOTE: started_date and finished_date are DEPRECATED. Use read_sessions (addReadSession, updateReadSession, deleteReadSession) instead.
+ * These parameters are kept for backward compatibility during migration period.
  */
 export async function updateUserBookDetails(
   userBookId: string,
@@ -1346,7 +1359,9 @@ export async function updateUserBookDetails(
     status?: 'read' | 'currently_reading' | 'want_to_read' | null;
     rating?: 'liked' | 'fine' | 'disliked' | null;
     notes?: string | null;
+    /** @deprecated Use read_sessions (addReadSession) instead */
     started_date?: string | null;
+    /** @deprecated Use read_sessions (addReadSession) instead */
     finished_date?: string | null;
   },
   options?: {
@@ -1381,7 +1396,12 @@ export async function updateUserBookDetails(
     const updateData: any = {
     };
 
-    if (options?.touchUpdatedAt !== false) {
+    // Only update timestamp when status (shelf) is being changed
+    // Notes, rating, and dates should NOT change the timestamp
+    if (updates.status !== undefined && options?.touchUpdatedAt !== false) {
+      updateData.updated_at = new Date().toISOString();
+    } else if (options?.touchUpdatedAt === true) {
+      // Explicitly requested to touch updated_at (for backward compatibility)
       updateData.updated_at = new Date().toISOString();
     }
 
@@ -1782,5 +1802,185 @@ export async function getFriendsRankingsForBook(
   } catch (error) {
     console.error('Error fetching friends rankings for book:', error);
     throw error;
+  }
+}
+
+/**
+ * Get all read sessions for a user_book
+ */
+export async function getReadSessions(
+  userBookId: string
+): Promise<ReadSession[]> {
+  try {
+    const { data, error } = await supabase
+      .from('user_book_read_sessions')
+      .select('*')
+      .eq('user_book_id', userBookId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    return (data || []) as ReadSession[];
+  } catch (error) {
+    console.error('Error fetching read sessions:', error);
+    throw error;
+  }
+}
+
+/**
+ * Add a new read session
+ * Validates that at least one date is provided and finished_date >= started_date
+ */
+export async function addReadSession(
+  userBookId: string,
+  dates: {
+    started_date?: string | null;
+    finished_date?: string | null;
+  }
+): Promise<{ data: ReadSession | null; error: any }> {
+  try {
+    // Validate at least one date is provided
+    if (!dates.started_date && !dates.finished_date) {
+      return { 
+        data: null, 
+        error: { message: 'At least one date (started or finished) must be provided' } 
+      };
+    }
+    
+    // Validate finished_date >= started_date if both provided
+    if (dates.started_date && dates.finished_date) {
+      if (new Date(dates.finished_date) < new Date(dates.started_date)) {
+        return { 
+          data: null, 
+          error: { message: 'Finished date cannot be before started date' } 
+        };
+      }
+    }
+    
+    // Insert session
+    const { data, error } = await supabase
+      .from('user_book_read_sessions')
+      .insert({
+        user_book_id: userBookId,
+        started_date: dates.started_date,
+        finished_date: dates.finished_date,
+      })
+      .select()
+      .single();
+    
+    // Note: We do NOT update user_books.updated_at here
+    // Only shelf status changes should update the timestamp
+    
+    return { data: data as ReadSession | null, error };
+  } catch (error) {
+    console.error('Error adding read session:', error);
+    return { data: null, error };
+  }
+}
+
+/**
+ * Update an existing read session
+ * Validates that at least one date is provided and finished_date >= started_date
+ */
+export async function updateReadSession(
+  sessionId: string,
+  dates: {
+    started_date?: string | null;
+    finished_date?: string | null;
+  }
+): Promise<{ data: ReadSession | null; error: any }> {
+  try {
+    // Get the user_book_id first to update updated_at later
+    const { data: session } = await supabase
+      .from('user_book_read_sessions')
+      .select('user_book_id')
+      .eq('id', sessionId)
+      .single();
+
+    if (!session) {
+      return { 
+        data: null, 
+        error: { message: 'Read session not found' } 
+      };
+    }
+
+    // Validate at least one date is provided
+    if (dates.started_date === null && dates.finished_date === null) {
+      return { 
+        data: null, 
+        error: { message: 'At least one date (started or finished) must be provided' } 
+      };
+    }
+    
+    // Validate finished_date >= started_date if both provided
+    if (dates.started_date && dates.finished_date) {
+      if (new Date(dates.finished_date) < new Date(dates.started_date)) {
+        return { 
+          data: null, 
+          error: { message: 'Finished date cannot be before started date' } 
+        };
+      }
+    }
+    
+    // Update session
+    const updateData: any = {
+      updated_at: new Date().toISOString(),
+    };
+    
+    if (dates.started_date !== undefined) {
+      updateData.started_date = dates.started_date;
+    }
+    if (dates.finished_date !== undefined) {
+      updateData.finished_date = dates.finished_date;
+    }
+    
+    const { data, error } = await supabase
+      .from('user_book_read_sessions')
+      .update(updateData)
+      .eq('id', sessionId)
+      .select()
+      .single();
+    
+    // Note: We do NOT update user_books.updated_at here
+    // Only shelf status changes should update the timestamp
+    
+    return { data: data as ReadSession | null, error };
+  } catch (error) {
+    console.error('Error updating read session:', error);
+    return { data: null, error };
+  }
+}
+
+/**
+ * Delete a read session
+ */
+export async function deleteReadSession(
+  sessionId: string
+): Promise<{ error: any }> {
+  try {
+    // Get the user_book_id first to update updated_at later
+    const { data: session } = await supabase
+      .from('user_book_read_sessions')
+      .select('user_book_id')
+      .eq('id', sessionId)
+      .single();
+
+    if (!session) {
+      return { error: { message: 'Read session not found' } };
+    }
+
+    // Delete session
+    const { error } = await supabase
+      .from('user_book_read_sessions')
+      .delete()
+      .eq('id', sessionId);
+    
+    // Note: We do NOT update user_books.updated_at here
+    // Only shelf status changes should update the timestamp
+    
+    return { error };
+  } catch (error) {
+    console.error('Error deleting read session:', error);
+    return { error };
   }
 }
