@@ -30,6 +30,7 @@ type RecentActivityCardProps = {
   hideBookInfo?: boolean;
 };
 
+
 export default function RecentActivityCard({
   userBook,
   actionText,
@@ -207,6 +208,11 @@ export default function RecentActivityCard({
                 <Text style={styles.cardBookTitle} onPress={onPressBookTitle || (() => onPressBook(userBook))}>
                   {book.title}
                 </Text>
+                {(userBook as any).read_count && (userBook as any).read_count > 1 && (
+                  <Text style={styles.readCountBadge}>
+                    {' '}({(userBook as any).read_count}x)
+                  </Text>
+                )}
               </Text>
             )}
           </View>
@@ -525,7 +531,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: typography.body,
     color: colors.brownText,
-    opacity: 0.8,
+  },
+  readCountBadge: {
+    fontSize: 16,
+    fontFamily: typography.body,
+    color: colors.primaryBlue,
+    fontWeight: '600',
   },
   likesRow: {
     flexDirection: 'row',

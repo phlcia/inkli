@@ -19,6 +19,7 @@ interface ActivityCardRow {
   user_book_notes: string | null;
   user_book_started_date: string | null;
   user_book_finished_date: string | null;
+  read_count: number; // NEW: Total number of reading sessions
   user_book_likes_count: number | null;
   user_book_comments_count: number | null;
   user_book_created_at: string;
@@ -55,7 +56,12 @@ const mapRowsToItems = (rows: ActivityCardRow[]): ActivityFeedItem[] =>
       created_at: row.user_book_created_at,
       updated_at: row.user_book_updated_at,
       book,
-    };
+      // Note: read_count is not part of UserBook interface but we'll add it as a computed property
+      // It will be accessed via (userBook as any).read_count in RecentActivityCard
+    } as UserBook & { read_count?: number };
+    
+    // Add read_count as a property
+    (userBook as any).read_count = row.read_count ?? 0;
 
     return {
       id: row.activity_id,
@@ -209,9 +215,74 @@ export async function fetchUserActivityCards(
 
   const rows = (data as UserActivityCardRow[]) || [];
 
+  // Fetch read sessions for all user_books to enrich the data with most recent dates
+  const userBookIds = rows
+    .map((row) => row.user_book_id)
+    .filter((id): id is string => Boolean(id));
+
+  // Get all read sessions for these user_books
+  const { data: readSessionsData } = userBookIds.length > 0 ? await supabase
+    .from('user_book_read_sessions')
+    .select('user_book_id, started_date, finished_date, created_at')
+    .in('user_book_id', userBookIds) : { data: null };
+
+  // Group read sessions by user_book_id and get the most recent one for each
+  const latestSessionsMap = new Map<string, { started_date: string | null; finished_date: string | null; read_count: number }>();
+  const readCountMap = new Map<string, number>();
+
+  if (readSessionsData && readSessionsData.length > 0) {
+    // Count total sessions per user_book
+    readSessionsData.forEach((session) => {
+      const count = readCountMap.get(session.user_book_id) || 0;
+      readCountMap.set(session.user_book_id, count + 1);
+    });
+
+    // Get most recent session per user_book (same logic as RPC)
+    const sortedSessions = [...readSessionsData].sort((a, b) => {
+      // Prioritize finished sessions
+      const aFinished = a.finished_date ? 0 : 1;
+      const bFinished = b.finished_date ? 0 : 1;
+      if (aFinished !== bFinished) return aFinished - bFinished;
+
+      // Among finished sessions, most recent finished_date first
+      const aDate = a.finished_date || a.started_date || a.created_at;
+      const bDate = b.finished_date || b.started_date || b.created_at;
+      if (aDate && bDate) {
+        const dateCompare = new Date(bDate).getTime() - new Date(aDate).getTime();
+        if (dateCompare !== 0) return dateCompare;
+      }
+
+      // Final tie-breaker: most recent created_at
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    });
+
+    // For each user_book_id, store only the first (most recent) session
+    sortedSessions.forEach((session) => {
+      if (!latestSessionsMap.has(session.user_book_id)) {
+        latestSessionsMap.set(session.user_book_id, {
+          started_date: session.started_date,
+          finished_date: session.finished_date,
+          read_count: readCountMap.get(session.user_book_id) || 0,
+        });
+      }
+    });
+  }
+
   return dedupeByShelf(rows
     .map((row) => {
       if (!row.user_book || !row.user_book.book) return null;
+
+      // Enrich userBook with read session data
+      const latestSession = row.user_book_id ? latestSessionsMap.get(row.user_book_id) : null;
+      const userBook: UserBook & { read_count?: number } = {
+        ...row.user_book,
+        book: row.user_book.book as Book,
+        // Override with read session dates if available (prioritize read_sessions over old columns)
+        started_date: latestSession?.started_date ?? row.user_book.started_date ?? undefined,
+        finished_date: latestSession?.finished_date ?? row.user_book.finished_date ?? undefined,
+        read_count: latestSession?.read_count ?? 0,
+      };
+
       return {
         id: row.id,
         created_at: row.created_at,
@@ -222,10 +293,7 @@ export async function fetchUserActivityCards(
           username: '',
           profile_photo_url: null,
         },
-        userBook: {
-          ...row.user_book,
-          book: row.user_book.book as Book,
-        },
+        userBook,
       } as ActivityFeedItem;
     })
     .filter((item): item is ActivityFeedItem => Boolean(item)));
