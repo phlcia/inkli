@@ -317,6 +317,23 @@ export default function HomeScreen() {
         </View>
       </View>
 
+      {/* Search Bar */}
+      <Pressable
+        style={({ pressed }) => [
+          styles.searchBar,
+          pressed && styles.searchBarPressed,
+        ]}
+        onPress={() => navigation.getParent()?.navigate('Search')}
+        android_ripple={{ color: 'rgba(0, 0, 0, 0.06)' }}
+      >
+        <Image
+          source={require('../../../../assets/search.png')}
+          style={styles.searchIcon}
+          resizeMode="contain"
+        />
+        <Text style={styles.searchBarText}>Search for books or members...</Text>
+      </Pressable>
+
       <FlatList
         data={cards}
         keyExtractor={(item) => item.id}
@@ -399,6 +416,36 @@ const styles = StyleSheet.create({
   },
   iconText: {
     fontSize: 20,
+    color: colors.brownText,
+  },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.white,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginHorizontal: 16,
+    marginBottom: 16,
+    shadowColor: colors.brownText,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  searchBarPressed: {
+    backgroundColor: '#F0F0F0',
+  },
+  searchIcon: {
+    width: 30,
+    height: 30,
+    marginRight: 8,
+    tintColor: colors.brownText,
+  },
+  searchBarText: {
+    flex: 1,
+    fontSize: 16,
+    fontFamily: typography.body,
     color: colors.brownText,
   },
   listContent: {
