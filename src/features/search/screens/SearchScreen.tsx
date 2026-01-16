@@ -798,7 +798,7 @@ const styles = StyleSheet.create({
   },
   searchContainer: {
     flexDirection: 'row',
-    marginBottom: 16,
+    marginBottom: 8,
     gap: 8,
   },
   searchInput: {
@@ -809,6 +809,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.brownText,
     backgroundColor: colors.white,
+    borderRadius: 8,
   },
   searchButton: {
     backgroundColor: colors.primaryBlue,
