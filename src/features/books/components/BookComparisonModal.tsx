@@ -343,13 +343,23 @@ export default function BookComparisonModal({
         } catch (error) {
           console.error('Batch update failed; proceeding with current book update:', error);
         }
+        // Fetch current notes before updating to preserve them
+        const { data: currentBookData } = await supabase
+          .from('user_books')
+          .select('notes')
+          .eq('id', result.insertedBook.id)
+          .single();
+        
+        console.log('=== RANKING DEBUG: Current book data before batch update ===');
+        console.log('Notes:', currentBookData?.notes);
+        
         // Ensure the current book gets the normal update (activity + updated_at)
         const { data: currentUpdateData, error: currentUpdateError } = await supabase
           .from('user_books')
           .update({ rank_score: result.score })
           .eq('id', result.insertedBook.id)
           .eq('user_id', user.id)
-          .select('id, rank_score')
+          .select('id, rank_score, notes')
           .single();
         
         if (currentUpdateError) {
@@ -358,6 +368,10 @@ export default function BookComparisonModal({
         if (!currentUpdateData || currentUpdateData.rank_score !== result.score) {
           throw new Error(`Score mismatch: expected ${result.score}, got ${currentUpdateData?.rank_score}`);
         }
+        
+        // Verify notes are preserved (dates are in read_sessions, not user_books)
+        console.log('=== RANKING DEBUG: After rank_score batch update ===');
+        console.log('Notes preserved:', currentUpdateData.notes);
       } else {
         // Fast path: single book update - use the calculated score directly
         console.log('=== RANKING DEBUG: Single book update ===');
@@ -368,14 +382,24 @@ export default function BookComparisonModal({
         // Use result.insertedBook.id instead of currentBook.id to ensure we're using the correct ID
         const bookIdToUpdate = result.insertedBook.id;
         
+        // Fetch current notes before updating to preserve them
+        const { data: currentBookData } = await supabase
+          .from('user_books')
+          .select('notes')
+          .eq('id', bookIdToUpdate)
+          .single();
+        
+        console.log('=== RANKING DEBUG: Current book data before update ===');
+        console.log('Notes:', currentBookData?.notes);
         
         // Update the book directly with the calculated score
+        // The partial update should preserve other fields, but we'll be explicit
         const { data: updateData, error: updateError } = await supabase
           .from('user_books')
           .update({ rank_score: result.score })
           .eq('id', bookIdToUpdate)
           .eq('user_id', user.id)
-          .select('id, rank_score')
+          .select('id, rank_score, notes')
           .single();
         
         
@@ -386,6 +410,10 @@ export default function BookComparisonModal({
         if (!updateData || updateData.rank_score !== result.score) {
           throw new Error(`Score mismatch: expected ${result.score}, got ${updateData?.rank_score}`);
         }
+        
+        // Verify notes are preserved (dates are in read_sessions, not user_books)
+        console.log('=== RANKING DEBUG: After rank_score update ===');
+        console.log('Notes preserved:', updateData.notes);
         
       }
       

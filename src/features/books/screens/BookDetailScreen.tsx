@@ -17,12 +17,13 @@ import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navig
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, typography } from '../../../config/theme';
 import { BookCoverPlaceholder } from '../components/BookCoverPlaceholder';
-import { addBookToShelf, checkUserHasBook, getBookCircles, getBookShelfCounts, removeBookFromShelf, getFriendsRankingsForBook, updateBookStatus, redistributeRanksForRating, BookCirclesResult, BookShelfCounts, formatCount, UserBook, updateUserBookDetails, getReadSessions, addReadSession, updateReadSession, deleteReadSession, ReadSession } from '../../../services/books';
+import { addBookToShelf, checkUserHasBook, getBookCircles, getBookShelfCounts, removeBookFromShelf, getFriendsRankingsForBook, updateBookStatus, redistributeRanksForRating, BookCirclesResult, BookShelfCounts, formatCount, UserBook, updateUserBookDetails, getReadSessions, addReadSession, updateReadSession, deleteReadSession, ReadSession, updateBookGenres, getUserBooks } from '../../../services/books';
 import { useAuth } from '../../../contexts/AuthContext';
 import { supabase } from '../../../config/supabase';
 import { SearchStackParamList } from '../../../navigation/SearchStackNavigator';
 import RecentActivityCard from '../../social/components/RecentActivityCard';
 import DateRangePickerModal from '../../../components/ui/DateRangePickerModal';
+import GenreLabelPicker from '../../../components/books/GenreLabelPicker';
 
 type BookDetailScreenRouteProp = RouteProp<SearchStackParamList, 'BookDetail'>;
 type BookDetailScreenNavigationProp = NativeStackNavigationProp<SearchStackParamList, 'BookDetail'>;
@@ -58,6 +59,7 @@ export default function BookDetailScreen() {
   // "What you think" section state
   const [userBookId, setUserBookId] = useState<string | null>(null);
   const [userNotes, setUserNotes] = useState<string>('');
+  const [userCustomLabels, setUserCustomLabels] = useState<string[]>([]);
   const [readSessions, setReadSessions] = useState<ReadSession[]>([]);
   const [savingNotes, setSavingNotes] = useState(false);
   const [savingDates, setSavingDates] = useState(false);
@@ -65,6 +67,11 @@ export default function BookDetailScreen() {
   const [showDateRangePickerModal, setShowDateRangePickerModal] = useState(false);
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const notesSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Tag editing state
+  const [showGenreLabelPicker, setShowGenreLabelPicker] = useState(false);
+  const [savingTags, setSavingTags] = useState(false);
+  const [customLabelSuggestions, setCustomLabelSuggestions] = useState<string[]>([]);
 
   const coverUrl = book.cover_url;
   const hasCover =
@@ -147,7 +154,7 @@ export default function BookDetailScreen() {
       if (existingBook) {
         const { data } = await supabase
           .from('user_books')
-          .select('id, status, rank_score, notes')
+          .select('id, status, rank_score, notes, custom_labels')
           .eq('user_id', user.id)
           .eq('book_id', existingBook.id)
           .single();
@@ -162,6 +169,7 @@ export default function BookDetailScreen() {
           // Set "What you think" section data
           setUserBookId(data.id);
           setUserNotes(data.notes || '');
+          setUserCustomLabels(data.custom_labels || []);
           
           // Fetch read sessions
           try {
@@ -176,6 +184,7 @@ export default function BookDetailScreen() {
           setUserRankScore(null);
           setUserBookId(null);
           setUserNotes('');
+          setUserCustomLabels([]);
           setReadSessions([]);
         }
       } else {
@@ -183,6 +192,7 @@ export default function BookDetailScreen() {
         setUserRankScore(null);
         setUserBookId(null);
         setUserNotes('');
+        setUserCustomLabels([]);
         setReadSessions([]);
       }
     } catch (error) {
@@ -199,6 +209,26 @@ export default function BookDetailScreen() {
   useEffect(() => {
     refreshBookStatus();
   }, [refreshBookStatus]);
+
+  // Load custom label suggestions from user's other books
+  useEffect(() => {
+    const loadCustomLabelSuggestions = async () => {
+      if (!user?.id) return;
+      try {
+        const userBooks = await getUserBooks(user.id);
+        const allLabels = new Set<string>();
+        userBooks.forEach((userBook) => {
+          if (userBook.custom_labels && userBook.custom_labels.length > 0) {
+            userBook.custom_labels.forEach((label) => allLabels.add(label));
+          }
+        });
+        setCustomLabelSuggestions(Array.from(allLabels).sort());
+      } catch (error) {
+        console.error('Error loading custom label suggestions:', error);
+      }
+    };
+    loadCustomLabelSuggestions();
+  }, [user?.id]);
 
   useEffect(() => {
     let isActive = true;
@@ -383,6 +413,7 @@ export default function BookDetailScreen() {
   }, [toastMessage, fadeAnim]);
 
   const getStatusLabel = (status: string | null) => {
+    if (!status) return status;
     const labels: Record<string, string> = {
       'want_to_read': 'Want to Read',
       'currently_reading': 'Currently Reading',
@@ -405,11 +436,13 @@ export default function BookDetailScreen() {
       const next = { ...(previous ?? getEmptyShelfCounts()) };
 
       if (fromStatus) {
-        next[fromStatus] = Math.max(0, next[fromStatus] - 1);
+        const shelfKey = fromStatus as keyof typeof next;
+        next[shelfKey] = Math.max(0, next[shelfKey] - 1);
       }
 
       if (toStatus) {
-        next[toStatus] += 1;
+        const shelfKey = toStatus as keyof typeof next;
+        next[shelfKey] += 1;
       }
 
       return next;
@@ -885,6 +918,38 @@ export default function BookDetailScreen() {
     };
   }, []);
 
+  // Handle tag editing
+  const handleSaveTags = React.useCallback(async (genres: string[], customLabels: string[]) => {
+    if (!user || !userBookId || !book.id) return;
+
+    try {
+      setSavingTags(true);
+
+      // Update book genres
+      const { error: genresError } = await updateBookGenres(book.id, genres);
+      if (genresError) {
+        throw genresError;
+      }
+
+      // Update user_books custom_labels
+      const { error: labelsError } = await updateUserBookDetails(userBookId, user.id, {
+        custom_labels: customLabels,
+      });
+      if (labelsError) {
+        throw labelsError;
+      }
+
+      // Refresh book status to get updated data
+      await refreshBookStatus();
+      setSavingTags(false);
+      setToastMessage('Tags updated!');
+    } catch (error) {
+      console.error('Error saving tags:', error);
+      setToastMessage('Couldn\'t save tags. Please try again.');
+      setSavingTags(false);
+    }
+  }, [user, userBookId, book.id, refreshBookStatus]);
+
   const getActionText = (status: string | null, username: string) => {
     const displayName = username || 'User';
     switch (status) {
@@ -1198,16 +1263,52 @@ export default function BookDetailScreen() {
           <View style={styles.descriptionSection}>
             <Text style={styles.descriptionLabel}>What you think</Text>
             
-            {/* Add shelves - Placeholder */}
-            <View style={styles.whatYouThinkSlot}>
-              <Text style={styles.whatYouThinkSlotLabel}>Add to shelf</Text>
-              <TouchableOpacity 
-                style={[styles.whatYouThinkSlotContent, styles.disabledSlot]}
-                disabled={true}
-              >
-                <Text style={styles.disabledSlotText}>Coming soon!</Text>
-              </TouchableOpacity>
-            </View>
+            {/* Edit Tags */}
+            {userBookId && (
+              <View style={styles.whatYouThinkSlot}>
+                <Text style={styles.whatYouThinkSlotLabel}>Shelves</Text>
+
+                {/* Genre and label chips */}
+                {((book.genres && book.genres.length > 0) || userCustomLabels.length > 0) && (
+                  <View style={styles.tagsChipsContainer}>
+                    {book.genres && book.genres.length > 0 && (
+                      <View style={styles.tagsChipsRow}>
+                        {book.genres.map((genre: string) => (
+                          <View key={genre} style={styles.tagPreviewChip}>
+                            <Text style={styles.tagPreviewChipText}>{genre}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    )}
+                    {userCustomLabels.length > 0 && (
+                      <View style={[styles.tagsChipsRow, { marginTop: 8 }]}>
+                        {userCustomLabels.map((label: string) => (
+                          <View key={label} style={styles.customLabelPreviewChip}>
+                            <Text style={styles.customLabelPreviewChipText}>{label}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    )}
+                  </View>
+                )}
+
+                <TouchableOpacity
+                  style={[styles.dateRangeButton, ((book.genres && book.genres.length > 0) || userCustomLabels.length > 0) && styles.dateRangeButtonActive]}
+                  onPress={() => setShowGenreLabelPicker(true)}
+                  disabled={savingTags}
+                >
+                  <Text style={[styles.dateRangeButtonText, ((book.genres && book.genres.length > 0) || userCustomLabels.length > 0) && styles.dateRangeButtonTextActive]}>
+                    Add to a shelf
+                  </Text>
+                </TouchableOpacity>
+                {savingTags && (
+                  <View style={styles.savingContainer}>
+                    <ActivityIndicator size="small" color={colors.primaryBlue} />
+                    <Text style={styles.savingText}>Saving...</Text>
+                  </View>
+                )}
+              </View>
+            )}
 
             {/* Add read dates */}
             <View style={styles.whatYouThinkSlot}>
@@ -1394,6 +1495,21 @@ export default function BookDetailScreen() {
         initialEndDate={editingSessionId ? readSessions.find(s => s.id === editingSessionId)?.finished_date || null : null}
         title={editingSessionId ? "Edit Read Dates" : "Select Read Dates"}
       />
+
+      {/* Genre Label Picker Modal */}
+      {userBookId && (
+        <GenreLabelPicker
+          visible={showGenreLabelPicker}
+          onClose={() => setShowGenreLabelPicker(false)}
+          onSave={handleSaveTags}
+          apiCategories={book.categories}
+          initialGenres={book.genres || []}
+          initialCustomLabels={userCustomLabels}
+          customLabelSuggestions={customLabelSuggestions}
+          bookId={book.id}
+          loading={savingTags}
+        />
+      )}
 
     </View>
   );
@@ -1931,6 +2047,50 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontFamily: typography.body,
     color: '#2FA463',
+    fontWeight: '500',
+  },
+  tagsPreviewContainer: {
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  tagsChipsContainer: {
+    marginBottom: 12,
+    gap: 8,
+  },
+  tagsChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
+  },
+  tagPreviewChip: {
+    backgroundColor: colors.primaryBlue,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  tagPreviewChipText: {
+    fontSize: 12,
+    fontFamily: typography.body,
+    color: colors.white,
+    fontWeight: '500',
+  },
+  tagMoreText: {
+    fontSize: 12,
+    fontFamily: typography.body,
+    color: colors.brownText,
+    opacity: 0.7,
+  },
+  customLabelPreviewChip: {
+    backgroundColor: colors.brownText + '40',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  customLabelPreviewChipText: {
+    fontSize: 12,
+    fontFamily: typography.body,
+    color: colors.brownText,
     fontWeight: '500',
   },
 });

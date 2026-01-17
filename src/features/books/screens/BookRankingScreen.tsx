@@ -16,7 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, useFocusEffect, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, typography } from '../../../config/theme';
-import { updateUserBookDetails, removeBookFromShelf, updateBookStatus } from '../../../services/books';
+import { updateUserBookDetails, removeBookFromShelf, updateBookStatus, getReadSessions, addReadSession, updateReadSession, ReadSession } from '../../../services/books';
 import { useAuth } from '../../../contexts/AuthContext';
 import BookComparisonModal from '../components/BookComparisonModal';
 import DateRangePickerModal from '../../../components/ui/DateRangePickerModal';
@@ -36,6 +36,7 @@ export default function BookRankingScreen() {
   const [notes, setNotes] = useState('');
   const [startedDate, setStartedDate] = useState<string | null>(null);
   const [finishedDate, setFinishedDate] = useState<string | null>(null);
+  const [currentReadSession, setCurrentReadSession] = useState<ReadSession | null>(null);
   
   // Store initial state for reverting
   const [initialState, setInitialState] = useState<{
@@ -62,7 +63,7 @@ export default function BookRankingScreen() {
           try {
             const { data, error } = await supabase
               .from('user_books')
-              .select('rating, notes, started_date, finished_date')
+              .select('rating, notes')
               .eq('id', userBookId)
               .single();
 
@@ -71,12 +72,16 @@ export default function BookRankingScreen() {
               return;
             }
 
+            // Fetch read sessions
+            const sessions = await getReadSessions(userBookId);
+            const latestSession = sessions.length > 0 ? sessions[0] : null;
+
             if (data) {
               const state = {
                 rating: data.rating || null,
                 notes: data.notes || '',
-                startedDate: data.started_date || null,
-                finishedDate: data.finished_date || null,
+                startedDate: latestSession?.started_date || null,
+                finishedDate: latestSession?.finished_date || null,
               };
               setInitialState(state);
               // Set current state to initial state
@@ -84,6 +89,7 @@ export default function BookRankingScreen() {
               setNotes(state.notes);
               setStartedDate(state.startedDate);
               setFinishedDate(state.finishedDate);
+              setCurrentReadSession(latestSession);
             } else {
               // New book - no initial state
               setInitialState({
@@ -120,8 +126,6 @@ export default function BookRankingScreen() {
       const updateData: {
         rating?: 'liked' | 'fine' | 'disliked' | null;
         notes?: string | null;
-        started_date?: string | null;
-        finished_date?: string | null;
       } = {};
       
       // Only update rating if provided (either from parameter or state)
@@ -131,20 +135,54 @@ export default function BookRankingScreen() {
         updateData.rating = rating;
       }
       
-      // Always update notes, dates if they exist
+      // Always update notes if they exist
       updateData.notes = notes.trim() || null;
-      updateData.started_date = startedDate || null;
-      updateData.finished_date = finishedDate || null;
       
       console.log('Update data being sent:', updateData);
       
-      const updateResult = await updateUserBookDetails(userBookId, user.id, updateData);
+      // Save notes and rating
+      // Use touchUpdatedAt: false to avoid triggering activity cards prematurely
+      // Activity card will be created when rank_score is set after ranking completes
+      const updateResult = await updateUserBookDetails(userBookId, user.id, updateData, {
+        touchUpdatedAt: false,
+      });
       
       if (updateResult.error) {
         console.error('=== SAVE DEBUG: Database error ===', updateResult.error);
-        Alert.alert('Error', 'Failed to save book details');
+        console.error('Error details:', JSON.stringify(updateResult.error, null, 2));
         setSaving(false);
         return false;
+      }
+      
+      // Save/update read session for dates
+      if (startedDate || finishedDate) {
+        if (currentReadSession) {
+          // Update existing session
+          const { error: sessionError } = await updateReadSession(currentReadSession.id, {
+            started_date: startedDate,
+            finished_date: finishedDate,
+          });
+          if (sessionError) {
+            console.error('Error updating read session:', sessionError);
+            setSaving(false);
+            return false;
+          }
+        } else {
+          // Create new session
+          const { data: newSession, error: sessionError } = await addReadSession(userBookId, {
+            started_date: startedDate,
+            finished_date: finishedDate,
+          });
+          if (sessionError) {
+            console.error('Error adding read session:', sessionError);
+            setSaving(false);
+            return false;
+          }
+          // Update current session state
+          if (newSession) {
+            setCurrentReadSession(newSession);
+          }
+        }
       }
       
       console.log('=== SAVE DEBUG: Success ===');
@@ -153,17 +191,31 @@ export default function BookRankingScreen() {
       return true;
     } catch (error: any) {
       console.error('=== SAVE DEBUG: ERROR in saveBookDetails ===', error);
-      Alert.alert('Error', 'Failed to save book details');
+      console.error('Error stack:', error?.stack);
+      console.error('Error message:', error?.message);
+      // Only show alert for unexpected errors
+      if (error?.message && !error.message.includes('cancelled')) {
+        Alert.alert('Error', `Failed to save book details: ${error.message}`);
+      }
       setSaving(false);
       return false;
     }
   };
 
   const handleRatingSelect = async (selectedRating: 'liked' | 'fine' | 'disliked') => {
-    setRating(selectedRating);
-    
-    // Auto-save when rating is selected
-    await saveBookDetails(selectedRating);
+    try {
+      setRating(selectedRating);
+      
+      // Auto-save when rating is selected
+      const saved = await saveBookDetails(selectedRating);
+      if (!saved) {
+        console.warn('Failed to save rating, but continuing...');
+        // Don't show alert here - saveBookDetails already handles errors
+      }
+    } catch (error) {
+      console.error('Error in handleRatingSelect:', error);
+      // Error should already be handled by saveBookDetails
+    }
   };
 
   const handleShelveBook = async () => {
@@ -207,34 +259,60 @@ export default function BookRankingScreen() {
           clearRankScore: true,
           touchUpdatedAt: false,
         });
-        // Clear any rating, notes, dates that were added
+        // Clear any rating, notes that were added
         if (initialState && (
           rating !== initialState.rating ||
-          notes !== initialState.notes ||
-          startedDate !== initialState.startedDate ||
-          finishedDate !== initialState.finishedDate
+          notes !== initialState.notes
         )) {
           await updateUserBookDetails(userBookId, user.id, {
             rating: initialState.rating,
             notes: initialState.notes || null,
-            started_date: initialState.startedDate || null,
-            finished_date: initialState.finishedDate || null,
           }, { touchUpdatedAt: false });
+        }
+        // Restore dates via read sessions
+        if (initialState && (
+          startedDate !== initialState.startedDate ||
+          finishedDate !== initialState.finishedDate
+        )) {
+          if (currentReadSession && (initialState.startedDate || initialState.finishedDate)) {
+            await updateReadSession(currentReadSession.id, {
+              started_date: initialState.startedDate,
+              finished_date: initialState.finishedDate,
+            });
+          } else if (!currentReadSession && (initialState.startedDate || initialState.finishedDate)) {
+            await addReadSession(userBookId, {
+              started_date: initialState.startedDate,
+              finished_date: initialState.finishedDate,
+            });
+          }
         }
       } else if (initialState) {
         // Book already existed - restore previous rating, notes, dates
         if (
           rating !== initialState.rating ||
-          notes !== initialState.notes ||
-          startedDate !== initialState.startedDate ||
-          finishedDate !== initialState.finishedDate
+          notes !== initialState.notes
         ) {
           await updateUserBookDetails(userBookId, user.id, {
             rating: initialState.rating,
             notes: initialState.notes || null,
-            started_date: initialState.startedDate || null,
-            finished_date: initialState.finishedDate || null,
           }, { touchUpdatedAt: false });
+        }
+        // Restore dates via read sessions
+        if (
+          startedDate !== initialState.startedDate ||
+          finishedDate !== initialState.finishedDate
+        ) {
+          if (currentReadSession && (initialState.startedDate || initialState.finishedDate)) {
+            await updateReadSession(currentReadSession.id, {
+              started_date: initialState.startedDate,
+              finished_date: initialState.finishedDate,
+            });
+          } else if (!currentReadSession && (initialState.startedDate || initialState.finishedDate)) {
+            await addReadSession(userBookId, {
+              started_date: initialState.startedDate,
+              finished_date: initialState.finishedDate,
+            });
+          }
         }
       }
     } catch (error) {
@@ -291,23 +369,45 @@ export default function BookRankingScreen() {
     return unsubscribe;
   }, [navigation, userBookId, user, wasNewBook, previousStatus, initialStatus, initialState, rating, notes, startedDate, finishedDate]);
 
-  const handleComparisonComplete = () => {
+  const handleComparisonComplete = async () => {
     console.log('=== RANKING DEBUG: handleComparisonComplete ===');
     console.log('Comparison modal completed');
     
     setShowComparison(false);
     
-    // Verify the score was saved before closing
-    console.log('Verifying rank_score was saved...');
-    // Small delay to ensure database update completed
+    // Ensure dates and notes are saved after ranking completes
+    // This is important because saveFinalRank only updates rank_score
+    console.log('=== SAVE DEBUG: Ensuring dates and notes are saved after ranking ===');
+    console.log('Notes:', notes);
+    console.log('Started Date:', startedDate);
+    console.log('Finished Date:', finishedDate);
+    
+    // Save dates and notes one more time to ensure they're persisted
+    // Use a small delay to ensure rank_score update completed first
     setTimeout(async () => {
       try {
+        // Save dates and notes if they exist
+        if (notes || startedDate || finishedDate) {
+          console.log('=== SAVE DEBUG: Saving dates and notes after ranking ===');
+          await saveBookDetails();
+        }
+        
+        // Verify the score was saved before closing
+        console.log('Verifying rank_score was saved...');
         const { getUserBooksByRating } = await import('../../../services/books');
         if (user && rating) {
           const books = await getUserBooksByRating(user.id, rating);
           const book = books.find(b => b.id === userBookId);
           console.log('=== RANKING DEBUG: Final verification ===');
           console.log('Book rank_score after ranking:', book?.rank_score);
+          console.log('Book notes after ranking:', book?.notes);
+          
+          // Verify dates from read sessions
+          const sessions = await getReadSessions(userBookId);
+          const latestSession = sessions.length > 0 ? sessions[0] : null;
+          console.log('Latest read session started_date:', latestSession?.started_date);
+          console.log('Latest read session finished_date:', latestSession?.finished_date);
+          
           if (!book?.rank_score) {
             console.error('=== RANKING DEBUG: ERROR - rank_score is still null after ranking! ===');
           } else {
@@ -315,7 +415,7 @@ export default function BookRankingScreen() {
           }
         }
       } catch (err) {
-        console.error('Error verifying rank_score:', err);
+        console.error('Error saving dates/notes or verifying:', err);
       }
       
       // Trigger refresh by navigating to Profile and Your Shelf tabs with a refresh param
@@ -334,7 +434,7 @@ export default function BookRankingScreen() {
         // Ignore navigation errors (screens might not be in stack)
         console.log('Navigation refresh:', err);
       }
-    }, 500);
+    }, 300);
     
     // Navigate back after completion
     navigation.goBack();
@@ -369,11 +469,21 @@ export default function BookRankingScreen() {
       return;
     }
     
-    setStartedDate(newStartDate);
-    setFinishedDate(newEndDate);
-    // Auto-save when dates are set (regardless of rating)
-    await saveBookDetails();
-    setShowDateRangePickerModal(false);
+    try {
+      setStartedDate(newStartDate);
+      setFinishedDate(newEndDate);
+      // Auto-save when dates are set (regardless of rating)
+      const saved = await saveBookDetails();
+      if (!saved) {
+        console.warn('Failed to save dates, but continuing...');
+        // Don't show alert here - saveBookDetails already handles errors
+      }
+    } catch (error) {
+      console.error('Error in handleDateRangeSelected:', error);
+      // Error should already be handled by saveBookDetails
+    } finally {
+      setShowDateRangePickerModal(false);
+    }
   };
 
   return (
