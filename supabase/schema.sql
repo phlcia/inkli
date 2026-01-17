@@ -133,8 +133,10 @@ CREATE TABLE IF NOT EXISTS user_books (
   status TEXT CHECK (status IN ('read', 'currently_reading', 'want_to_read')),
   rating TEXT CHECK (rating IN ('liked', 'fine', 'disliked')),
   notes TEXT,
-  started_date DATE,
-  finished_date DATE,
+  -- DEPRECATED: started_date and finished_date are removed - use user_book_read_sessions table instead
+  -- These columns should be dropped via migrate_remove_old_date_columns.sql
+  -- started_date DATE,
+  -- finished_date DATE,
   likes_count INTEGER DEFAULT 0,
   comments_count INTEGER DEFAULT 0,
   created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -681,6 +683,7 @@ RETURNS TABLE (
   user_book_notes TEXT,
   user_book_started_date DATE,
   user_book_finished_date DATE,
+  read_count INTEGER,
   user_book_likes_count INTEGER,
   user_book_comments_count INTEGER,
   user_book_created_at TIMESTAMPTZ,
@@ -706,8 +709,9 @@ AS $$
     ub.rank_score AS user_book_rank_score,
     ub.rating AS user_book_rating,
     ub.notes AS user_book_notes,
-    ub.started_date AS user_book_started_date,
-    ub.finished_date AS user_book_finished_date,
+    latest_session.started_date AS user_book_started_date,
+    latest_session.finished_date AS user_book_finished_date,
+    COALESCE(latest_session.read_count, 0)::INTEGER AS read_count,
     ub.likes_count AS user_book_likes_count,
     ub.comments_count AS user_book_comments_count,
     ub.created_at AS user_book_created_at,
@@ -726,6 +730,24 @@ AS $$
     ON ub.id = ac.user_book_id
   JOIN books b
     ON b.id = ub.book_id
+  LEFT JOIN LATERAL (
+    SELECT 
+      started_date, 
+      finished_date,
+      COUNT(*) OVER (PARTITION BY user_book_id) as read_count
+    FROM user_book_read_sessions
+    WHERE user_book_id = ub.id
+    ORDER BY 
+      -- Prioritize finished sessions (finished_date NOT NULL) over unfinished ones
+      CASE WHEN finished_date IS NOT NULL THEN 0 ELSE 1 END ASC,
+      -- Among finished sessions, show most recent finished_date first
+      COALESCE(finished_date, '1900-01-01'::date) DESC,
+      -- Among unfinished sessions or as tie-breaker, use started_date
+      COALESCE(started_date, '1900-01-01'::date) DESC,
+      -- Final tie-breaker: most recent created_at
+      created_at DESC
+    LIMIT 1
+  ) latest_session ON true
   WHERE (
     p_cursor_created_at IS NULL
     OR p_cursor_id IS NULL
@@ -756,6 +778,7 @@ RETURNS TABLE (
   user_book_notes TEXT,
   user_book_started_date DATE,
   user_book_finished_date DATE,
+  read_count INTEGER,
   user_book_likes_count INTEGER,
   user_book_comments_count INTEGER,
   user_book_created_at TIMESTAMPTZ,
@@ -786,8 +809,9 @@ AS $$
     ub.rank_score AS user_book_rank_score,
     ub.rating AS user_book_rating,
     ub.notes AS user_book_notes,
-    ub.started_date AS user_book_started_date,
-    ub.finished_date AS user_book_finished_date,
+    latest_session.started_date AS user_book_started_date,
+    latest_session.finished_date AS user_book_finished_date,
+    COALESCE(latest_session.read_count, 0)::INTEGER AS read_count,
     ub.likes_count AS user_book_likes_count,
     ub.comments_count AS user_book_comments_count,
     ub.created_at AS user_book_created_at,
@@ -804,6 +828,24 @@ AS $$
     ON b.id = ub.book_id
   JOIN user_profiles up
     ON up.user_id = ub.user_id
+  LEFT JOIN LATERAL (
+    SELECT 
+      started_date, 
+      finished_date,
+      COUNT(*) OVER (PARTITION BY user_book_id) as read_count
+    FROM user_book_read_sessions
+    WHERE user_book_id = ub.id
+    ORDER BY 
+      -- Prioritize finished sessions (finished_date NOT NULL) over unfinished ones
+      CASE WHEN finished_date IS NOT NULL THEN 0 ELSE 1 END ASC,
+      -- Among finished sessions, show most recent finished_date first
+      COALESCE(finished_date, '1900-01-01'::date) DESC,
+      -- Among unfinished sessions or as tie-breaker, use started_date
+      COALESCE(started_date, '1900-01-01'::date) DESC,
+      -- Final tie-breaker: most recent created_at
+      created_at DESC
+    LIMIT 1
+  ) latest_session ON true
   WHERE (
     p_cursor_updated_at IS NULL
     OR p_cursor_id IS NULL

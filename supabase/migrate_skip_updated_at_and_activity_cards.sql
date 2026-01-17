@@ -92,22 +92,18 @@ CREATE OR REPLACE FUNCTION update_user_book_details_no_touch(
   p_set_rating BOOLEAN,
   p_rating TEXT,
   p_set_notes BOOLEAN,
-  p_notes TEXT,
-  p_set_started_date BOOLEAN,
-  p_started_date DATE,
-  p_set_finished_date BOOLEAN,
-  p_finished_date DATE
+  p_notes TEXT
 )
 RETURNS void AS $$
 BEGIN
   PERFORM set_config('app.skip_updated_at', 'true', true);
   PERFORM set_config('app.skip_activity_cards', 'true', true);
 
+  -- Note: started_date and finished_date are deprecated - use read_sessions table instead
+  -- This function only updates rating and notes to avoid touching updated_at
   UPDATE user_books
      SET rating = CASE WHEN p_set_rating THEN p_rating ELSE rating END,
-         notes = CASE WHEN p_set_notes THEN p_notes ELSE notes END,
-         started_date = CASE WHEN p_set_started_date THEN p_started_date ELSE started_date END,
-         finished_date = CASE WHEN p_set_finished_date THEN p_finished_date ELSE finished_date END
+         notes = CASE WHEN p_set_notes THEN p_notes ELSE notes END
    WHERE id = p_user_book_id;
 END;
 $$ LANGUAGE plpgsql;

@@ -1,5 +1,6 @@
 import { supabase } from '../config/supabase';
 import { resolveCoverUrl } from './coverResolver';
+import { getSuggestedGenres } from '../utils/genreMapper';
 
 export interface GoogleBook {
   id: string;
@@ -76,6 +77,7 @@ export interface Book {
   description: string | null;
   page_count: number | null;
   categories: string[] | null;
+  genres: string[] | null; // Mapped preset genres from API categories
   average_rating: number | null;
   ratings_count: number | null;
   language: string | null;
@@ -108,6 +110,7 @@ export interface UserBook {
   status: 'read' | 'currently_reading' | 'want_to_read' | null;
   rating?: 'liked' | 'fine' | 'disliked';
   notes?: string | null;
+  custom_labels?: string[] | null; // Per-user custom tags
   started_date?: string | null; // DEPRECATED: Use read_sessions instead
   finished_date?: string | null; // DEPRECATED: Use read_sessions instead
   read_sessions?: ReadSession[]; // NEW: Multiple date ranges
@@ -1054,10 +1057,28 @@ export async function addBookToShelf(
     notes?: string;
     started_date?: string;
     finished_date?: string;
+    genres?: string[]; // User-selected genres (from GenreLabelPicker)
+    custom_labels?: string[]; // User-selected custom labels
   }
 ): Promise<{ userBookId: string; isUpdate: boolean; previousStatus?: string }> {
   try {
-    const { book_id: bookId } = await upsertBookViaEdge(bookData);
+    // Map API categories to preset genres if not already provided
+    let mappedGenres: string[] = [];
+    if (options?.genres && options.genres.length > 0) {
+      // Use user-selected genres
+      mappedGenres = options.genres;
+    } else {
+      // Auto-map genres from API categories (will be applied if user didn't select any)
+      mappedGenres = await getSuggestedGenres(bookData.categories);
+    }
+
+    // Prepare book data with genres (will be stored when book is upserted)
+    const bookDataWithGenres = {
+      ...bookData,
+      genres: mappedGenres, // Store mapped genres on book
+    };
+
+    const { book_id: bookId } = await upsertBookViaEdge(bookDataWithGenres);
 
     // Check if user already has this book
     const existingCheck = await checkUserHasBook(bookId, userId);
@@ -1083,6 +1104,9 @@ export async function addBookToShelf(
       }
       if (options?.finished_date !== undefined) {
         updateData.finished_date = options.finished_date;
+      }
+      if (options?.custom_labels !== undefined) {
+        updateData.custom_labels = options.custom_labels;
       }
 
       const { error: updateError } = await supabase
@@ -1121,6 +1145,9 @@ export async function addBookToShelf(
     if (options?.finished_date) {
       userBookData.finished_date = options.finished_date;
     }
+    if (options?.custom_labels) {
+      userBookData.custom_labels = options.custom_labels;
+    }
 
     const { data: newUserBook, error: userBookError } = await supabase
       .from('user_books')
@@ -1143,6 +1170,7 @@ export async function addBookToShelf(
           if (options?.notes !== undefined) updateData.notes = options.notes;
           if (options?.started_date !== undefined) updateData.started_date = options.started_date;
           if (options?.finished_date !== undefined) updateData.finished_date = options.finished_date;
+          if (options?.custom_labels !== undefined) updateData.custom_labels = options.custom_labels;
 
           await supabase
             .from('user_books')
@@ -1359,6 +1387,7 @@ export async function updateUserBookDetails(
     status?: 'read' | 'currently_reading' | 'want_to_read' | null;
     rating?: 'liked' | 'fine' | 'disliked' | null;
     notes?: string | null;
+    custom_labels?: string[] | null;
     /** @deprecated Use read_sessions (addReadSession) instead */
     started_date?: string | null;
     /** @deprecated Use read_sessions (addReadSession) instead */
@@ -1374,16 +1403,14 @@ export async function updateUserBookDetails(
         userBookId,
         updates,
       });
+      // Note: started_date and finished_date are deprecated - use read_sessions instead
+      // Only pass rating and notes to the RPC (dates are handled separately via read_sessions)
       const { data, error } = await supabase.rpc('update_user_book_details_no_touch', {
         p_user_book_id: userBookId,
         p_set_rating: updates.rating !== undefined,
         p_rating: updates.rating ?? null,
         p_set_notes: updates.notes !== undefined,
         p_notes: updates.notes ?? null,
-        p_set_started_date: updates.started_date !== undefined,
-        p_started_date: updates.started_date ?? null,
-        p_set_finished_date: updates.finished_date !== undefined,
-        p_finished_date: updates.finished_date ?? null,
       });
       if (error) {
         console.error('updateUserBookDetails: no-touch RPC error', error);
@@ -1465,8 +1492,9 @@ export async function updateUserBookDetails(
       }
     }
     if (updates.notes !== undefined) updateData.notes = updates.notes;
-    if (updates.started_date !== undefined) updateData.started_date = updates.started_date;
-    if (updates.finished_date !== undefined) updateData.finished_date = updates.finished_date;
+    if (updates.custom_labels !== undefined) updateData.custom_labels = updates.custom_labels;
+    // Note: started_date and finished_date are deprecated - use read_sessions instead
+    // Removed to prevent errors since columns no longer exist
 
     const { data, error } = await supabase
       .from('user_books')
@@ -1981,6 +2009,29 @@ export async function deleteReadSession(
     return { error };
   } catch (error) {
     console.error('Error deleting read session:', error);
+    return { error };
+  }
+}
+
+/**
+ * Update book genres (mapped preset genres)
+ */
+export async function updateBookGenres(
+  bookId: string,
+  genres: string[]
+): Promise<{ error: any }> {
+  try {
+    // Never allow empty genres array - ensure at least one genre
+    const finalGenres = genres.length > 0 ? genres : ['Fiction'];
+    
+    const { error } = await supabase
+      .from('books')
+      .update({ genres: finalGenres })
+      .eq('id', bookId);
+
+    return { error };
+  } catch (error) {
+    console.error('Error updating book genres:', error);
     return { error };
   }
 }

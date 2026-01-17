@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -18,6 +18,9 @@ import { getScoreColor, formatScore } from '../../../utils/rankScoreColors';
 import { supabase } from '../../../config/supabase';
 import { YourShelfStackParamList } from '../../../navigation/YourShelfStackNavigator';
 import { SearchStackParamList } from '../../../navigation/SearchStackNavigator';
+import FilterPanel from '../../../components/filters/FilterPanel';
+import { filterBooks, groupBooksByShelf, getFilteredBookCounts } from '../../../utils/bookFilters';
+import { trackFilterApplied, trackFilterCleared, ShelfContext } from '../../../services/analytics';
 
 type ShelfTab = 'read' | 'currently_reading' | 'want_to_read';
 
@@ -43,6 +46,12 @@ export default function ShelfScreen({
   const [books, setBooks] = useState<UserBook[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<ShelfTab>(initialTab || 'read');
+  
+  // Filter state
+  const [filterPanelVisible, setFilterPanelVisible] = useState(false);
+  const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
+  const [selectedCustomLabels, setSelectedCustomLabels] = useState<string[]>([]);
+  const [customLabelSuggestions, setCustomLabelSuggestions] = useState<string[]>([]);
 
   const loadBooks = useCallback(async () => {
     if (!ownerUserId) {
@@ -54,6 +63,15 @@ export default function ShelfScreen({
       setLoading(true);
       const userBooks = await getUserBooks(ownerUserId);
       setBooks(userBooks);
+      
+      // Extract unique custom labels from user's books for auto-complete suggestions
+      const allLabels = new Set<string>();
+      userBooks.forEach((book) => {
+        if (book.custom_labels && book.custom_labels.length > 0) {
+          book.custom_labels.forEach((label) => allLabels.add(label));
+        }
+      });
+      setCustomLabelSuggestions(Array.from(allLabels).sort());
     } catch (error) {
       console.error('Error loading books:', error);
     } finally {
@@ -82,18 +100,63 @@ export default function ShelfScreen({
     }
   }, [initialTab]);
 
-  const filteredBooks = books.filter((book) => book.status === activeTab);
+  // Apply filters to all books (across all shelves)
+  const filteredBooks = useMemo(() => {
+    return filterBooks(books, selectedGenres, selectedCustomLabels);
+  }, [books, selectedGenres, selectedCustomLabels]);
 
-  let sortedBooks: UserBook[];
-  if (activeTab === 'read') {
-    sortedBooks = [...filteredBooks].sort((a, b) => (b.rank_score || 0) - (a.rank_score || 0));
-  } else {
-    sortedBooks = [...filteredBooks].sort((a, b) => {
-      const titleA = a.book?.title || '';
-      const titleB = b.book?.title || '';
-      return titleA.localeCompare(titleB);
-    });
-  }
+  // Group filtered books by shelf
+  const groupedBooks = useMemo(() => {
+    return groupBooksByShelf(filteredBooks);
+  }, [filteredBooks]);
+
+  // Get books for current active tab
+  const booksForCurrentTab = useMemo(() => {
+    return groupedBooks[activeTab] || [];
+  }, [groupedBooks, activeTab]);
+
+  // Get filtered counts
+  const filteredCounts = useMemo(() => {
+    return getFilteredBookCounts(books, selectedGenres, selectedCustomLabels);
+  }, [books, selectedGenres, selectedCustomLabels]);
+
+  // Sort books for current tab
+  const sortedBooks = useMemo(() => {
+    const tabBooks = booksForCurrentTab;
+    if (activeTab === 'read') {
+      return [...tabBooks].sort((a, b) => (b.rank_score || 0) - (a.rank_score || 0));
+    } else {
+      return [...tabBooks].sort((a, b) => {
+        const titleA = a.book?.title || '';
+        const titleB = b.book?.title || '';
+        return titleA.localeCompare(titleB);
+      });
+    }
+  }, [booksForCurrentTab, activeTab]);
+
+  const hasActiveFilters = selectedGenres.length > 0 || selectedCustomLabels.length > 0;
+
+  const handleFiltersChange = useCallback((genres: string[], customLabels: string[]) => {
+    setSelectedGenres(genres);
+    setSelectedCustomLabels(customLabels);
+  }, []);
+
+  const handleClearFilters = useCallback(() => {
+    setSelectedGenres([]);
+    setSelectedCustomLabels([]);
+  }, []);
+
+  const handleTrackFilterApplied = useCallback((genres: string[], customLabels: string[], resultCount: number) => {
+    if (!currentUser?.id) return;
+    const shelfContext: ShelfContext = activeTab === 'all' ? 'all' : activeTab;
+    trackFilterApplied(genres, customLabels, shelfContext, resultCount, currentUser.id);
+  }, [currentUser?.id, activeTab]);
+
+  const handleTrackFilterCleared = useCallback(() => {
+    if (!currentUser?.id) return;
+    const shelfContext: ShelfContext = activeTab === 'all' ? 'all' : activeTab;
+    trackFilterCleared(shelfContext, currentUser.id);
+  }, [currentUser?.id, activeTab]);
 
   const handleBookPress = async (userBook: UserBook) => {
     if (!userBook.book) return;
@@ -171,21 +234,46 @@ export default function ShelfScreen({
   };
 
   const getEmptyStateMessage = () => {
+    if (hasActiveFilters) {
+      // Filtered empty state - contextual messaging
+      const genreText = selectedGenres.length > 0 ? selectedGenres.join(', ') : '';
+      const labelText = selectedCustomLabels.length > 0 ? selectedCustomLabels[0] : '';
+      
+      let title = '';
+      if (genreText && labelText) {
+        title = `No books match "${genreText}" + "${labelText}" on your ${activeTab === 'read' ? 'Read' : activeTab === 'currently_reading' ? 'Currently Reading' : 'Want to Read'} shelf.`;
+      } else if (genreText) {
+        title = `No ${genreText} books on your ${activeTab === 'read' ? 'Read' : activeTab === 'currently_reading' ? 'Currently Reading' : 'Want to Read'} shelf yet.`;
+      } else if (labelText) {
+        title = `No books tagged with "${labelText}" on your ${activeTab === 'read' ? 'Read' : activeTab === 'currently_reading' ? 'Currently Reading' : 'Want to Read'} shelf.`;
+      }
+      
+      return {
+        title,
+        subtitle: 'Try a different filter or add more books!',
+        showClearButton: true,
+      };
+    }
+    
+    // Normal empty state
     switch (activeTab) {
       case 'read':
         return {
           title: 'No books yet...',
           subtitle: 'Ranked books will show up here.',
+          showClearButton: false,
         };
       case 'currently_reading':
         return {
           title: 'No books yet...',
           subtitle: 'No currently-reading books yet.',
+          showClearButton: false,
         };
       case 'want_to_read':
         return {
           title: 'No books yet...',
           subtitle: 'No want-to-read books yet.',
+          showClearButton: false,
         };
     }
   };
@@ -213,8 +301,24 @@ export default function ShelfScreen({
       <View style={styles.header}>
         <View style={styles.titleContainer}>
           <Text style={styles.title}>{headerTitle}</Text>
+          {hasActiveFilters && (
+            <Text style={styles.filterIndicator}>
+              {filteredCounts.total} result{filteredCounts.total === 1 ? '' : 's'}
+            </Text>
+          )}
         </View>
-        <View style={styles.headerRight} />
+        <View style={styles.headerRight}>
+          {activeTab === 'read' && (
+            <TouchableOpacity
+              style={[styles.filterButton, hasActiveFilters && styles.filterButtonActive]}
+              onPress={() => setFilterPanelVisible(true)}
+            >
+              <Text style={[styles.filterButtonText, hasActiveFilters && styles.filterButtonTextActive]}>
+                Filter
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       <View style={styles.tabContainer}>
@@ -241,6 +345,14 @@ export default function ShelfScreen({
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyText}>{emptyState.title}</Text>
           <Text style={styles.emptySubtext}>{emptyState.subtitle}</Text>
+          {emptyState.showClearButton && (
+            <TouchableOpacity
+              style={styles.emptyClearButton}
+              onPress={handleClearFilters}
+            >
+              <Text style={styles.emptyClearButtonText}>Clear Filters</Text>
+            </TouchableOpacity>
+          )}
         </View>
       ) : (
         <ScrollView
@@ -251,6 +363,21 @@ export default function ShelfScreen({
           {sortedBooks.map((book, index) => renderBookItem(book, index + 1))}
         </ScrollView>
       )}
+
+      {/* Filter Panel */}
+      <FilterPanel
+        visible={filterPanelVisible}
+        onClose={() => setFilterPanelVisible(false)}
+        selectedGenres={selectedGenres}
+        selectedCustomLabels={selectedCustomLabels}
+        onFiltersChange={handleFiltersChange}
+        resultCount={filteredCounts.total}
+        shelfContext={activeTab === 'all' ? 'all' : activeTab}
+        customLabelSuggestions={customLabelSuggestions}
+        onClearFilters={handleClearFilters}
+        onTrackFilterApplied={handleTrackFilterApplied}
+        onTrackFilterCleared={handleTrackFilterCleared}
+      />
     </SafeAreaView>
   );
 }
@@ -309,6 +436,48 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 16,
     flexShrink: 0,
+    alignItems: 'center',
+  },
+  filterButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.brownText + '40',
+  },
+  filterButtonActive: {
+    backgroundColor: colors.primaryBlue,
+    borderColor: colors.primaryBlue,
+  },
+  filterButtonText: {
+    fontSize: 14,
+    fontFamily: typography.body,
+    color: colors.brownText,
+    fontWeight: '500',
+  },
+  filterButtonTextActive: {
+    color: colors.white,
+  },
+  filterIndicator: {
+    fontSize: 12,
+    fontFamily: typography.body,
+    color: colors.brownText,
+    opacity: 0.7,
+    marginTop: 4,
+  },
+  emptyClearButton: {
+    marginTop: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    backgroundColor: colors.primaryBlue,
+    borderRadius: 8,
+  },
+  emptyClearButtonText: {
+    fontSize: 14,
+    fontFamily: typography.body,
+    color: colors.white,
+    fontWeight: '600',
   },
   loadingContainer: {
     flex: 1,
