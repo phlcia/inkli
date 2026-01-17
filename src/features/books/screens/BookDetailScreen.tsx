@@ -1298,15 +1298,9 @@ export default function BookDetailScreen() {
                   disabled={savingTags}
                 >
                   <Text style={[styles.dateRangeButtonText, ((book.genres && book.genres.length > 0) || userCustomLabels.length > 0) && styles.dateRangeButtonTextActive]}>
-                    Add to a shelf
+                    Edit shelves
                   </Text>
                 </TouchableOpacity>
-                {savingTags && (
-                  <View style={styles.savingContainer}>
-                    <ActivityIndicator size="small" color={colors.primaryBlue} />
-                    <Text style={styles.savingText}>Saving...</Text>
-                  </View>
-                )}
               </View>
             )}
 

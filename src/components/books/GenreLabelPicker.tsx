@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
+  Animated,
 } from 'react-native';
 import { colors, typography } from '../../config/theme';
 import GenreChip from '../filters/GenreChip';
@@ -41,6 +42,7 @@ export default function GenreLabelPicker({
   const [selectedCustomLabels, setSelectedCustomLabels] = useState<string[]>(initialCustomLabels || []);
   const [mappedGenres, setMappedGenres] = useState<string[]>([]);
   const [mappingGenres, setMappingGenres] = useState(true);
+  const fadeAnim = React.useRef(new Animated.Value(0)).current;
 
   // Map API categories to suggested genres when component opens or API categories change
   useEffect(() => {
@@ -75,6 +77,36 @@ export default function GenreLabelPicker({
     }
   }, [visible, apiCategories, initialGenres, bookId]);
 
+  // Animate modal appearance
+  useEffect(() => {
+    if (visible) {
+      // Animate fade and scale in
+      Animated.spring(fadeAnim, {
+        toValue: 1,
+        useNativeDriver: true,
+        tension: 65,
+        friction: 11,
+      }).start();
+    } else {
+      // Animate fade and scale out
+      Animated.timing(fadeAnim, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [visible, fadeAnim]);
+
+  const opacity = fadeAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 1],
+  });
+
+  const scale = fadeAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.9, 1],
+  });
+
   const handleGenreToggle = (genre: string) => {
     setSelectedGenres((prev) => {
       if (prev.includes(genre)) {
@@ -105,19 +137,29 @@ export default function GenreLabelPicker({
   return (
     <Modal
       visible={visible}
-      animationType="slide"
+      animationType="none"
       transparent
       onRequestClose={onClose}
     >
       <View style={styles.overlay}>
-        <View style={styles.modalContent}>
+        <TouchableOpacity
+          style={styles.backdrop}
+          activeOpacity={1}
+          onPress={onClose}
+        />
+        <Animated.View
+          style={[
+            styles.modalContent,
+            {
+              opacity,
+              transform: [{ scale }],
+            },
+          ]}
+        >
           {/* Header */}
           <View style={styles.header}>
-            <Text style={styles.title}>Edit Tags</Text>
+            <Text style={styles.title}>Edit Shelves</Text>
             <View style={styles.headerButtons}>
-              <TouchableOpacity onPress={onClose} style={styles.cancelButton}>
-                <Text style={styles.cancelButtonText}>Cancel</Text>
-              </TouchableOpacity>
               <TouchableOpacity
                 onPress={handleSave}
                 style={styles.saveButton}
@@ -128,6 +170,9 @@ export default function GenreLabelPicker({
                 ) : (
                   <Text style={styles.saveButtonText}>Save</Text>
                 )}
+              </TouchableOpacity>
+              <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+                <Text style={styles.closeButtonText}>×</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -188,7 +233,7 @@ export default function GenreLabelPicker({
               />
             </View>
           </ScrollView>
-        </View>
+        </Animated.View>
       </View>
     </Modal>
   );
@@ -198,18 +243,23 @@ const styles = StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
   },
   modalContent: {
     backgroundColor: colors.creamBackground,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: '90%',
+    borderRadius: 20,
+    width: '90%',
+    maxWidth: 500,
+    maxHeight: '80%',
     shadowColor: colors.brownText,
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 8,
   },
   header: {
     flexDirection: 'row',
@@ -228,22 +278,13 @@ const styles = StyleSheet.create({
   },
   headerButtons: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: 12,
-  },
-  cancelButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-  },
-  cancelButtonText: {
-    fontSize: 16,
-    fontFamily: typography.body,
-    color: colors.brownText,
-    fontWeight: '500',
   },
   saveButton: {
     backgroundColor: colors.primaryBlue,
     paddingVertical: 8,
-    paddingHorizontal: 20,
+    paddingHorizontal: 12,
     borderRadius: 8,
     minWidth: 80,
     alignItems: 'center',
@@ -254,6 +295,24 @@ const styles = StyleSheet.create({
     fontFamily: typography.body,
     color: colors.white,
     fontWeight: '600',
+  },
+  closeButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.white,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: colors.brownText,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  closeButtonText: {
+    fontSize: 24,
+    color: colors.brownText,
+    fontWeight: 'bold',
   },
   content: {
     flex: 1,
