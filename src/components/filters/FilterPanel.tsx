@@ -51,7 +51,7 @@ export default function FilterPanel({
     if (visible) {
       setSelectedGenres(initialSelectedGenres);
       setSelectedCustomLabels(initialSelectedCustomLabels);
-      // Animate slide in
+      // Animate fade and scale in
       Animated.spring(slideAnim, {
         toValue: 1,
         useNativeDriver: true,
@@ -59,7 +59,7 @@ export default function FilterPanel({
         friction: 11,
       }).start();
     } else {
-      // Animate slide out
+      // Animate fade and scale out
       Animated.timing(slideAnim, {
         toValue: 0,
         duration: 200,
@@ -111,9 +111,14 @@ export default function FilterPanel({
     }
   }, [onClearFilters, onTrackFilterCleared]);
 
-  const translateY = slideAnim.interpolate({
+  const opacity = slideAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [600, 0],
+    outputRange: [0, 1],
+  });
+
+  const scale = slideAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.9, 1],
   });
 
   const hasActiveFilters = selectedGenres.length > 0 || selectedCustomLabels.length > 0;
@@ -135,12 +140,11 @@ export default function FilterPanel({
           style={[
             styles.panel,
             {
-              transform: [{ translateY }],
+              opacity,
+              transform: [{ scale }],
             },
           ]}
         >
-          <View style={styles.handle} />
-          
           <View style={styles.header}>
             <Text style={styles.title}>Filter Books</Text>
             <TouchableOpacity onPress={onClose} style={styles.closeButton}>
@@ -209,30 +213,23 @@ const styles = StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   backdrop: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
   },
   panel: {
     backgroundColor: colors.creamBackground,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    borderRadius: 20,
+    width: '90%',
+    maxWidth: 500,
     maxHeight: '80%',
     shadowColor: colors.brownText,
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  handle: {
-    width: 40,
-    height: 4,
-    backgroundColor: colors.brownText + '40',
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginTop: 8,
-    marginBottom: 4,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 8,
   },
   header: {
     flexDirection: 'row',
@@ -249,13 +246,15 @@ const styles = StyleSheet.create({
     color: colors.brownText,
   },
   closeButton: {
-    paddingVertical: 4,
-    paddingHorizontal: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: colors.primaryBlue,
+    borderRadius: 8,
   },
   closeButtonText: {
     fontSize: 16,
     fontFamily: typography.body,
-    color: colors.primaryBlue,
+    color: colors.white,
     fontWeight: '600',
   },
   content: {

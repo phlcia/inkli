@@ -442,7 +442,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 12,
     borderRadius: 8,
-    backgroundColor: colors.white,
+    backgroundColor: colors.primaryBlue,
     borderWidth: 1,
     borderColor: colors.brownText + '40',
   },
@@ -453,7 +453,7 @@ const styles = StyleSheet.create({
   filterButtonText: {
     fontSize: 14,
     fontFamily: typography.body,
-    color: colors.brownText,
+    color: colors.white,
     fontWeight: '500',
   },
   filterButtonTextActive: {
