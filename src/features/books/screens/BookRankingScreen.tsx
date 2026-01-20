@@ -16,10 +16,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, useFocusEffect, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, typography } from '../../../config/theme';
-import { updateUserBookDetails, removeBookFromShelf, updateBookStatus, getReadSessions, addReadSession, updateReadSession, ReadSession } from '../../../services/books';
+import { updateUserBookDetails, removeBookFromShelf, updateBookStatus, getReadSessions, addReadSession, updateReadSession, ReadSession, updateBookGenres, getUserBooks } from '../../../services/books';
 import { useAuth } from '../../../contexts/AuthContext';
 import BookComparisonModal from '../components/BookComparisonModal';
 import DateRangePickerModal from '../../../components/ui/DateRangePickerModal';
+import GenreLabelPicker from '../../../components/books/GenreLabelPicker';
 import { supabase } from '../../../config/supabase';
 import { SearchStackParamList } from '../../../navigation/SearchStackNavigator';
 
@@ -50,6 +51,13 @@ export default function BookRankingScreen() {
   const [showComparison, setShowComparison] = useState(false);
   const [showDateRangePickerModal, setShowDateRangePickerModal] = useState(false);
   const notesSaveTimerRef = React.useRef<NodeJS.Timeout | null>(null);
+  
+  // Labels/genres state
+  const [showGenreLabelPicker, setShowGenreLabelPicker] = useState(false);
+  const [savingTags, setSavingTags] = useState(false);
+  const [selectedGenres, setSelectedGenres] = useState<string[]>(book.genres || []);
+  const [selectedCustomLabels, setSelectedCustomLabels] = useState<string[]>([]);
+  const [customLabelSuggestions, setCustomLabelSuggestions] = useState<string[]>([]);
 
   if (!book) return null;
 
@@ -63,7 +71,7 @@ export default function BookRankingScreen() {
           try {
             const { data, error } = await supabase
               .from('user_books')
-              .select('rating, notes')
+              .select('rating, notes, custom_labels')
               .eq('id', userBookId)
               .single();
 
@@ -90,6 +98,11 @@ export default function BookRankingScreen() {
               setStartedDate(state.startedDate);
               setFinishedDate(state.finishedDate);
               setCurrentReadSession(latestSession);
+              
+              // Populate custom labels if they exist
+              if (data.custom_labels && data.custom_labels.length > 0) {
+                setSelectedCustomLabels(data.custom_labels);
+              }
             } else {
               // New book - no initial state
               setInitialState({
@@ -108,6 +121,26 @@ export default function BookRankingScreen() {
       }
     }, [userBookId, user])
   );
+
+  // Fetch custom label suggestions for autocomplete
+  useEffect(() => {
+    const fetchCustomLabelSuggestions = async () => {
+      if (!user) return;
+      try {
+        const userBooks = await getUserBooks(user.id);
+        const allLabels = new Set<string>();
+        userBooks.forEach((ub) => {
+          if (ub.custom_labels?.length) {
+            ub.custom_labels.forEach((label) => allLabels.add(label));
+          }
+        });
+        setCustomLabelSuggestions(Array.from(allLabels).sort());
+      } catch (error) {
+        console.error('Error fetching custom label suggestions:', error);
+      }
+    };
+    fetchCustomLabelSuggestions();
+  }, [user]);
 
   const saveBookDetails = async (selectedRating?: 'liked' | 'fine' | 'disliked') => {
     if (!user || !userBookId) return false;
@@ -486,6 +519,41 @@ export default function BookRankingScreen() {
     }
   };
 
+  const handleSaveTags = async (genres: string[], customLabels: string[]) => {
+    if (!user || !userBookId || !book.id) return;
+    
+    try {
+      setSavingTags(true);
+      
+      // Update book genres
+      const { error: genresError } = await updateBookGenres(book.id, genres);
+      if (genresError) {
+        Alert.alert('Error', 'Failed to save genres. Please try again.');
+        setSavingTags(false);
+        return;
+      }
+      
+      // Update user_books custom_labels
+      const { error: labelsError } = await updateUserBookDetails(userBookId, user.id, {
+        custom_labels: customLabels,
+      }, { touchUpdatedAt: false });
+      if (labelsError) {
+        Alert.alert('Error', 'Failed to save custom labels. Please try again.');
+        setSavingTags(false);
+        return;
+      }
+      
+      // Update local state on success
+      setSelectedGenres(genres);
+      setSelectedCustomLabels(customLabels);
+      setSavingTags(false);
+    } catch (error) {
+      console.error('Error saving tags:', error);
+      Alert.alert('Error', 'Something went wrong. Please try again.');
+      setSavingTags(false);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar barStyle="dark-content" backgroundColor={colors.creamBackground} />
@@ -513,23 +581,6 @@ export default function BookRankingScreen() {
             )}
           </View>
 
-          {/* Action Icons */}
-          <View style={styles.actionIcons}>
-            <TouchableOpacity style={styles.actionIcon}>
-              <Image
-                source={require('../../../../assets/add.png')}
-                style={styles.actionIconImage}
-                resizeMode="contain"
-              />
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.actionIcon}>
-              <Image
-                source={require('../../../../assets/bookmark.png')}
-                style={styles.actionIconImage}
-                resizeMode="contain"
-              />
-            </TouchableOpacity>
-          </View>
 
           {/* Categories */}
           {book.categories && book.categories.length > 0 && (
@@ -616,13 +667,30 @@ export default function BookRankingScreen() {
             </TouchableOpacity>
           </View>
 
+          {/* Edit Labels */}
+          <View style={styles.section}>
+            <TouchableOpacity
+              style={styles.dateButton}
+              onPress={() => setShowGenreLabelPicker(true)}
+            >
+              <Text style={styles.dateButtonLabel}>Shelves</Text>
+              {(selectedGenres.length > 0 || selectedCustomLabels.length > 0) ? (
+                <Text style={styles.dateButtonValue}>
+                  {[...selectedGenres, ...selectedCustomLabels].slice(0, 3).join(', ')}
+                  {(selectedGenres.length + selectedCustomLabels.length) > 3 ? '...' : ''}
+                </Text>
+              ) : (
+                <Text style={styles.dateButtonPlaceholder}>Tap to add</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+
           {/* Add a note */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Add a note</Text>
             <View style={styles.notesContainer}>
               <TextInput
                 style={styles.notesInput}
-                placeholder="Write your thoughts..."
+                placeholder="Add a note!"
                 placeholderTextColor={colors.brownText}
                 multiline
                 value={notes}
@@ -698,6 +766,19 @@ export default function BookRankingScreen() {
         initialEndDate={finishedDate}
         title="Select Read Dates"
       />
+
+      {/* Genre/Label Picker Modal */}
+      <GenreLabelPicker
+        visible={showGenreLabelPicker}
+        onClose={() => setShowGenreLabelPicker(false)}
+        onSave={handleSaveTags}
+        apiCategories={book.categories}
+        initialGenres={selectedGenres}
+        initialCustomLabels={selectedCustomLabels}
+        customLabelSuggestions={customLabelSuggestions}
+        bookId={book.id}
+        loading={savingTags}
+      />
     </SafeAreaView>
   );
 }
@@ -716,7 +797,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: 20,
     paddingTop: Platform.OS === 'ios' ? 20 : 20,
-    paddingBottom: 100,
+    paddingBottom: 20,
   },
   coverImage: {
     width: 120,
@@ -744,36 +825,11 @@ const styles = StyleSheet.create({
     opacity: 0.7,
     textAlign: 'center',
   },
-  actionIcons: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 12,
-    marginBottom: 16,
-  },
-  actionIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.white,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.primaryBlue,
-  },
-  actionIconText: {
-    fontSize: 20,
-    color: colors.brownText,
-  },
-  actionIconImage: {
-    width: 20,
-    height: 20,
-    tintColor: colors.brownText,
-  },
   categoriesContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
-    marginBottom: 32,
+    marginBottom: 24,
     gap: 8,
   },
   categoryChip: {
@@ -789,7 +845,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   section: {
-    marginBottom: 32,
+    marginBottom: 16,
   },
   sectionTitle: {
     fontSize: 18,
@@ -842,7 +898,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     borderRadius: 12,
     padding: 16,
-    marginBottom: 12,
     borderWidth: 1,
     borderColor: `${colors.brownText}33`, // 33 = 20% opacity in hex
   },
@@ -863,7 +918,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: typography.body,
     color: colors.brownText,
-    opacity: 0.4,
   },
   notesContainer: {
     backgroundColor: colors.white,
