@@ -39,6 +39,9 @@ export default function GenreLabelPicker({
   bookId,
   loading = false,
 }: GenreLabelPickerProps) {
+  console.log('=== GenreLabelPicker RENDER ===');
+  console.log('Props:', { visible, initialGenres, initialCustomLabels, bookId, loading });
+  
   const [selectedGenres, setSelectedGenres] = useState<string[]>(initialGenres || []);
   const [selectedCustomLabels, setSelectedCustomLabels] = useState<string[]>(initialCustomLabels || []);
   const [mappedGenres, setMappedGenres] = useState<string[]>([]);
@@ -47,14 +50,27 @@ export default function GenreLabelPicker({
 
   // Map API categories to suggested genres when component opens or API categories change
   useEffect(() => {
+    console.log('=== GenreLabelPicker useEffect ===');
+    console.log('visible:', visible);
+    console.log('apiCategories:', apiCategories);
+    console.log('initialGenres:', initialGenres);
+    console.log('initialCustomLabels:', initialCustomLabels);
+    console.log('bookId:', bookId);
+    console.log('selectedGenres (current):', selectedGenres);
+    
     if (visible && apiCategories && (!initialGenres || initialGenres.length === 0)) {
       // Only auto-map if editing existing book with no genres
+      console.log('Branch: Auto-mapping from API categories');
       setMappingGenres(true);
+      // BUGFIX: Also sync custom labels when modal opens
+      setSelectedCustomLabels(initialCustomLabels || []);
       getSuggestedGenres(apiCategories, bookId)
         .then((suggestions) => {
+          console.log('Mapped suggestions:', suggestions);
           setMappedGenres(suggestions);
           // Pre-select mapped genres if user hasn't selected any yet
           if (selectedGenres.length === 0) {
+            console.log('Pre-selecting mapped genres');
             setSelectedGenres(suggestions);
           }
           setMappingGenres(false);
@@ -66,20 +82,27 @@ export default function GenreLabelPicker({
         });
     } else if (visible && initialGenres && initialGenres.length > 0) {
       // Editing existing book - use existing genres
+      console.log('Branch: Using existing genres from initialGenres');
       setMappedGenres(initialGenres);
       setSelectedGenres(initialGenres);
+      // BUGFIX: Also sync custom labels when modal opens
+      setSelectedCustomLabels(initialCustomLabels || []);
       setMappingGenres(false);
     } else if (visible) {
       // Modal is visible but no genres to map - just ensure not in loading state
+      console.log('Branch: Modal visible but no genres to map');
+      // BUGFIX: Also sync custom labels when modal opens
+      setSelectedCustomLabels(initialCustomLabels || []);
       setMappingGenres(false);
     } else if (!visible) {
       // Reset when modal closes
+      console.log('Branch: Modal closing, resetting state');
       setSelectedGenres([]);
       setSelectedCustomLabels([]);
       setMappedGenres([]);
       setMappingGenres(false);
     }
-  }, [visible, apiCategories, initialGenres, bookId]);
+  }, [visible, apiCategories, initialGenres, initialCustomLabels, bookId]);
 
   // Animate modal appearance
   useEffect(() => {
@@ -157,20 +180,14 @@ export default function GenreLabelPicker({
   };
 
   const handleSave = () => {
-    // Auto-apply logic: if user selected no genres, use mapped suggestions or fallback
-    let finalGenres = selectedGenres;
-    if (finalGenres.length === 0) {
-      // Use mapped genres if available, otherwise fallback
-      finalGenres = mappedGenres.length > 0 ? mappedGenres : ['Fiction'];
-    }
-
-    // Never save with empty genres array
-    if (finalGenres.length === 0) {
-      finalGenres = ['Fiction'];
-    }
-
-    onSave(finalGenres, selectedCustomLabels);
+    console.log('=== GenreLabelPicker handleSave CALLED ===');
+    console.log('Saving genres:', selectedGenres);
+    console.log('Saving customLabels:', selectedCustomLabels);
+    console.log('About to call onSave prop...');
+    onSave(selectedGenres, selectedCustomLabels);
+    console.log('onSave called, now calling onClose...');
     onClose();
+    console.log('=== GenreLabelPicker handleSave COMPLETE ===');
   };
 
   return (

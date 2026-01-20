@@ -64,6 +64,34 @@ export default function ShelfScreen({
       const userBooks = await getUserBooks(ownerUserId);
       setBooks(userBooks);
       
+      // DEBUG: Log book data to verify genres are loaded
+      console.log('=== ShelfScreen loadBooks DEBUG ===');
+      console.log('Loaded', userBooks.length, 'books');
+      if (userBooks.length > 0) {
+        const firstBook = userBooks[0];
+        console.log('Sample book:', {
+          title: firstBook?.book?.title,
+          genres: firstBook?.book?.genres,
+          custom_labels: firstBook?.custom_labels,
+        });
+        
+        // Count data availability
+        const withGenres = userBooks.filter(b => (b.book?.genres?.length ?? 0) > 0).length;
+        const withLabels = userBooks.filter(b => (b.custom_labels?.length ?? 0) > 0).length;
+        console.log('Books with genres:', withGenres, '/', userBooks.length);
+        console.log('Books with custom_labels:', withLabels, '/', userBooks.length);
+        
+        // List all unique genres and labels found
+        const allGenres = new Set<string>();
+        const allLabelsSet = new Set<string>();
+        userBooks.forEach((book) => {
+          book.book?.genres?.forEach(g => allGenres.add(g));
+          book.custom_labels?.forEach(l => allLabelsSet.add(l));
+        });
+        console.log('All genres found:', Array.from(allGenres));
+        console.log('All custom_labels found:', Array.from(allLabelsSet));
+      }
+      
       // Extract unique custom labels from user's books for auto-complete suggestions
       const allLabels = new Set<string>();
       userBooks.forEach((book) => {
@@ -251,7 +279,6 @@ export default function ShelfScreen({
       return {
         title,
         subtitle: 'Try a different filter or add more books!',
-        showClearButton: true,
       };
     }
     
@@ -261,19 +288,16 @@ export default function ShelfScreen({
         return {
           title: 'No books yet...',
           subtitle: 'Ranked books will show up here.',
-          showClearButton: false,
         };
       case 'currently_reading':
         return {
           title: 'No books yet...',
           subtitle: 'No currently-reading books yet.',
-          showClearButton: false,
         };
       case 'want_to_read':
         return {
           title: 'No books yet...',
           subtitle: 'No want-to-read books yet.',
-          showClearButton: false,
         };
     }
   };
@@ -301,11 +325,6 @@ export default function ShelfScreen({
       <View style={styles.header}>
         <View style={styles.titleContainer}>
           <Text style={styles.title}>{headerTitle}</Text>
-          {hasActiveFilters && (
-            <Text style={styles.filterIndicator}>
-              {filteredCounts.total} result{filteredCounts.total === 1 ? '' : 's'}
-            </Text>
-          )}
         </View>
         <View style={styles.headerRight}>
           {activeTab === 'read' && (
@@ -345,14 +364,6 @@ export default function ShelfScreen({
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyText}>{emptyState.title}</Text>
           <Text style={styles.emptySubtext}>{emptyState.subtitle}</Text>
-          {emptyState.showClearButton && (
-            <TouchableOpacity
-              style={styles.emptyClearButton}
-              onPress={handleClearFilters}
-            >
-              <Text style={styles.emptyClearButtonText}>Clear Filters</Text>
-            </TouchableOpacity>
-          )}
         </View>
       ) : (
         <ScrollView
@@ -459,26 +470,6 @@ const styles = StyleSheet.create({
   filterButtonTextActive: {
     color: colors.white,
   },
-  filterIndicator: {
-    fontSize: 12,
-    fontFamily: typography.body,
-    color: colors.brownText,
-    opacity: 0.7,
-    marginTop: 4,
-  },
-  emptyClearButton: {
-    marginTop: 16,
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    backgroundColor: colors.primaryBlue,
-    borderRadius: 8,
-  },
-  emptyClearButtonText: {
-    fontSize: 14,
-    fontFamily: typography.body,
-    color: colors.white,
-    fontWeight: '600',
-  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -488,13 +479,15 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 40,
+    paddingHorizontal: 40,
+    paddingVertical: 60,
   },
   emptyText: {
     fontSize: 20,
     fontFamily: typography.body,
     color: colors.brownText,
     marginBottom: 8,
+    textAlign: 'center',
   },
   emptySubtext: {
     fontSize: 16,

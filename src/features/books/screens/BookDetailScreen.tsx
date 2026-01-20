@@ -72,6 +72,8 @@ export default function BookDetailScreen() {
   const [showGenreLabelPicker, setShowGenreLabelPicker] = useState(false);
   const [savingTags, setSavingTags] = useState(false);
   const [customLabelSuggestions, setCustomLabelSuggestions] = useState<string[]>([]);
+  const [bookGenres, setBookGenres] = useState<string[]>(book.genres || []);
+  const [resolvedBookId, setResolvedBookId] = useState<string | null>(book.id || null);
 
   const coverUrl = book.cover_url;
   const hasCover =
@@ -128,30 +130,44 @@ export default function BookDetailScreen() {
 
   // Check if book already exists in user's shelf and fetch notes/dates
   const refreshBookStatus = React.useCallback(async () => {
-    if (!user || (!book.open_library_id && !book.google_books_id)) return;
+    console.log('=== refreshBookStatus CALLED ===');
+    if (!user || (!book.open_library_id && !book.google_books_id)) {
+      console.log('Early return - no user or no book IDs');
+      return;
+    }
 
     try {
-      // First, check if book exists in books table
-      let existingBook = null;
+      // First, check if book exists in books table and get its genres
+      let existingBook: { id: string; genres?: string[] } | null = null;
       if (book.open_library_id) {
         const { data } = await supabase
           .from('books')
-          .select('id')
+          .select('id, genres')
           .eq('open_library_id', book.open_library_id)
           .single();
         existingBook = data;
+        console.log('Fetched by open_library_id:', { id: data?.id, genres: data?.genres });
       }
       
       if (!existingBook && book.google_books_id) {
         const { data } = await supabase
           .from('books')
-          .select('id')
+          .select('id, genres')
           .eq('google_books_id', book.google_books_id)
           .single();
         existingBook = data;
+        console.log('Fetched by google_books_id:', { id: data?.id, genres: data?.genres });
       }
 
       if (existingBook) {
+        // Store the resolved book ID
+        setResolvedBookId(existingBook.id);
+        
+        // Update book genres from database
+        console.log('Setting bookGenres to:', existingBook.genres);
+        // Always set genres, even if empty array or null
+        setBookGenres(existingBook.genres || []);
+
         const { data } = await supabase
           .from('user_books')
           .select('id, status, rank_score, notes, custom_labels')
@@ -918,37 +934,122 @@ export default function BookDetailScreen() {
     };
   }, []);
 
-  // Handle tag editing
-  const handleSaveTags = React.useCallback(async (genres: string[], customLabels: string[]) => {
-    if (!user || !userBookId || !book.id) return;
+  // Handle removing a single genre
+  const handleRemoveGenre = React.useCallback(async (genreToRemove: string) => {
+    const bookIdToUse = resolvedBookId || book.id;
+    if (!user || !bookIdToUse) return;
+
+    const updatedGenres = bookGenres.filter((g) => g !== genreToRemove);
 
     try {
       setSavingTags(true);
+      setBookGenres(updatedGenres); // Optimistic update
 
-      // Update book genres
-      const { error: genresError } = await updateBookGenres(book.id, genres);
-      if (genresError) {
-        throw genresError;
+      const { error } = await updateBookGenres(bookIdToUse, updatedGenres);
+      if (error) {
+        // Rollback on error
+        setBookGenres(bookGenres);
+        throw error;
       }
 
+      setSavingTags(false);
+    } catch (error) {
+      console.error('Error removing genre:', error);
+      setToastMessage('Couldn\'t remove genre. Please try again.');
+      setSavingTags(false);
+    }
+  }, [user, resolvedBookId, book.id, bookGenres]);
+
+  // Handle removing a single custom label
+  const handleRemoveCustomLabel = React.useCallback(async (labelToRemove: string) => {
+    if (!user || !userBookId) return;
+
+    const updatedLabels = userCustomLabels.filter((l) => l !== labelToRemove);
+
+    try {
+      setSavingTags(true);
+      setUserCustomLabels(updatedLabels); // Optimistic update
+
+      const { error } = await updateUserBookDetails(userBookId, user.id, {
+        custom_labels: updatedLabels,
+      });
+      if (error) {
+        // Rollback on error
+        setUserCustomLabels(userCustomLabels);
+        throw error;
+      }
+
+      setSavingTags(false);
+    } catch (error) {
+      console.error('Error removing custom label:', error);
+      setToastMessage('Couldn\'t remove label. Please try again.');
+      setSavingTags(false);
+    }
+  }, [user, userBookId, userCustomLabels]);
+
+  // Handle tag editing
+  const handleSaveTags = React.useCallback(async (genres: string[], customLabels: string[]) => {
+    const bookIdToUse = resolvedBookId || book.id;
+    console.log('=== BookDetailScreen handleSaveTags START ===');
+    console.log('Genres to save:', genres);
+    console.log('Custom Labels to save:', customLabels);
+    console.log('userBookId:', userBookId);
+    console.log('book.id:', book.id);
+    console.log('resolvedBookId:', resolvedBookId);
+    console.log('bookIdToUse:', bookIdToUse);
+    
+    if (!user || !userBookId || !bookIdToUse) {
+      console.log('=== EARLY RETURN - missing required data ===');
+      console.log('user:', !!user);
+      console.log('userBookId:', userBookId);
+      console.log('bookIdToUse:', bookIdToUse);
+      setToastMessage('Unable to save - book not fully loaded');
+      return;
+    }
+
+    try {
+      setSavingTags(true);
+      
+      // Optimistic update - set local state immediately
+      setBookGenres(genres);
+      setUserCustomLabels(customLabels);
+
+      // Update book genres
+      console.log('Calling updateBookGenres with bookId:', bookIdToUse, 'genres:', genres);
+      const { error: genresError } = await updateBookGenres(bookIdToUse, genres);
+      if (genresError) {
+        console.error('=== updateBookGenres FAILED ===', genresError);
+        // Rollback optimistic update
+        setBookGenres(bookGenres);
+        throw genresError;
+      }
+      console.log('=== updateBookGenres SUCCESS ===');
+
       // Update user_books custom_labels
+      console.log('Calling updateUserBookDetails with userBookId:', userBookId);
       const { error: labelsError } = await updateUserBookDetails(userBookId, user.id, {
         custom_labels: customLabels,
       });
       if (labelsError) {
+        console.error('=== updateUserBookDetails FAILED ===', labelsError);
+        // Rollback optimistic update
+        setUserCustomLabels(userCustomLabels);
         throw labelsError;
       }
+      console.log('=== updateUserBookDetails SUCCESS ===');
 
-      // Refresh book status to get updated data
+      // Refresh book status to ensure sync
+      console.log('Calling refreshBookStatus to verify...');
       await refreshBookStatus();
       setSavingTags(false);
       setToastMessage('Tags updated!');
+      console.log('=== handleSaveTags COMPLETE ===');
     } catch (error) {
       console.error('Error saving tags:', error);
       setToastMessage('Couldn\'t save tags. Please try again.');
       setSavingTags(false);
     }
-  }, [user, userBookId, book.id, refreshBookStatus]);
+  }, [user, userBookId, resolvedBookId, book.id, bookGenres, userCustomLabels, refreshBookStatus]);
 
   const getActionText = (status: string | null, username: string) => {
     const displayName = username || 'User';
@@ -1268,36 +1369,44 @@ export default function BookDetailScreen() {
               <View style={styles.whatYouThinkSlot}>
                 <Text style={styles.whatYouThinkSlotLabel}>Shelves</Text>
 
-                {/* Genre and label chips */}
-                {((book.genres && book.genres.length > 0) || userCustomLabels.length > 0) && (
-                  <View style={styles.tagsChipsContainer}>
-                    {book.genres && book.genres.length > 0 && (
-                      <View style={styles.tagsChipsRow}>
-                        {book.genres.map((genre: string) => (
-                          <View key={genre} style={styles.tagPreviewChip}>
-                            <Text style={styles.tagPreviewChipText}>{genre}</Text>
-                          </View>
-                        ))}
+                {/* Genre and label chips - all inline with same styling */}
+                {((bookGenres && bookGenres.length > 0) || userCustomLabels.length > 0) && (
+                  <View style={styles.shelfChipsContainer}>
+                    {/* Preset genres first */}
+                    {bookGenres && bookGenres.map((genre: string) => (
+                      <View key={`genre-${genre}`} style={styles.shelfChip}>
+                        <Text style={styles.shelfChipText}>{genre}</Text>
+                        <TouchableOpacity
+                          onPress={() => handleRemoveGenre(genre)}
+                          style={styles.shelfChipClose}
+                          disabled={savingTags}
+                        >
+                          <Text style={styles.shelfChipCloseText}>×</Text>
+                        </TouchableOpacity>
                       </View>
-                    )}
-                    {userCustomLabels.length > 0 && (
-                      <View style={[styles.tagsChipsRow, { marginTop: 8 }]}>
-                        {userCustomLabels.map((label: string) => (
-                          <View key={label} style={styles.customLabelPreviewChip}>
-                            <Text style={styles.customLabelPreviewChipText}>{label}</Text>
-                          </View>
-                        ))}
+                    ))}
+                    {/* Custom labels after */}
+                    {userCustomLabels.map((label: string) => (
+                      <View key={`label-${label}`} style={styles.shelfChip}>
+                        <Text style={styles.shelfChipText}>{label}</Text>
+                        <TouchableOpacity
+                          onPress={() => handleRemoveCustomLabel(label)}
+                          style={styles.shelfChipClose}
+                          disabled={savingTags}
+                        >
+                          <Text style={styles.shelfChipCloseText}>×</Text>
+                        </TouchableOpacity>
                       </View>
-                    )}
+                    ))}
                   </View>
                 )}
 
                 <TouchableOpacity
-                  style={[styles.dateRangeButton, ((book.genres && book.genres.length > 0) || userCustomLabels.length > 0) && styles.dateRangeButtonActive]}
+                  style={[styles.dateRangeButton, ((bookGenres && bookGenres.length > 0) || userCustomLabels.length > 0) && styles.dateRangeButtonActive]}
                   onPress={() => setShowGenreLabelPicker(true)}
                   disabled={savingTags}
                 >
-                  <Text style={[styles.dateRangeButtonText, ((book.genres && book.genres.length > 0) || userCustomLabels.length > 0) && styles.dateRangeButtonTextActive]}>
+                  <Text style={[styles.dateRangeButtonText, ((bookGenres && bookGenres.length > 0) || userCustomLabels.length > 0) && styles.dateRangeButtonTextActive]}>
                     Edit shelves
                   </Text>
                 </TouchableOpacity>
@@ -1497,10 +1606,10 @@ export default function BookDetailScreen() {
           onClose={() => setShowGenreLabelPicker(false)}
           onSave={handleSaveTags}
           apiCategories={book.categories}
-          initialGenres={book.genres || []}
+          initialGenres={bookGenres}
           initialCustomLabels={userCustomLabels}
           customLabelSuggestions={customLabelSuggestions}
-          bookId={book.id}
+          bookId={resolvedBookId || book.id}
           loading={savingTags}
         />
       )}
@@ -2047,44 +2156,41 @@ const styles = StyleSheet.create({
     minHeight: 44,
     justifyContent: 'center',
   },
-  tagsChipsContainer: {
+  // Unified shelf chips (for both genres and custom labels)
+  shelfChipsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     marginBottom: 12,
     gap: 8,
   },
-  tagsChipsRow: {
+  shelfChip: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     alignItems: 'center',
-    gap: 8,
-  },
-  tagPreviewChip: {
     backgroundColor: colors.primaryBlue,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingLeft: 12,
+    paddingRight: 6,
+    paddingVertical: 6,
+    borderRadius: 16,
   },
-  tagPreviewChipText: {
-    fontSize: 12,
+  shelfChipText: {
+    fontSize: 13,
     fontFamily: typography.body,
     color: colors.white,
     fontWeight: '500',
+    marginRight: 6,
   },
-  tagMoreText: {
-    fontSize: 12,
-    fontFamily: typography.body,
-    color: colors.brownText,
-    opacity: 0.7,
+  shelfChipClose: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: colors.white + '40',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  customLabelPreviewChip: {
-    backgroundColor: colors.brownText + '40',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  customLabelPreviewChipText: {
-    fontSize: 12,
-    fontFamily: typography.body,
-    color: colors.brownText,
-    fontWeight: '500',
+  shelfChipCloseText: {
+    fontSize: 14,
+    color: colors.white,
+    fontWeight: 'bold',
+    lineHeight: 14,
   },
 });
