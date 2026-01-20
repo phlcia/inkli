@@ -10,7 +10,6 @@ import {
 } from 'react-native';
 import { colors, typography } from '../../config/theme';
 import GenreChip from './GenreChip';
-import CustomLabelInput from './CustomLabelInput';
 import { PRESET_GENRES } from '../../utils/genreMapper';
 import { ShelfContext } from '../../services/analytics';
 
@@ -45,13 +44,21 @@ export default function FilterPanel({
   const [selectedCustomLabels, setSelectedCustomLabels] = useState<string[]>(initialSelectedCustomLabels);
   const slideAnim = React.useRef(new Animated.Value(0)).current;
   const debounceTimerRef = React.useRef<NodeJS.Timeout | null>(null);
+  const prevVisibleRef = React.useRef(visible);
 
-  // Sync with parent state when visible changes
+  // Sync with parent state ONLY when modal first opens
   useEffect(() => {
-    if (visible) {
+    const justOpened = visible && !prevVisibleRef.current;
+    prevVisibleRef.current = visible;
+    
+    if (justOpened) {
+      // Modal just opened - sync from parent
       setSelectedGenres(initialSelectedGenres);
       setSelectedCustomLabels(initialSelectedCustomLabels);
-      // Animate fade and scale in
+    }
+    
+    // Animation
+    if (visible) {
       Animated.spring(slideAnim, {
         toValue: 1,
         useNativeDriver: true,
@@ -59,7 +66,6 @@ export default function FilterPanel({
         friction: 11,
       }).start();
     } else {
-      // Animate fade and scale out
       Animated.timing(slideAnim, {
         toValue: 0,
         duration: 200,
@@ -68,8 +74,9 @@ export default function FilterPanel({
     }
   }, [visible, initialSelectedGenres, initialSelectedCustomLabels, slideAnim]);
 
-  // Real-time filtering: immediately update parent when filters change
+  // Real-time filtering: update parent when local filters change
   useEffect(() => {
+    // Always notify parent of filter changes (even when clearing)
     onFiltersChange(selectedGenres, selectedCustomLabels);
 
     // Debounce analytics tracking (300ms after last change)
@@ -89,7 +96,9 @@ export default function FilterPanel({
         clearTimeout(debounceTimerRef.current);
       }
     };
-  }, [selectedGenres, selectedCustomLabels, onFiltersChange, resultCount, onTrackFilterApplied]);
+    // NOTE: Don't include onFiltersChange in deps - it would cause infinite loop
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedGenres, selectedCustomLabels, resultCount, onTrackFilterApplied]);
 
   const handleGenreToggle = useCallback((genre: string) => {
     setSelectedGenres((prev) => {
@@ -175,12 +184,29 @@ export default function FilterPanel({
             {/* Your Shelves Section */}
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Your Shelves</Text>
-              <CustomLabelInput
-                selectedLabels={selectedCustomLabels}
-                onLabelsChange={setSelectedCustomLabels}
-                suggestions={customLabelSuggestions}
-                placeholder="Filter by custom shelf..."
-              />
+              {/* Show existing custom labels as clickable chips */}
+              {customLabelSuggestions.length > 0 ? (
+                <View style={styles.chipsContainer}>
+                  {customLabelSuggestions.map((label) => (
+                    <GenreChip
+                      key={label}
+                      genre={label}
+                      selected={selectedCustomLabels.includes(label)}
+                      onPress={() => {
+                        setSelectedCustomLabels((prev) =>
+                          prev.includes(label)
+                            ? prev.filter((l) => l !== label)
+                            : [...prev, label]
+                        );
+                      }}
+                    />
+                  ))}
+                </View>
+              ) : (
+                <Text style={styles.emptyHint}>
+                  No custom shelves yet. Add them from a book's detail page.
+                </Text>
+              )}
             </View>
 
             {/* Results Count */}
@@ -279,6 +305,13 @@ const styles = StyleSheet.create({
   chipsContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+  },
+  emptyHint: {
+    fontSize: 14,
+    fontFamily: typography.body,
+    color: colors.brownText,
+    opacity: 0.6,
+    fontStyle: 'italic',
   },
   resultsContainer: {
     marginTop: 16,

@@ -14,12 +14,35 @@ export function filterBooks(
   selectedGenres: string[],
   selectedCustomLabels: string[]
 ): UserBook[] {
+  console.log('=== filterBooks DEBUG ===');
+  console.log('Input:', {
+    totalBooks: books.length,
+    selectedGenres,
+    selectedCustomLabels,
+  });
+
   // If nothing selected, return all books
   if (selectedGenres.length === 0 && selectedCustomLabels.length === 0) {
+    console.log('No filters selected, returning all books');
     return books;
   }
 
-  return books.filter((book) => {
+  // Debug: Show what data we have to filter
+  const booksWithGenres = books.filter(b => b.book?.genres && b.book.genres.length > 0);
+  const booksWithLabels = books.filter(b => b.custom_labels && b.custom_labels.length > 0);
+  console.log('Books with genres:', booksWithGenres.length);
+  console.log('Books with custom_labels:', booksWithLabels.length);
+  
+  // Show first 3 books' data
+  books.slice(0, 3).forEach((book, idx) => {
+    console.log(`Book ${idx}:`, {
+      title: book.book?.title,
+      genres: book.book?.genres,
+      custom_labels: book.custom_labels,
+    });
+  });
+
+  const result = books.filter((book) => {
     const bookGenres = book.book?.genres || [];
     const bookCustomLabels = book.custom_labels || [];
 
@@ -39,10 +62,27 @@ export function filterBooks(
       );
     }
 
+    const matches = matchesGenre && matchesCustomLabel;
+    
+    // Debug individual book matching (only log non-matches to reduce noise)
+    if (!matches && (selectedGenres.length > 0 || selectedCustomLabels.length > 0)) {
+      console.log(`Book "${book.book?.title}" did NOT match:`, {
+        bookGenres,
+        bookCustomLabels,
+        matchesGenre,
+        matchesCustomLabel,
+      });
+    }
+
     // If both filters active: book must match both
     // If only one filter active: book must match that one
-    return matchesGenre && matchesCustomLabel;
+    return matches;
   });
+
+  console.log('=== filterBooks RESULT ===');
+  console.log('Filtered count:', result.length, '/', books.length);
+  
+  return result;
 }
 
 /**

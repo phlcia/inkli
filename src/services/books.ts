@@ -1202,6 +1202,9 @@ export async function addBookToShelf(
  */
 export async function getUserBooks(userId: string): Promise<UserBook[]> {
   try {
+    console.log('=== getUserBooks DEBUG ===');
+    console.log('Fetching books for userId:', userId);
+    
     const { data, error } = await supabase
       .from('user_books')
       .select(
@@ -1214,7 +1217,35 @@ export async function getUserBooks(userId: string): Promise<UserBook[]> {
       .order('rating', { ascending: true, nullsFirst: true })
       .order('rank_score', { ascending: false, nullsFirst: false });
 
-    if (error) throw error;
+    if (error) {
+      console.error('=== getUserBooks ERROR ===', error);
+      throw error;
+    }
+
+    console.log('=== getUserBooks RESULTS ===');
+    console.log('Total books fetched:', data?.length);
+    
+    // Debug: Log sample book structure to verify genres are included
+    if (data && data.length > 0) {
+      const sampleBook = data[0];
+      console.log('Sample user_book structure:', {
+        id: sampleBook.id,
+        custom_labels: sampleBook.custom_labels,
+        has_book: !!sampleBook.book,
+        book_id: sampleBook.book?.id,
+        book_title: sampleBook.book?.title,
+        book_genres: sampleBook.book?.genres,
+        book_categories: sampleBook.book?.categories,
+      });
+      
+      // Count books with genres
+      const booksWithGenres = data.filter(b => b.book?.genres && b.book.genres.length > 0);
+      console.log('Books with genres:', booksWithGenres.length, '/', data.length);
+      
+      // Count books with custom_labels
+      const booksWithLabels = data.filter(b => b.custom_labels && b.custom_labels.length > 0);
+      console.log('Books with custom_labels:', booksWithLabels.length, '/', data.length);
+    }
 
     return (data || []).map((item) => ({
       ...item,
@@ -1496,10 +1527,19 @@ export async function updateUserBookDetails(
     // Note: started_date and finished_date are deprecated - use read_sessions instead
     // Removed to prevent errors since columns no longer exist
 
+    console.log('=== updateUserBookDetails: final updateData ===', updateData);
+    console.log('userBookId:', userBookId);
+
     const { data, error } = await supabase
       .from('user_books')
       .update(updateData)
       .eq('id', userBookId);
+
+    if (error) {
+      console.error('=== updateUserBookDetails: update error ===', error);
+    } else {
+      console.log('=== updateUserBookDetails: update success ===');
+    }
 
     return { data, error };
   } catch (error) {
@@ -2015,21 +2055,35 @@ export async function deleteReadSession(
 
 /**
  * Update book genres (mapped preset genres)
+ * Uses Edge Function to bypass RLS on books table
  */
 export async function updateBookGenres(
   bookId: string,
   genres: string[]
 ): Promise<{ error: any }> {
   try {
-    // Never allow empty genres array - ensure at least one genre
-    const finalGenres = genres.length > 0 ? genres : ['Fiction'];
+    console.log('=== updateBookGenres ===');
+    console.log('bookId:', bookId);
+    console.log('genres:', genres);
     
-    const { error } = await supabase
-      .from('books')
-      .update({ genres: finalGenres })
-      .eq('id', bookId);
+    const { data, error } = await supabase.functions.invoke('books-update-genres', {
+      body: { book_id: bookId, genres },
+    });
 
-    return { error };
+    if (error) {
+      console.error('=== updateBookGenres: Edge Function error ===', error);
+      return { error };
+    }
+
+    if (!data?.success) {
+      const errMsg = data?.error || 'Unknown error from Edge Function';
+      console.error('=== updateBookGenres: Edge Function failed ===', errMsg);
+      return { error: new Error(errMsg) };
+    }
+
+    console.log('=== updateBookGenres: success ===');
+    console.log('Updated genres:', data.genres);
+    return { error: null };
   } catch (error) {
     console.error('Error updating book genres:', error);
     return { error };

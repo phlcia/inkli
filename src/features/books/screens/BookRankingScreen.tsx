@@ -58,6 +58,7 @@ export default function BookRankingScreen() {
   const [selectedGenres, setSelectedGenres] = useState<string[]>(book.genres || []);
   const [selectedCustomLabels, setSelectedCustomLabels] = useState<string[]>([]);
   const [customLabelSuggestions, setCustomLabelSuggestions] = useState<string[]>([]);
+  const [resolvedBookId, setResolvedBookId] = useState<string | null>(book.id || null);
 
   if (!book) return null;
 
@@ -69,15 +70,32 @@ export default function BookRankingScreen() {
       if (userBookId && user) {
         const fetchInitialState = async () => {
           try {
+            // Fetch user_book data including book_id
             const { data, error } = await supabase
               .from('user_books')
-              .select('rating, notes, custom_labels')
+              .select('rating, notes, custom_labels, book_id')
               .eq('id', userBookId)
               .single();
 
             if (error && error.code !== 'PGRST116') {
               console.error('Error fetching initial book state:', error);
               return;
+            }
+
+            // Resolve and store the book_id from user_books
+            if (data?.book_id) {
+              setResolvedBookId(data.book_id);
+              
+              // Also fetch the book's genres from the books table
+              const { data: bookData } = await supabase
+                .from('books')
+                .select('genres')
+                .eq('id', data.book_id)
+                .single();
+              
+              if (bookData?.genres) {
+                setSelectedGenres(bookData.genres);
+              }
             }
 
             // Fetch read sessions
@@ -97,7 +115,7 @@ export default function BookRankingScreen() {
               setNotes(state.notes);
               setStartedDate(state.startedDate);
               setFinishedDate(state.finishedDate);
-              setCurrentReadSession(latestSession);
+              setCurrentReadSession(latestSession || null);
               
               // Populate custom labels if they exist
               if (data.custom_labels && data.custom_labels.length > 0) {
@@ -520,34 +538,53 @@ export default function BookRankingScreen() {
   };
 
   const handleSaveTags = async (genres: string[], customLabels: string[]) => {
-    if (!user || !userBookId || !book.id) return;
+    const bookIdToUse = resolvedBookId || book.id;
+    console.log('=== handleSaveTags called ===');
+    console.log('Genres:', genres);
+    console.log('Custom Labels:', customLabels);
+    console.log('userBookId:', userBookId);
+    console.log('book.id:', book.id);
+    console.log('resolvedBookId:', resolvedBookId);
+    console.log('bookIdToUse:', bookIdToUse);
+    
+    if (!user || !userBookId || !bookIdToUse) {
+      console.log('Early return - missing user/userBookId/bookIdToUse');
+      return;
+    }
     
     try {
       setSavingTags(true);
       
       // Update book genres
-      const { error: genresError } = await updateBookGenres(book.id, genres);
+      console.log('Calling updateBookGenres with:', bookIdToUse, genres);
+      const { error: genresError } = await updateBookGenres(bookIdToUse, genres);
       if (genresError) {
+        console.error('genresError:', genresError);
         Alert.alert('Error', 'Failed to save genres. Please try again.');
         setSavingTags(false);
         return;
       }
+      console.log('Genres saved successfully');
       
       // Update user_books custom_labels
       // Note: Don't use touchUpdatedAt: false here because the no-touch RPC doesn't support custom_labels
+      console.log('Calling updateUserBookDetails with custom_labels:', customLabels);
       const { error: labelsError } = await updateUserBookDetails(userBookId, user.id, {
         custom_labels: customLabels,
       });
       if (labelsError) {
+        console.error('labelsError:', labelsError);
         Alert.alert('Error', 'Failed to save custom labels. Please try again.');
         setSavingTags(false);
         return;
       }
+      console.log('Custom labels saved successfully');
       
       // Update local state on success
       setSelectedGenres(genres);
       setSelectedCustomLabels(customLabels);
       setSavingTags(false);
+      console.log('=== handleSaveTags complete ===');
     } catch (error) {
       console.error('Error saving tags:', error);
       Alert.alert('Error', 'Something went wrong. Please try again.');
@@ -777,7 +814,7 @@ export default function BookRankingScreen() {
         initialGenres={selectedGenres}
         initialCustomLabels={selectedCustomLabels}
         customLabelSuggestions={customLabelSuggestions}
-        bookId={book.id}
+        bookId={resolvedBookId || book.id}
         loading={savingTags}
       />
     </SafeAreaView>

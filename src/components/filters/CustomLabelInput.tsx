@@ -5,7 +5,7 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  FlatList,
+  ScrollView,
   Keyboard,
   Alert,
 } from 'react-native';
@@ -131,24 +131,23 @@ export default function CustomLabelInput({
         }}
       />
 
-      {/* Suggestions dropdown */}
+      {/* Suggestions dropdown - using ScrollView instead of FlatList to avoid nesting issues */}
       {showSuggestions && filteredSuggestions.length > 0 && (
-        <View style={styles.suggestionsContainer}>
-          <FlatList
-            data={filteredSuggestions}
-            keyExtractor={(item) => item}
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                style={styles.suggestionItem}
-                onPress={() => handleSelectSuggestion(item)}
-              >
-                <Text style={styles.suggestionText}>{item}</Text>
-              </TouchableOpacity>
-            )}
-            keyboardShouldPersistTaps="handled"
-            nestedScrollEnabled
-          />
-        </View>
+        <ScrollView
+          style={styles.suggestionsContainer}
+          keyboardShouldPersistTaps="handled"
+          nestedScrollEnabled
+        >
+          {filteredSuggestions.map((item) => (
+            <TouchableOpacity
+              key={item}
+              style={styles.suggestionItem}
+              onPress={() => handleSelectSuggestion(item)}
+            >
+              <Text style={styles.suggestionText}>{item}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
       )}
     </View>
   );

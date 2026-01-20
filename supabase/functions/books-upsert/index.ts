@@ -24,6 +24,8 @@ const MAX_AUTHORS = 10
 const MAX_AUTHOR_LEN = 200
 const MAX_CATEGORIES = 10
 const MAX_CATEGORY_LEN = 200
+const MAX_GENRES = 15
+const MAX_GENRE_LEN = 50
 
 function cleanString(value: unknown, maxLen: number): string | null {
   if (typeof value !== 'string') return null
@@ -103,6 +105,7 @@ function sanitizeBook(input: Record<string, unknown>) {
     description: cleanString(input.description, MAX_DESCRIPTION_LEN),
     page_count: cleanOptionalNumber(input.page_count),
     categories: cleanStringArray(input.categories, MAX_CATEGORIES, MAX_CATEGORY_LEN),
+    genres: cleanStringArray(input.genres, MAX_GENRES, MAX_GENRE_LEN),
     average_rating: cleanOptionalNumber(input.average_rating),
     ratings_count: cleanOptionalNumber(input.ratings_count),
     language: cleanString(input.language, MAX_LANGUAGE_LEN),
