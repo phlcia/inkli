@@ -534,9 +534,10 @@ export default function BookRankingScreen() {
       }
       
       // Update user_books custom_labels
+      // Note: Don't use touchUpdatedAt: false here because the no-touch RPC doesn't support custom_labels
       const { error: labelsError } = await updateUserBookDetails(userBookId, user.id, {
         custom_labels: customLabels,
-      }, { touchUpdatedAt: false });
+      });
       if (labelsError) {
         Alert.alert('Error', 'Failed to save custom labels. Please try again.');
         setSavingTags(false);

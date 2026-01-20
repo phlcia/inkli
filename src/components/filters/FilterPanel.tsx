@@ -157,9 +157,9 @@ export default function FilterPanel({
             contentContainerStyle={styles.contentContainer}
             showsVerticalScrollIndicator={false}
           >
-            {/* Preset Genres Section */}
+            {/* Preset Shelves Section */}
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Genres</Text>
+              <Text style={styles.sectionTitle}>Preset Shelves</Text>
               <View style={styles.chipsContainer}>
                 {PRESET_GENRES.map((genre) => (
                   <GenreChip
@@ -172,13 +172,14 @@ export default function FilterPanel({
               </View>
             </View>
 
-            {/* Custom Labels Section */}
+            {/* Your Shelves Section */}
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Custom Labels</Text>
+              <Text style={styles.sectionTitle}>Your Shelves</Text>
               <CustomLabelInput
                 selectedLabels={selectedCustomLabels}
                 onLabelsChange={setSelectedCustomLabels}
                 suggestions={customLabelSuggestions}
+                placeholder="Filter by custom shelf..."
               />
             </View>
 
@@ -225,11 +226,13 @@ const styles = StyleSheet.create({
     width: '90%',
     maxWidth: 500,
     maxHeight: '80%',
+    minHeight: 300,
     shadowColor: colors.brownText,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 12,
     elevation: 8,
+    overflow: 'hidden',
   },
   header: {
     flexDirection: 'row',
@@ -262,10 +265,10 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     padding: 20,
-    paddingBottom: 100,
+    paddingBottom: 20,
   },
   section: {
-    marginBottom: 24,
+    marginBottom: 16,
   },
   sectionTitle: {
     fontSize: 18,

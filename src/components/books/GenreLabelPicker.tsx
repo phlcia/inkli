@@ -8,6 +8,7 @@ import {
   ScrollView,
   ActivityIndicator,
   Animated,
+  Alert,
 } from 'react-native';
 import { colors, typography } from '../../config/theme';
 import GenreChip from '../filters/GenreChip';
@@ -41,12 +42,12 @@ export default function GenreLabelPicker({
   const [selectedGenres, setSelectedGenres] = useState<string[]>(initialGenres || []);
   const [selectedCustomLabels, setSelectedCustomLabels] = useState<string[]>(initialCustomLabels || []);
   const [mappedGenres, setMappedGenres] = useState<string[]>([]);
-  const [mappingGenres, setMappingGenres] = useState(true);
+  const [mappingGenres, setMappingGenres] = useState(false);
   const fadeAnim = React.useRef(new Animated.Value(0)).current;
 
   // Map API categories to suggested genres when component opens or API categories change
   useEffect(() => {
-    if (visible && apiCategories && !initialGenres) {
+    if (visible && apiCategories && (!initialGenres || initialGenres.length === 0)) {
       // Only auto-map if editing existing book with no genres
       setMappingGenres(true);
       getSuggestedGenres(apiCategories, bookId)
@@ -63,10 +64,13 @@ export default function GenreLabelPicker({
           setMappedGenres([]);
           setMappingGenres(false);
         });
-    } else if (visible && initialGenres) {
+    } else if (visible && initialGenres && initialGenres.length > 0) {
       // Editing existing book - use existing genres
       setMappedGenres(initialGenres);
       setSelectedGenres(initialGenres);
+      setMappingGenres(false);
+    } else if (visible) {
+      // Modal is visible but no genres to map - just ensure not in loading state
       setMappingGenres(false);
     } else if (!visible) {
       // Reset when modal closes
@@ -115,6 +119,41 @@ export default function GenreLabelPicker({
         return [...prev, genre];
       }
     });
+  };
+
+  const handleCustomLabelToggle = (label: string) => {
+    setSelectedCustomLabels((prev) =>
+      prev.includes(label)
+        ? prev.filter((l) => l !== label)
+        : [...prev, label]
+    );
+  };
+
+  // Filter out custom labels that match preset genres (case-insensitive)
+  const uniqueCustomSuggestions = customLabelSuggestions.filter(
+    (label) => !PRESET_GENRES.some((g) => g.toLowerCase() === label.toLowerCase())
+  );
+
+  // Wrapper to check for preset duplicates when adding new custom labels
+  const handleCustomLabelsChange = (labels: string[]) => {
+    // Check if the newly added label matches a preset genre
+    const newLabel = labels.find((l) => !selectedCustomLabels.includes(l));
+
+    if (newLabel) {
+      const isPresetGenre = PRESET_GENRES.some(
+        (g) => g.toLowerCase() === newLabel.toLowerCase()
+      );
+
+      if (isPresetGenre) {
+        Alert.alert(
+          'Already a Preset Shelf',
+          `"${newLabel}" is already available in Preset Shelves above. Select it there instead.`
+        );
+        return; // Don't add it
+      }
+    }
+
+    setSelectedCustomLabels(labels);
   };
 
   const handleSave = () => {
@@ -180,7 +219,7 @@ export default function GenreLabelPicker({
           <ScrollView
             style={styles.content}
             contentContainerStyle={styles.contentContainer}
-            showsVerticalScrollIndicator={false}
+            showsVerticalScrollIndicator={true}
           >
             {/* API Categories Reference (if available) */}
             {apiCategories && apiCategories.length > 0 && (
@@ -195,13 +234,13 @@ export default function GenreLabelPicker({
               </View>
             )}
 
-            {/* Preset Genres Section */}
+            {/* Preset Shelves Section */}
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Genres</Text>
-              {mappingGenres && !initialGenres ? (
+              <Text style={styles.sectionTitle}>Preset Shelves</Text>
+              {mappingGenres ? (
                 <View style={styles.loadingContainer}>
                   <ActivityIndicator size="small" color={colors.primaryBlue} />
-                  <Text style={styles.loadingText}>Mapping genres...</Text>
+                  <Text style={styles.loadingText}>Mapping shelves...</Text>
                 </View>
               ) : (
                 <View style={styles.chipsContainer}>
@@ -215,21 +254,39 @@ export default function GenreLabelPicker({
                   ))}
                 </View>
               )}
-              <Text style={styles.hint}>
-                {selectedGenres.length === 0
-                  ? 'No genres selected. Mapped suggestions will be applied on save.'
-                  : `Selected: ${selectedGenres.length} genre${selectedGenres.length === 1 ? '' : 's'}`}
-              </Text>
+              {selectedGenres.length === 0 && !mappingGenres && (
+                <Text style={styles.hint}>Select genres for this book</Text>
+              )}
             </View>
 
-            {/* Custom Labels Section */}
+            {/* Your Shelves Section */}
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Custom Labels</Text>
-              <Text style={styles.hint}>Add your own tags (optional)</Text>
+              <Text style={styles.sectionTitle}>Your Shelves</Text>
+              
+              {/* Existing custom shelf chips */}
+              {uniqueCustomSuggestions.length > 0 ? (
+                <View style={styles.chipsContainer}>
+                  {uniqueCustomSuggestions.map((label) => (
+                    <GenreChip
+                      key={label}
+                      genre={label}
+                      selected={selectedCustomLabels.includes(label)}
+                      onPress={() => handleCustomLabelToggle(label)}
+                    />
+                  ))}
+                </View>
+              ) : (
+                <Text style={styles.emptyHint}>No custom shelves yet. Create one below!</Text>
+              )}
+              
+              {/* Add new shelf input */}
               <CustomLabelInput
                 selectedLabels={selectedCustomLabels}
-                onLabelsChange={setSelectedCustomLabels}
-                suggestions={customLabelSuggestions}
+                onLabelsChange={handleCustomLabelsChange}
+                suggestions={uniqueCustomSuggestions}
+                placeholder="Add new shelf..."
+                maxLength={30}
+                maxCount={50}
               />
             </View>
           </ScrollView>
@@ -255,11 +312,13 @@ const styles = StyleSheet.create({
     width: '90%',
     maxWidth: 500,
     maxHeight: '80%',
+    minHeight: 300,
     shadowColor: colors.brownText,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 12,
     elevation: 8,
+    overflow: 'hidden',
   },
   header: {
     flexDirection: 'row',
@@ -347,6 +406,14 @@ const styles = StyleSheet.create({
     color: colors.brownText,
     opacity: 0.7,
     marginTop: 8,
+  },
+  emptyHint: {
+    fontSize: 14,
+    fontFamily: typography.body,
+    color: colors.brownText,
+    opacity: 0.6,
+    marginBottom: 12,
+    fontStyle: 'italic',
   },
   apiCategoriesSection: {
     marginBottom: 20,

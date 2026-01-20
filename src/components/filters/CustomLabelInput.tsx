@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   TextInput,
@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   FlatList,
   Keyboard,
+  Alert,
 } from 'react-native';
 import { colors, typography } from '../../config/theme';
 
@@ -14,12 +15,18 @@ interface CustomLabelInputProps {
   selectedLabels: string[];
   onLabelsChange: (labels: string[]) => void;
   suggestions: string[]; // Current user's existing labels for auto-complete
+  placeholder?: string;
+  maxLength?: number;
+  maxCount?: number;
 }
 
 export default function CustomLabelInput({
   selectedLabels,
   onLabelsChange,
   suggestions,
+  placeholder = 'Add custom label...',
+  maxLength = 30,
+  maxCount = 50,
 }: CustomLabelInputProps) {
   const [inputValue, setInputValue] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -44,14 +51,35 @@ export default function CustomLabelInput({
   }, [inputValue, suggestions, selectedLabels]);
 
   const handleAddLabel = (label?: string) => {
-    const labelToAdd = (label || inputValue.trim()).toLowerCase();
+    const labelToAdd = (label || inputValue.trim());
     
-    if (labelToAdd && !selectedLabels.includes(labelToAdd)) {
-      onLabelsChange([...selectedLabels, labelToAdd]);
-      setInputValue('');
-      setShowSuggestions(false);
-      Keyboard.dismiss();
+    if (!labelToAdd) return;
+    
+    // Max length validation
+    if (maxLength && labelToAdd.length > maxLength) {
+      Alert.alert('Shelf Name Too Long', `Maximum ${maxLength} characters`);
+      return;
     }
+    
+    // Max count validation
+    if (maxCount && selectedLabels.length >= maxCount) {
+      Alert.alert(
+        'Maximum Shelves Reached',
+        `You can have up to ${maxCount} custom shelves. Remove some to add new ones.`
+      );
+      return;
+    }
+    
+    // Case-insensitive duplicate check within custom labels
+    if (selectedLabels.some(l => l.toLowerCase() === labelToAdd.toLowerCase())) {
+      Alert.alert('Already Added', 'This shelf is already in your list');
+      return;
+    }
+    
+    onLabelsChange([...selectedLabels, labelToAdd]);
+    setInputValue('');
+    setShowSuggestions(false);
+    Keyboard.dismiss();
   };
 
   const handleRemoveLabel = (label: string) => {
@@ -85,8 +113,9 @@ export default function CustomLabelInput({
       {/* Input field */}
       <TextInput
         style={styles.input}
-        placeholder="Add custom label..."
+        placeholder={placeholder}
         placeholderTextColor={colors.brownText + '80'}
+        maxLength={maxLength}
         value={inputValue}
         onChangeText={setInputValue}
         onSubmitEditing={() => handleAddLabel()}
