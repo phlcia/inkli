@@ -2054,6 +2054,28 @@ export async function deleteReadSession(
 }
 
 /**
+ * Remove a custom label from all books for a user
+ * Uses PostgreSQL function for atomic batch update
+ * Returns the count of affected books
+ */
+export async function removeCustomLabelFromAllBooks(
+  userId: string,
+  labelToRemove: string
+): Promise<number> {
+  const { data, error } = await supabase.rpc('remove_custom_label', {
+    p_user_id: userId,
+    p_label: labelToRemove,
+  });
+
+  if (error) {
+    console.error('Error removing custom label from all books:', error);
+    throw error;
+  }
+
+  return data || 0;
+}
+
+/**
  * Update book genres (mapped preset genres)
  * Uses Edge Function to bypass RLS on books table
  */

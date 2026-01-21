@@ -7,7 +7,9 @@ import {
   TouchableOpacity,
   ScrollView,
   Animated,
+  Alert,
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { colors, typography } from '../../config/theme';
 import GenreChip from './GenreChip';
 import { PRESET_GENRES } from '../../utils/genreMapper';
@@ -25,6 +27,7 @@ interface FilterPanelProps {
   onClearFilters: () => void;
   onTrackFilterApplied?: (genres: string[], customLabels: string[], resultCount: number) => void;
   onTrackFilterCleared?: () => void;
+  onDeleteCustomLabel?: (label: string) => Promise<void>;
 }
 
 export default function FilterPanel({
@@ -39,6 +42,7 @@ export default function FilterPanel({
   onClearFilters,
   onTrackFilterApplied,
   onTrackFilterCleared,
+  onDeleteCustomLabel,
 }: FilterPanelProps) {
   const [selectedGenres, setSelectedGenres] = useState<string[]>(initialSelectedGenres);
   const [selectedCustomLabels, setSelectedCustomLabels] = useState<string[]>(initialSelectedCustomLabels);
@@ -120,6 +124,32 @@ export default function FilterPanel({
     }
   }, [onClearFilters, onTrackFilterCleared]);
 
+  const handleDeleteLabel = useCallback(async (label: string) => {
+    // Haptic feedback on long-press
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+    Alert.alert(
+      'Delete Shelf',
+      `Remove "${label}" from all your books? This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await onDeleteCustomLabel?.(label);
+              // Clear from local selection if currently selected
+              setSelectedCustomLabels((prev) => prev.filter((l) => l !== label));
+            } catch (error) {
+              Alert.alert('Error', 'Failed to delete shelf');
+            }
+          },
+        },
+      ]
+    );
+  }, [onDeleteCustomLabel]);
+
   const opacity = slideAnim.interpolate({
     inputRange: [0, 1],
     outputRange: [0, 1],
@@ -186,22 +216,28 @@ export default function FilterPanel({
               <Text style={styles.sectionTitle}>Your Shelves</Text>
               {/* Show existing custom labels as clickable chips */}
               {customLabelSuggestions.length > 0 ? (
-                <View style={styles.chipsContainer}>
-                  {customLabelSuggestions.map((label) => (
-                    <GenreChip
-                      key={label}
-                      genre={label}
-                      selected={selectedCustomLabels.includes(label)}
-                      onPress={() => {
-                        setSelectedCustomLabels((prev) =>
-                          prev.includes(label)
-                            ? prev.filter((l) => l !== label)
-                            : [...prev, label]
-                        );
-                      }}
-                    />
-                  ))}
-                </View>
+                <>
+                  <View style={styles.chipsContainer}>
+                    {customLabelSuggestions.map((label) => (
+                      <GenreChip
+                        key={label}
+                        genre={label}
+                        selected={selectedCustomLabels.includes(label)}
+                        onPress={() => {
+                          setSelectedCustomLabels((prev) =>
+                            prev.includes(label)
+                              ? prev.filter((l) => l !== label)
+                              : [...prev, label]
+                          );
+                        }}
+                        onLongPress={onDeleteCustomLabel ? () => handleDeleteLabel(label) : undefined}
+                      />
+                    ))}
+                  </View>
+                  {onDeleteCustomLabel && (
+                    <Text style={styles.deleteHint}>Long-press a shelf to delete it</Text>
+                  )}
+                </>
               ) : (
                 <Text style={styles.emptyHint}>
                   No custom shelves yet. Add them from a book's detail page.
@@ -304,6 +340,14 @@ const styles = StyleSheet.create({
     color: colors.brownText,
     opacity: 0.6,
     fontStyle: 'italic',
+  },
+  deleteHint: {
+    fontSize: 12,
+    fontFamily: typography.body,
+    color: colors.brownText,
+    opacity: 0.5,
+    fontStyle: 'italic',
+    marginTop: 8,
   },
   footer: {
     padding: 20,
