@@ -208,7 +208,7 @@ export default function RecentActivityCard({
                 <Text style={styles.cardBookTitle} onPress={onPressBookTitle || (() => onPressBook(userBook))}>
                   {book.title}
                 </Text>
-                {(userBook as any).read_count && (userBook as any).read_count > 1 && (
+                {(userBook as any).read_count > 1 && (
                   <Text style={styles.readCountBadge}>
                     {' '}({(userBook as any).read_count}x)
                   </Text>
