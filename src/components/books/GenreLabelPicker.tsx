@@ -27,6 +27,7 @@ interface GenreLabelPickerProps {
   customLabelSuggestions: string[]; // User's existing custom labels for auto-complete
   bookId?: string; // Optional book ID for genre mapping logging
   loading?: boolean;
+  autoSelectSuggestions?: boolean; // Whether to auto-select suggested genres (default: true for ranking flow)
 }
 
 export default function GenreLabelPicker({
@@ -39,6 +40,7 @@ export default function GenreLabelPicker({
   customLabelSuggestions,
   bookId,
   loading = false,
+  autoSelectSuggestions = true, // Default true for backward compatibility (ranking flow)
 }: GenreLabelPickerProps) {
   console.log('=== GenreLabelPicker RENDER ===');
   console.log('Props:', { visible, initialGenres, initialCustomLabels, bookId, loading });
@@ -69,10 +71,12 @@ export default function GenreLabelPicker({
         .then((suggestions) => {
           console.log('Mapped suggestions:', suggestions);
           setMappedGenres(suggestions);
-          // Pre-select mapped genres if user hasn't selected any yet
-          if (selectedGenres.length === 0) {
-            console.log('Pre-selecting mapped genres');
+          // Only pre-select mapped genres if autoSelectSuggestions is true (ranking flow)
+          if (autoSelectSuggestions && selectedGenres.length === 0) {
+            console.log('Pre-selecting mapped genres (autoSelectSuggestions=true)');
             setSelectedGenres(suggestions);
+          } else {
+            console.log('NOT pre-selecting genres (autoSelectSuggestions=false)');
           }
           setMappingGenres(false);
         })

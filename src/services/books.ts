@@ -111,6 +111,7 @@ export interface UserBook {
   rating?: 'liked' | 'fine' | 'disliked';
   notes?: string | null;
   custom_labels?: string[] | null; // Per-user custom tags
+  user_genres?: string[] | null; // Per-user genre overrides (null = use book defaults)
   started_date?: string | null; // DEPRECATED: Use read_sessions instead
   finished_date?: string | null; // DEPRECATED: Use read_sessions instead
   read_sessions?: ReadSession[]; // NEW: Multiple date ranges
@@ -1046,39 +1047,37 @@ export async function checkUserHasBook(
  * Add a book to user's shelf
  * Creates book record if it doesn't exist, then creates user_books entry
  * Accepts enriched book data (from enrichBookWithGoogleBooks)
+ * Status can be null to save the book without adding to a shelf (e.g., just adding tags)
  * Returns: { userBookId, isUpdate: boolean, previousStatus?: string }
  */
 export async function addBookToShelf(
   bookData: any, // Enriched book data from enrichBookWithGoogleBooks
-  status: 'read' | 'currently_reading' | 'want_to_read',
+  status: 'read' | 'currently_reading' | 'want_to_read' | null,
   userId: string,
   options?: {
     rating?: 'liked' | 'fine' | 'disliked';
     notes?: string;
     started_date?: string;
     finished_date?: string;
-    genres?: string[]; // User-selected genres (from GenreLabelPicker)
+    genres?: string[]; // User-selected genres (from GenreLabelPicker) - saved to user_books
     custom_labels?: string[]; // User-selected custom labels
   }
 ): Promise<{ userBookId: string; isUpdate: boolean; previousStatus?: string }> {
   try {
-    // Map API categories to preset genres if not already provided
-    let mappedGenres: string[] = [];
-    if (options?.genres && options.genres.length > 0) {
-      // Use user-selected genres
-      mappedGenres = options.genres;
-    } else {
-      // Auto-map genres from API categories (will be applied if user didn't select any)
-      mappedGenres = await getSuggestedGenres(bookData.categories);
-    }
+    // Auto-map genres from API categories for book defaults (stored on books table)
+    const defaultGenres = await getSuggestedGenres(bookData.categories);
 
-    // Prepare book data with genres (will be stored when book is upserted)
+    // Prepare book data with default genres (stored on books table for all users)
     const bookDataWithGenres = {
       ...bookData,
-      genres: mappedGenres, // Store mapped genres on book
+      genres: defaultGenres, // Store auto-mapped genres as book defaults
     };
 
     const { book_id: bookId } = await upsertBookViaEdge(bookDataWithGenres);
+    
+    // User-selected genres will be stored on user_books.user_genres (per-user)
+    // If user selected genres, use those; otherwise null means "use book defaults"
+    const userGenres = (options?.genres && options.genres.length > 0) ? options.genres : null;
 
     // Check if user already has this book
     const existingCheck = await checkUserHasBook(bookId, userId);
@@ -1107,6 +1106,10 @@ export async function addBookToShelf(
       }
       if (options?.custom_labels !== undefined) {
         updateData.custom_labels = options.custom_labels;
+      }
+      // Save user-selected genres to user_books (per-user)
+      if (userGenres !== null) {
+        updateData.user_genres = userGenres;
       }
 
       const { error: updateError } = await supabase
@@ -1148,6 +1151,10 @@ export async function addBookToShelf(
     if (options?.custom_labels) {
       userBookData.custom_labels = options.custom_labels;
     }
+    // Save user-selected genres to user_books (per-user)
+    if (userGenres !== null) {
+      userBookData.user_genres = userGenres;
+    }
 
     const { data: newUserBook, error: userBookError } = await supabase
       .from('user_books')
@@ -1171,6 +1178,7 @@ export async function addBookToShelf(
           if (options?.started_date !== undefined) updateData.started_date = options.started_date;
           if (options?.finished_date !== undefined) updateData.finished_date = options.finished_date;
           if (options?.custom_labels !== undefined) updateData.custom_labels = options.custom_labels;
+          if (userGenres !== null) updateData.user_genres = userGenres;
 
           await supabase
             .from('user_books')
@@ -1419,6 +1427,7 @@ export async function updateUserBookDetails(
     rating?: 'liked' | 'fine' | 'disliked' | null;
     notes?: string | null;
     custom_labels?: string[] | null;
+    user_genres?: string[] | null; // Per-user genre overrides
     /** @deprecated Use read_sessions (addReadSession) instead */
     started_date?: string | null;
     /** @deprecated Use read_sessions (addReadSession) instead */
@@ -1524,6 +1533,7 @@ export async function updateUserBookDetails(
     }
     if (updates.notes !== undefined) updateData.notes = updates.notes;
     if (updates.custom_labels !== undefined) updateData.custom_labels = updates.custom_labels;
+    if (updates.user_genres !== undefined) updateData.user_genres = updates.user_genres;
     // Note: started_date and finished_date are deprecated - use read_sessions instead
     // Removed to prevent errors since columns no longer exist
 
@@ -2076,6 +2086,10 @@ export async function removeCustomLabelFromAllBooks(
 }
 
 /**
+ * @deprecated Use updateUserBookDetails with user_genres instead.
+ * This function updates the global books.genres which affects all users.
+ * For per-user genre customization, save to user_books.user_genres via updateUserBookDetails.
+ * 
  * Update book genres (mapped preset genres)
  * Uses Edge Function to bypass RLS on books table
  */

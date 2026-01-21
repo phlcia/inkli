@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
 import { CompositeNavigationProp, useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -11,6 +11,7 @@ import { getCommentsCount } from '../../../services/activityComments';
 import { ProfileStackParamList } from '../../../navigation/ProfileStackNavigator';
 import { SearchStackParamList } from '../../../navigation/SearchStackNavigator';
 import { formatActivityTimestamp } from '../../../utils/dateUtils';
+import { HomeStackParamList } from '../../../navigation/HomeStackNavigator';
 
 type RecentActivityCardProps = {
   userBook: UserBook;
@@ -56,10 +57,16 @@ export default function RecentActivityCard({
   const actionTint = getScoreColor(10);
   const { user } = useAuth();
   type ActivityNavigation = CompositeNavigationProp<
-    StackNavigationProp<ProfileStackParamList>,
-    StackNavigationProp<SearchStackParamList>
+    CompositeNavigationProp<
+      StackNavigationProp<ProfileStackParamList>,
+      StackNavigationProp<SearchStackParamList>
+    >,
+    StackNavigationProp<HomeStackParamList>
   >;
   const navigation = useNavigation<ActivityNavigation>();
+  
+  // Check if this activity belongs to another user (not the current user)
+  const isOtherUser = userBook.user_id && user?.id && userBook.user_id !== user.id;
   const [liked, setLiked] = useState(false);
   const [likesCount, setLikesCount] = useState(userBook.likes_count ?? 0);
   const [commentsCount, setCommentsCount] = useState(userBook.comments_count ?? 0);
@@ -167,30 +174,52 @@ export default function RecentActivityCard({
     });
   };
 
+  // Navigate to user's profile (only for other users, not current user)
+  const handlePressUserProfile = useCallback(() => {
+    if (isOtherUser && userBook.user_id) {
+      navigation.navigate('UserProfile', {
+        userId: userBook.user_id,
+        username: userDisplayName,
+      });
+    } else if (onPressUser) {
+      // Fall back to provided onPressUser handler if exists
+      onPressUser();
+    }
+  }, [isOtherUser, userBook.user_id, userDisplayName, navigation, onPressUser]);
+
   return (
     <View style={styles.activityCard}>
       {/* Header Section */}
       <View style={styles.cardHeader}>
         <View style={styles.cardHeaderLeft}>
-          {avatarUrl ? (
-            <Image
-              source={{ uri: avatarUrl }}
-              style={styles.cardAvatar}
-              resizeMode="cover"
-            />
-          ) : (
-            <View style={styles.cardAvatar}>
-              <Text style={styles.cardAvatarText}>
-                {avatarFallback || 'U'}
-              </Text>
-            </View>
-          )}
+          <TouchableOpacity 
+            onPress={handlePressUserProfile}
+            disabled={!isOtherUser}
+            activeOpacity={isOtherUser ? 0.7 : 1}
+          >
+            {avatarUrl ? (
+              <Image
+                source={{ uri: avatarUrl }}
+                style={styles.cardAvatar}
+                resizeMode="cover"
+              />
+            ) : (
+              <View style={styles.cardAvatar}>
+                <Text style={styles.cardAvatarText}>
+                  {avatarFallback || 'U'}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
           <View style={styles.cardHeaderText}>
             {hideActionText ? (
               // Show just username when action text is hidden
               userDisplayName ? (
                 <Text style={styles.cardActionText}>
-                  <Text style={styles.cardUserText} onPress={onPressUser}>
+                  <Text 
+                    style={[styles.cardUserText, isOtherUser && styles.cardUserTextClickable]} 
+                    onPress={isOtherUser ? handlePressUserProfile : onPressUser}
+                  >
                     {userDisplayName}
                   </Text>
                 </Text>
@@ -199,7 +228,10 @@ export default function RecentActivityCard({
               // Show full action text when not hidden
               <Text style={styles.cardActionText}>
                 {userDisplayName ? (
-                  <Text style={styles.cardUserText} onPress={onPressUser}>
+                  <Text 
+                    style={[styles.cardUserText, isOtherUser && styles.cardUserTextClickable]} 
+                    onPress={isOtherUser ? handlePressUserProfile : onPressUser}
+                  >
                     {userDisplayName}
                   </Text>
                 ) : null}
@@ -441,6 +473,9 @@ const styles = StyleSheet.create({
     fontFamily: typography.body,
     color: colors.brownText,
     fontWeight: '600',
+  },
+  cardUserTextClickable: {
+    // Subtle indication that username is clickable for other users
   },
   cardBookTitle: {
     fontWeight: '700',

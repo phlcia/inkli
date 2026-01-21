@@ -1,6 +1,18 @@
 import { UserBook } from '../services/books';
 
 /**
+ * Get the effective genres for a user's book
+ * Only returns genres that the user has explicitly set (user_genres)
+ * Does NOT fall back to book's default genres
+ * 
+ * Note: Empty array [] or null/undefined means no genres for filtering
+ */
+export function getEffectiveGenres(userBook: UserBook): string[] {
+  // Only return user's explicitly set genres (no fallback to book defaults)
+  return userBook.user_genres || [];
+}
+
+/**
  * Filter books by selected genres and custom labels
  * 
  * Logic:
@@ -28,7 +40,7 @@ export function filterBooks(
   }
 
   // Debug: Show what data we have to filter
-  const booksWithGenres = books.filter(b => b.book?.genres && b.book.genres.length > 0);
+  const booksWithGenres = books.filter(b => getEffectiveGenres(b).length > 0);
   const booksWithLabels = books.filter(b => b.custom_labels && b.custom_labels.length > 0);
   console.log('Books with genres:', booksWithGenres.length);
   console.log('Books with custom_labels:', booksWithLabels.length);
@@ -37,13 +49,16 @@ export function filterBooks(
   books.slice(0, 3).forEach((book, idx) => {
     console.log(`Book ${idx}:`, {
       title: book.book?.title,
-      genres: book.book?.genres,
+      effectiveGenres: getEffectiveGenres(book),
+      user_genres: book.user_genres,
+      book_genres: book.book?.genres,
       custom_labels: book.custom_labels,
     });
   });
 
   const result = books.filter((book) => {
-    const bookGenres = book.book?.genres || [];
+    // Use effective genres (user override or book default)
+    const bookGenres = getEffectiveGenres(book);
     const bookCustomLabels = book.custom_labels || [];
 
     // Check genre filter

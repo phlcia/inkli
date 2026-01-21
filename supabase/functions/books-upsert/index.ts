@@ -186,9 +186,26 @@ Deno.serve(async (req: Request) => {
     }
 
     const adminClient = createClient(supabaseUrl, supabaseServiceKey)
+    
+    // First, check if book already exists
+    const conflictValue = book.open_library_id || book.google_books_id || book.isbn_13
+    const { data: existingBook } = await adminClient
+      .from('books')
+      .select('id, genres')
+      .eq(conflictKey, conflictValue)
+      .single()
+    
+    let finalBook = book
+    if (existingBook) {
+      // Book exists - preserve existing genres (don't overwrite with new auto-mapped ones)
+      // This prevents one user's genre changes from affecting another user
+      // User-specific genres are stored in user_books.user_genres instead
+      finalBook = { ...book, genres: existingBook.genres }
+    }
+    
     const { data, error: upsertError } = await adminClient
       .from('books')
-      .upsert(book, { onConflict: conflictKey })
+      .upsert(finalBook, { onConflict: conflictKey })
       .select()
       .single()
 

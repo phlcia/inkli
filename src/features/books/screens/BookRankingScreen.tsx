@@ -16,7 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, useFocusEffect, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, typography } from '../../../config/theme';
-import { updateUserBookDetails, removeBookFromShelf, updateBookStatus, getReadSessions, addReadSession, updateReadSession, ReadSession, updateBookGenres, getUserBooks } from '../../../services/books';
+import { updateUserBookDetails, removeBookFromShelf, updateBookStatus, getReadSessions, addReadSession, updateReadSession, ReadSession, getUserBooks } from '../../../services/books';
 import { useAuth } from '../../../contexts/AuthContext';
 import BookComparisonModal from '../components/BookComparisonModal';
 import DateRangePickerModal from '../../../components/ui/DateRangePickerModal';
@@ -55,10 +55,14 @@ export default function BookRankingScreen() {
   // Labels/genres state
   const [showGenreLabelPicker, setShowGenreLabelPicker] = useState(false);
   const [savingTags, setSavingTags] = useState(false);
-  const [selectedGenres, setSelectedGenres] = useState<string[]>(book.genres || []);
+  const [bookGenres, setBookGenres] = useState<string[]>(book.genres || []); // Default genres from books table
+  const [userGenres, setUserGenres] = useState<string[] | null>(null); // User's genre overrides
   const [selectedCustomLabels, setSelectedCustomLabels] = useState<string[]>([]);
   const [customLabelSuggestions, setCustomLabelSuggestions] = useState<string[]>([]);
   const [resolvedBookId, setResolvedBookId] = useState<string | null>(book.id || null);
+  
+  // Effective genres: user's overrides if set, otherwise book defaults
+  const effectiveGenres = userGenres !== null ? userGenres : bookGenres;
 
   if (!book) return null;
 
@@ -70,10 +74,10 @@ export default function BookRankingScreen() {
       if (userBookId && user) {
         const fetchInitialState = async () => {
           try {
-            // Fetch user_book data including book_id
+            // Fetch user_book data including book_id and user_genres
             const { data, error } = await supabase
               .from('user_books')
-              .select('rating, notes, custom_labels, book_id')
+              .select('rating, notes, custom_labels, user_genres, book_id')
               .eq('id', userBookId)
               .single();
 
@@ -86,7 +90,7 @@ export default function BookRankingScreen() {
             if (data?.book_id) {
               setResolvedBookId(data.book_id);
               
-              // Also fetch the book's genres from the books table
+              // Fetch the book's default genres from the books table
               const { data: bookData } = await supabase
                 .from('books')
                 .select('genres')
@@ -94,7 +98,12 @@ export default function BookRankingScreen() {
                 .single();
               
               if (bookData?.genres) {
-                setSelectedGenres(bookData.genres);
+                setBookGenres(bookData.genres);
+              }
+              
+              // Set user's genre overrides if they exist
+              if (data.user_genres !== null && data.user_genres !== undefined) {
+                setUserGenres(data.user_genres);
               }
             }
 
@@ -538,50 +547,36 @@ export default function BookRankingScreen() {
   };
 
   const handleSaveTags = async (genres: string[], customLabels: string[]) => {
-    const bookIdToUse = resolvedBookId || book.id;
     console.log('=== handleSaveTags called ===');
     console.log('Genres:', genres);
     console.log('Custom Labels:', customLabels);
     console.log('userBookId:', userBookId);
-    console.log('book.id:', book.id);
-    console.log('resolvedBookId:', resolvedBookId);
-    console.log('bookIdToUse:', bookIdToUse);
     
-    if (!user || !userBookId || !bookIdToUse) {
-      console.log('Early return - missing user/userBookId/bookIdToUse');
+    if (!user || !userBookId) {
+      console.log('Early return - missing user/userBookId');
       return;
     }
     
     try {
       setSavingTags(true);
       
-      // Update book genres
-      console.log('Calling updateBookGenres with:', bookIdToUse, genres);
-      const { error: genresError } = await updateBookGenres(bookIdToUse, genres);
-      if (genresError) {
-        console.error('genresError:', genresError);
-        Alert.alert('Error', 'Failed to save genres. Please try again.');
-        setSavingTags(false);
-        return;
-      }
-      console.log('Genres saved successfully');
-      
-      // Update user_books custom_labels
-      // Note: Don't use touchUpdatedAt: false here because the no-touch RPC doesn't support custom_labels
-      console.log('Calling updateUserBookDetails with custom_labels:', customLabels);
-      const { error: labelsError } = await updateUserBookDetails(userBookId, user.id, {
+      // Update both user_genres and custom_labels in user_books table (per-user)
+      console.log('Calling updateUserBookDetails with user_genres and custom_labels');
+      const { error } = await updateUserBookDetails(userBookId, user.id, {
+        user_genres: genres,
         custom_labels: customLabels,
       });
-      if (labelsError) {
-        console.error('labelsError:', labelsError);
-        Alert.alert('Error', 'Failed to save custom labels. Please try again.');
+      
+      if (error) {
+        console.error('updateUserBookDetails error:', error);
+        Alert.alert('Error', 'Failed to save tags. Please try again.');
         setSavingTags(false);
         return;
       }
-      console.log('Custom labels saved successfully');
+      console.log('Tags saved successfully');
       
       // Update local state on success
-      setSelectedGenres(genres);
+      setUserGenres(genres);
       setSelectedCustomLabels(customLabels);
       setSavingTags(false);
       console.log('=== handleSaveTags complete ===');
@@ -712,10 +707,10 @@ export default function BookRankingScreen() {
               onPress={() => setShowGenreLabelPicker(true)}
             >
               <Text style={styles.dateButtonLabel}>Shelves</Text>
-              {(selectedGenres.length > 0 || selectedCustomLabels.length > 0) ? (
+              {(effectiveGenres.length > 0 || selectedCustomLabels.length > 0) ? (
                 <Text style={styles.dateButtonValue}>
-                  {[...selectedGenres, ...selectedCustomLabels].slice(0, 3).join(', ')}
-                  {(selectedGenres.length + selectedCustomLabels.length) > 3 ? '...' : ''}
+                  {[...effectiveGenres, ...selectedCustomLabels].slice(0, 3).join(', ')}
+                  {(effectiveGenres.length + selectedCustomLabels.length) > 3 ? '...' : ''}
                 </Text>
               ) : (
                 <Text style={styles.dateButtonPlaceholder}>Tap to add</Text>
@@ -811,7 +806,7 @@ export default function BookRankingScreen() {
         onClose={() => setShowGenreLabelPicker(false)}
         onSave={handleSaveTags}
         apiCategories={book.categories}
-        initialGenres={selectedGenres}
+        initialGenres={effectiveGenres}
         initialCustomLabels={selectedCustomLabels}
         customLabelSuggestions={customLabelSuggestions}
         bookId={resolvedBookId || book.id}
