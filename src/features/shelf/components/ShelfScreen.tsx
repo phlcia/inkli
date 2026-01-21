@@ -13,14 +13,14 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, typography } from '../../../config/theme';
 import { useAuth } from '../../../contexts/AuthContext';
-import { getUserBooks, UserBook } from '../../../services/books';
+import { getUserBooks, UserBook, removeCustomLabelFromAllBooks } from '../../../services/books';
 import { getScoreColor, formatScore } from '../../../utils/rankScoreColors';
 import { supabase } from '../../../config/supabase';
 import { YourShelfStackParamList } from '../../../navigation/YourShelfStackNavigator';
 import { SearchStackParamList } from '../../../navigation/SearchStackNavigator';
 import FilterPanel from '../../../components/filters/FilterPanel';
 import { filterBooks, groupBooksByShelf, getFilteredBookCounts } from '../../../utils/bookFilters';
-import { trackFilterApplied, trackFilterCleared, ShelfContext } from '../../../services/analytics';
+import { trackFilterApplied, trackFilterCleared, trackCustomLabelDeleted, ShelfContext } from '../../../services/analytics';
 
 type ShelfTab = 'read' | 'currently_reading' | 'want_to_read';
 
@@ -185,6 +185,28 @@ export default function ShelfScreen({
     const shelfContext: ShelfContext = activeTab === 'all' ? 'all' : activeTab;
     trackFilterCleared(shelfContext, currentUser.id);
   }, [currentUser?.id, activeTab]);
+
+  const handleDeleteCustomLabel = useCallback(async (label: string) => {
+    if (!currentUser?.id) return;
+
+    try {
+      const affectedCount = await removeCustomLabelFromAllBooks(currentUser.id, label);
+
+      // Clear from active filters if currently selected
+      setSelectedCustomLabels((prev) => prev.filter((l) => l !== label));
+
+      // Refresh books to update suggestions and counts
+      await loadBooks();
+
+      // Track analytics
+      await trackCustomLabelDeleted(label, affectedCount, 'filter_panel', currentUser.id);
+
+      console.log(`Removed "${label}" from ${affectedCount} books`);
+    } catch (error) {
+      console.error('Error deleting custom label:', error);
+      throw error; // Re-throw so FilterPanel can show error alert
+    }
+  }, [currentUser?.id, loadBooks]);
 
   const handleBookPress = async (userBook: UserBook) => {
     if (!userBook.book) return;
@@ -388,6 +410,7 @@ export default function ShelfScreen({
         onClearFilters={handleClearFilters}
         onTrackFilterApplied={handleTrackFilterApplied}
         onTrackFilterCleared={handleTrackFilterCleared}
+        onDeleteCustomLabel={handleDeleteCustomLabel}
       />
     </SafeAreaView>
   );

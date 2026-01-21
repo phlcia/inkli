@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   Animated,
   Alert,
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { colors, typography } from '../../config/theme';
 import GenreChip from '../filters/GenreChip';
 import CustomLabelInput from '../filters/CustomLabelInput';
@@ -179,6 +180,26 @@ export default function GenreLabelPicker({
     setSelectedCustomLabels(labels);
   };
 
+  const handleDeleteLabelFromBook = useCallback((label: string) => {
+    // Haptic feedback on long-press
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+    Alert.alert(
+      'Remove from Book',
+      `Remove "${label}" from this book?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: () => {
+            setSelectedCustomLabels((prev) => prev.filter((l) => l !== label));
+          },
+        },
+      ]
+    );
+  }, []);
+
   const handleSave = () => {
     console.log('=== GenreLabelPicker handleSave CALLED ===');
     console.log('Saving genres:', selectedGenres);
@@ -282,16 +303,20 @@ export default function GenreLabelPicker({
               
               {/* Existing custom shelf chips */}
               {uniqueCustomSuggestions.length > 0 ? (
-                <View style={styles.chipsContainer}>
-                  {uniqueCustomSuggestions.map((label) => (
-                    <GenreChip
-                      key={label}
-                      genre={label}
-                      selected={selectedCustomLabels.includes(label)}
-                      onPress={() => handleCustomLabelToggle(label)}
-                    />
-                  ))}
-                </View>
+                <>
+                  <View style={styles.chipsContainer}>
+                    {uniqueCustomSuggestions.map((label) => (
+                      <GenreChip
+                        key={label}
+                        genre={label}
+                        selected={selectedCustomLabels.includes(label)}
+                        onPress={() => handleCustomLabelToggle(label)}
+                        onLongPress={() => handleDeleteLabelFromBook(label)}
+                      />
+                    ))}
+                  </View>
+                  <Text style={styles.deleteHint}>Long-press a shelf to remove it from this book</Text>
+                </>
               ) : (
                 <Text style={styles.emptyHint}>No custom shelves yet. Create one below!</Text>
               )}
@@ -431,6 +456,15 @@ const styles = StyleSheet.create({
     opacity: 0.6,
     marginBottom: 12,
     fontStyle: 'italic',
+  },
+  deleteHint: {
+    fontSize: 12,
+    fontFamily: typography.body,
+    color: colors.brownText,
+    opacity: 0.5,
+    fontStyle: 'italic',
+    marginTop: 8,
+    marginBottom: 12,
   },
   apiCategoriesSection: {
     marginBottom: 20,

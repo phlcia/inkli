@@ -59,3 +59,32 @@ export async function trackFilterCleared(
     console.error('Failed to track filter_cleared event:', error);
   }
 }
+
+export type CustomLabelDeleteContext = 'filter_panel' | 'book_editor';
+
+/**
+ * Track when a custom label is deleted
+ * Called when user long-presses to delete a custom shelf
+ */
+export async function trackCustomLabelDeleted(
+  label: string,
+  booksAffected: number,
+  context: CustomLabelDeleteContext,
+  userId: string
+): Promise<void> {
+  try {
+    await supabase.from('filter_events').insert({
+      user_id: userId,
+      event_type: 'custom_label_deleted',
+      event_data: {
+        label,
+        books_affected: booksAffected,
+        context,
+        timestamp: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    // Fail silently - don't break deletion if analytics fails
+    console.error('Failed to track custom_label_deleted event:', error);
+  }
+}
