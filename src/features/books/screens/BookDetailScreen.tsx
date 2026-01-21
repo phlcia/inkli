@@ -17,7 +17,7 @@ import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navig
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, typography } from '../../../config/theme';
 import { BookCoverPlaceholder } from '../components/BookCoverPlaceholder';
-import { addBookToShelf, checkUserHasBook, getBookCircles, getBookShelfCounts, removeBookFromShelf, getFriendsRankingsForBook, updateBookStatus, redistributeRanksForRating, BookCirclesResult, BookShelfCounts, formatCount, UserBook, updateUserBookDetails, getReadSessions, addReadSession, updateReadSession, deleteReadSession, ReadSession, updateBookGenres, getUserBooks } from '../../../services/books';
+import { addBookToShelf, checkUserHasBook, getBookCircles, getBookShelfCounts, removeBookFromShelf, getFriendsRankingsForBook, updateBookStatus, redistributeRanksForRating, BookCirclesResult, BookShelfCounts, formatCount, UserBook, updateUserBookDetails, getReadSessions, addReadSession, updateReadSession, deleteReadSession, ReadSession, getUserBooks } from '../../../services/books';
 import { useAuth } from '../../../contexts/AuthContext';
 import { supabase } from '../../../config/supabase';
 import { SearchStackParamList } from '../../../navigation/SearchStackNavigator';
@@ -72,8 +72,11 @@ export default function BookDetailScreen() {
   const [showGenreLabelPicker, setShowGenreLabelPicker] = useState(false);
   const [savingTags, setSavingTags] = useState(false);
   const [customLabelSuggestions, setCustomLabelSuggestions] = useState<string[]>([]);
-  const [bookGenres, setBookGenres] = useState<string[]>(book.genres || []);
+  const [userGenres, setUserGenres] = useState<string[]>([]); // User's saved genres (empty until user sets them)
   const [resolvedBookId, setResolvedBookId] = useState<string | null>(book.id || null);
+  
+  // Only show genres that the user has explicitly saved (no auto-population on BookDetailScreen)
+  const effectiveGenres = userGenres;
 
   const coverUrl = book.cover_url;
   const hasCover =
@@ -162,15 +165,10 @@ export default function BookDetailScreen() {
       if (existingBook) {
         // Store the resolved book ID
         setResolvedBookId(existingBook.id);
-        
-        // Update book genres from database
-        console.log('Setting bookGenres to:', existingBook.genres);
-        // Always set genres, even if empty array or null
-        setBookGenres(existingBook.genres || []);
 
         const { data } = await supabase
           .from('user_books')
-          .select('id, status, rank_score, notes, custom_labels')
+          .select('id, status, rank_score, notes, custom_labels, user_genres')
           .eq('user_id', user.id)
           .eq('book_id', existingBook.id)
           .single();
@@ -186,6 +184,7 @@ export default function BookDetailScreen() {
           setUserBookId(data.id);
           setUserNotes(data.notes || '');
           setUserCustomLabels(data.custom_labels || []);
+          setUserGenres(data.user_genres || []); // User's saved genres (empty if not set)
           
           // Fetch read sessions
           try {
@@ -201,6 +200,7 @@ export default function BookDetailScreen() {
           setUserBookId(null);
           setUserNotes('');
           setUserCustomLabels([]);
+          setUserGenres([]);
           setReadSessions([]);
         }
       } else {
@@ -209,6 +209,7 @@ export default function BookDetailScreen() {
         setUserBookId(null);
         setUserNotes('');
         setUserCustomLabels([]);
+        setUserGenres([]);
         setReadSessions([]);
       }
     } catch (error) {
@@ -218,6 +219,7 @@ export default function BookDetailScreen() {
       setUserRankScore(null);
       setUserBookId(null);
       setUserNotes('');
+      setUserGenres([]);
       setReadSessions([]);
     }
   }, [user, book.open_library_id, book.google_books_id]);
@@ -934,21 +936,23 @@ export default function BookDetailScreen() {
     };
   }, []);
 
-  // Handle removing a single genre
+  // Handle removing a single genre (saves to user_books.user_genres)
   const handleRemoveGenre = React.useCallback(async (genreToRemove: string) => {
-    const bookIdToUse = resolvedBookId || book.id;
-    if (!user || !bookIdToUse) return;
+    if (!user || !userBookId) return;
 
-    const updatedGenres = bookGenres.filter((g) => g !== genreToRemove);
+    const updatedGenres = userGenres.filter((g) => g !== genreToRemove);
+    const previousUserGenres = userGenres;
 
     try {
       setSavingTags(true);
-      setBookGenres(updatedGenres); // Optimistic update
+      setUserGenres(updatedGenres); // Optimistic update
 
-      const { error } = await updateBookGenres(bookIdToUse, updatedGenres);
+      const { error } = await updateUserBookDetails(userBookId, user.id, {
+        user_genres: updatedGenres,
+      });
       if (error) {
         // Rollback on error
-        setBookGenres(bookGenres);
+        setUserGenres(previousUserGenres);
         throw error;
       }
 
@@ -958,7 +962,7 @@ export default function BookDetailScreen() {
       setToastMessage('Couldn\'t remove genre. Please try again.');
       setSavingTags(false);
     }
-  }, [user, resolvedBookId, book.id, bookGenres]);
+  }, [user, userBookId, userGenres]);
 
   // Handle removing a single custom label
   const handleRemoveCustomLabel = React.useCallback(async (labelToRemove: string) => {
@@ -987,56 +991,59 @@ export default function BookDetailScreen() {
     }
   }, [user, userBookId, userCustomLabels]);
 
-  // Handle tag editing
+  // Handle tag editing (saves genres to user_books.user_genres, not books.genres)
+  // If book is not on shelf yet, adds it first with null status (no shelf)
   const handleSaveTags = React.useCallback(async (genres: string[], customLabels: string[]) => {
-    const bookIdToUse = resolvedBookId || book.id;
     console.log('=== BookDetailScreen handleSaveTags START ===');
     console.log('Genres to save:', genres);
     console.log('Custom Labels to save:', customLabels);
     console.log('userBookId:', userBookId);
-    console.log('book.id:', book.id);
-    console.log('resolvedBookId:', resolvedBookId);
-    console.log('bookIdToUse:', bookIdToUse);
     
-    if (!user || !userBookId || !bookIdToUse) {
-      console.log('=== EARLY RETURN - missing required data ===');
-      console.log('user:', !!user);
-      console.log('userBookId:', userBookId);
-      console.log('bookIdToUse:', bookIdToUse);
-      setToastMessage('Unable to save - book not fully loaded');
+    if (!user) {
+      console.log('=== EARLY RETURN - no user ===');
+      setToastMessage('Please log in to save tags');
       return;
     }
+
+    const previousUserGenres = userGenres;
+    const previousCustomLabels = userCustomLabels;
 
     try {
       setSavingTags(true);
       
       // Optimistic update - set local state immediately
-      setBookGenres(genres);
+      setUserGenres(genres); // Save to user_genres (per-user)
       setUserCustomLabels(customLabels);
 
-      // Update book genres
-      console.log('Calling updateBookGenres with bookId:', bookIdToUse, 'genres:', genres);
-      const { error: genresError } = await updateBookGenres(bookIdToUse, genres);
-      if (genresError) {
-        console.error('=== updateBookGenres FAILED ===', genresError);
-        // Rollback optimistic update
-        setBookGenres(bookGenres);
-        throw genresError;
-      }
-      console.log('=== updateBookGenres SUCCESS ===');
+      let currentUserBookId = userBookId;
 
-      // Update user_books custom_labels
-      console.log('Calling updateUserBookDetails with userBookId:', userBookId);
-      const { error: labelsError } = await updateUserBookDetails(userBookId, user.id, {
-        custom_labels: customLabels,
-      });
-      if (labelsError) {
-        console.error('=== updateUserBookDetails FAILED ===', labelsError);
-        // Rollback optimistic update
-        setUserCustomLabels(userCustomLabels);
-        throw labelsError;
+      // If book is not on shelf yet, add it first with genres and custom labels
+      if (!currentUserBookId) {
+        console.log('Book not on shelf - adding with tags...');
+        const result = await addBookToShelf(book, null, user.id, {
+          genres: genres,
+          custom_labels: customLabels,
+        });
+        currentUserBookId = result.userBookId;
+        setUserBookId(currentUserBookId);
+        console.log('Book added to shelf with userBookId:', currentUserBookId);
+      } else {
+        // Update both user_genres and custom_labels in user_books table
+        console.log('Calling updateUserBookDetails with userBookId:', currentUserBookId);
+        const { error } = await updateUserBookDetails(currentUserBookId, user.id, {
+          user_genres: genres,
+          custom_labels: customLabels,
+        });
+        
+        if (error) {
+          console.error('=== updateUserBookDetails FAILED ===', error);
+          // Rollback optimistic update
+          setUserGenres(previousUserGenres);
+          setUserCustomLabels(previousCustomLabels);
+          throw error;
+        }
+        console.log('=== updateUserBookDetails SUCCESS ===');
       }
-      console.log('=== updateUserBookDetails SUCCESS ===');
 
       // Refresh book status to ensure sync
       console.log('Calling refreshBookStatus to verify...');
@@ -1046,10 +1053,13 @@ export default function BookDetailScreen() {
       console.log('=== handleSaveTags COMPLETE ===');
     } catch (error) {
       console.error('Error saving tags:', error);
+      // Rollback optimistic update
+      setUserGenres(previousUserGenres);
+      setUserCustomLabels(previousCustomLabels);
       setToastMessage('Couldn\'t save tags. Please try again.');
       setSavingTags(false);
     }
-  }, [user, userBookId, resolvedBookId, book.id, bookGenres, userCustomLabels, refreshBookStatus]);
+  }, [user, userBookId, userGenres, userCustomLabels, refreshBookStatus, book]);
 
   const getActionText = (status: string | null, username: string) => {
     const displayName = username || 'User';
@@ -1364,18 +1374,18 @@ export default function BookDetailScreen() {
           <View style={styles.descriptionSection}>
             <Text style={styles.descriptionLabel}>What you think</Text>
             
-            {/* Edit Tags */}
-            {userBookId && (
-              <View style={styles.whatYouThinkSlot}>
-                <Text style={styles.whatYouThinkSlotLabel}>Shelves</Text>
+            {/* Edit Tags - always show, even if book not on shelf */}
+            <View style={styles.whatYouThinkSlot}>
+              <Text style={styles.whatYouThinkSlotLabel}>Shelves</Text>
 
-                {/* Genre and label chips - all inline with same styling */}
-                {((bookGenres && bookGenres.length > 0) || userCustomLabels.length > 0) && (
-                  <View style={styles.shelfChipsContainer}>
-                    {/* Preset genres first */}
-                    {bookGenres && bookGenres.map((genre: string) => (
-                      <View key={`genre-${genre}`} style={styles.shelfChip}>
-                        <Text style={styles.shelfChipText}>{genre}</Text>
+              {/* Genre and label chips - all inline with same styling */}
+              {((effectiveGenres && effectiveGenres.length > 0) || userCustomLabels.length > 0) && (
+                <View style={styles.shelfChipsContainer}>
+                  {/* Preset genres first (using effective genres - user's or book defaults) */}
+                  {effectiveGenres && effectiveGenres.map((genre: string) => (
+                    <View key={`genre-${genre}`} style={styles.shelfChip}>
+                      <Text style={styles.shelfChipText}>{genre}</Text>
+                      {userBookId && (
                         <TouchableOpacity
                           onPress={() => handleRemoveGenre(genre)}
                           style={styles.shelfChipClose}
@@ -1383,12 +1393,14 @@ export default function BookDetailScreen() {
                         >
                           <Text style={styles.shelfChipCloseText}>×</Text>
                         </TouchableOpacity>
-                      </View>
-                    ))}
-                    {/* Custom labels after */}
-                    {userCustomLabels.map((label: string) => (
-                      <View key={`label-${label}`} style={styles.shelfChip}>
-                        <Text style={styles.shelfChipText}>{label}</Text>
+                      )}
+                    </View>
+                  ))}
+                  {/* Custom labels after */}
+                  {userCustomLabels.map((label: string) => (
+                    <View key={`label-${label}`} style={styles.shelfChip}>
+                      <Text style={styles.shelfChipText}>{label}</Text>
+                      {userBookId && (
                         <TouchableOpacity
                           onPress={() => handleRemoveCustomLabel(label)}
                           style={styles.shelfChipClose}
@@ -1396,22 +1408,22 @@ export default function BookDetailScreen() {
                         >
                           <Text style={styles.shelfChipCloseText}>×</Text>
                         </TouchableOpacity>
-                      </View>
-                    ))}
-                  </View>
-                )}
+                      )}
+                    </View>
+                  ))}
+                </View>
+              )}
 
-                <TouchableOpacity
-                  style={[styles.dateRangeButton, ((bookGenres && bookGenres.length > 0) || userCustomLabels.length > 0) && styles.dateRangeButtonActive]}
-                  onPress={() => setShowGenreLabelPicker(true)}
-                  disabled={savingTags}
-                >
-                  <Text style={[styles.dateRangeButtonText, ((bookGenres && bookGenres.length > 0) || userCustomLabels.length > 0) && styles.dateRangeButtonTextActive]}>
-                    Edit shelves
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            )}
+              <TouchableOpacity
+                style={[styles.dateRangeButton, ((effectiveGenres && effectiveGenres.length > 0) || userCustomLabels.length > 0) && styles.dateRangeButtonActive]}
+                onPress={() => setShowGenreLabelPicker(true)}
+                disabled={savingTags}
+              >
+                <Text style={[styles.dateRangeButtonText, ((effectiveGenres && effectiveGenres.length > 0) || userCustomLabels.length > 0) && styles.dateRangeButtonTextActive]}>
+                  {(effectiveGenres && effectiveGenres.length > 0) || userCustomLabels.length > 0 ? 'Edit shelves' : 'Add shelves'}
+                </Text>
+              </TouchableOpacity>
+            </View>
 
             {/* Add read dates */}
             <View style={styles.whatYouThinkSlot}>
@@ -1599,20 +1611,20 @@ export default function BookDetailScreen() {
         title={editingSessionId ? "Edit Read Dates" : "Select Read Dates"}
       />
 
-      {/* Genre Label Picker Modal */}
-      {userBookId && (
-        <GenreLabelPicker
-          visible={showGenreLabelPicker}
-          onClose={() => setShowGenreLabelPicker(false)}
-          onSave={handleSaveTags}
-          apiCategories={book.categories}
-          initialGenres={bookGenres}
-          initialCustomLabels={userCustomLabels}
-          customLabelSuggestions={customLabelSuggestions}
-          bookId={resolvedBookId || book.id}
-          loading={savingTags}
-        />
-      )}
+      {/* Genre Label Picker Modal - show even if book not on shelf */}
+      {/* autoSelectSuggestions=false: Don't auto-populate genres on BookDetailScreen */}
+      <GenreLabelPicker
+        visible={showGenreLabelPicker}
+        onClose={() => setShowGenreLabelPicker(false)}
+        onSave={handleSaveTags}
+        apiCategories={book.categories}
+        initialGenres={effectiveGenres}
+        initialCustomLabels={userCustomLabels}
+        customLabelSuggestions={customLabelSuggestions}
+        bookId={resolvedBookId || book.id}
+        loading={savingTags}
+        autoSelectSuggestions={false}
+      />
 
     </View>
   );
