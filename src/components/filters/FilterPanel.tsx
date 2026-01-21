@@ -209,14 +209,6 @@ export default function FilterPanel({
               )}
             </View>
 
-            {/* Results Count */}
-            {hasActiveFilters && (
-              <View style={styles.resultsContainer}>
-                <Text style={styles.resultsText}>
-                  {resultCount} {resultCount === 1 ? 'result' : 'results'}
-                </Text>
-              </View>
-            )}
           </ScrollView>
 
           {/* Footer with Clear Button */}
@@ -312,19 +304,6 @@ const styles = StyleSheet.create({
     color: colors.brownText,
     opacity: 0.6,
     fontStyle: 'italic',
-  },
-  resultsContainer: {
-    marginTop: 16,
-    padding: 12,
-    backgroundColor: colors.white,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  resultsText: {
-    fontSize: 16,
-    fontFamily: typography.body,
-    color: colors.brownText,
-    fontWeight: '600',
   },
   footer: {
     padding: 20,
