@@ -1,0 +1,87 @@
+-- Migration: Seed 30 starter books for onboarding quiz
+-- Note: This creates placeholder entries. Books should be properly inserted via books-upsert Edge Function
+-- or manually with full metadata (title, authors, cover_url, etc.) before linking genres/themes.
+-- 
+-- After books are inserted, link them to genres/themes using the book_genres and book_themes tables.
+-- Mark books as is_starter_book = true and starter_set_id = 1.
+
+-- This file serves as a reference for which books to seed.
+-- The actual seeding should be done via:
+-- 1. CSV import script (see plan for TypeScript example)
+-- 2. Manual insertion via Supabase dashboard
+-- 3. Books-upsert Edge Function with proper book data
+
+-- Starter Books List (Set 1 - "Bookstagram Favorites"):
+-- 
+-- Literary:
+--   - The Song of Achilles (Madeline Miller)
+--   - Normal People (Sally Rooney)
+--   - Daisy Jones & The Six (Taylor Jenkins Reid)
+--
+-- Thriller:
+--   - The Silent Patient (Alex Michaelides)
+--   - Verity (Colleen Hoover)
+--   - The Woman in the Window (A.J. Finn)
+--   - The Guest List (Lucy Foley)
+--
+-- Fantasy:
+--   - A Court of Thorns and Roses (Sarah J. Maas)
+--   - The Invisible Life of Addie LaRue (V.E. Schwab)
+--   - House of Earth and Blood (Sarah J. Maas)
+--   - Fourth Wing (Rebecca Yarros)
+--
+-- Sci-Fi:
+--   - Project Hail Mary (Andy Weir)
+--   - The Midnight Library (Matt Haig)
+--   - Dark Matter (Blake Crouch)
+--
+-- Romance:
+--   - Beach Read (Emily Henry)
+--   - People We Meet on Vacation (Emily Henry)
+--   - The Love Hypothesis (Ali Hazelwood)
+--   - Red White & Royal Blue (Casey McQuiston)
+--
+-- Historical:
+--   - The Nightingale (Kristin Hannah)
+--   - All the Light We Cannot See (Anthony Doerr)
+--
+-- Horror:
+--   - The Southern Book Club's Guide to Slaying Vampires (Grady Hendrix)
+--   - Mexican Gothic (Silvia Moreno-Garcia)
+--
+-- Non-Fiction:
+--   - Educated (Tara Westover)
+--   - Atomic Habits (James Clear)
+--   - The Body Keeps the Score (Bessel van der Kolk)
+--
+-- YA:
+--   - Six of Crows (Leigh Bardugo)
+--   - The Cruel Prince (Holly Black)
+--   - They Both Die at the End (Adam Silvera)
+--
+-- Classics:
+--   - Pride and Prejudice (Jane Austen)
+
+-- Example genre/theme associations:
+-- The Song of Achilles:
+--   Genres: Literary Fiction, Fantasy, Romance
+--   Themes: character-driven, slow-burn, epic
+--
+-- A Court of Thorns and Roses:
+--   Genres: Fantasy, Romance, Young Adult
+--   Themes: enemies-to-lovers, magic-system, series
+--
+-- Project Hail Mary:
+--   Genres: Science Fiction
+--   Themes: fast-paced, standalone, plot-twist
+
+-- To link books to genres/themes after insertion:
+-- INSERT INTO book_genres (book_id, genre_id)
+-- SELECT b.id, g.id
+-- FROM books b, genres g
+-- WHERE b.title = 'The Song of Achilles' AND g.name = 'Literary Fiction';
+
+-- INSERT INTO book_themes (book_id, theme_id)
+-- SELECT b.id, t.id
+-- FROM books b, themes t
+-- WHERE b.title = 'The Song of Achilles' AND t.name = 'character-driven';
