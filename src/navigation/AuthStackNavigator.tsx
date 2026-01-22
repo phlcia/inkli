@@ -5,7 +5,7 @@ import WelcomeScreen from '../features/auth/screens/WelcomeScreen';
 import CreateAccountScreen from '../features/auth/screens/CreateAccountScreen';
 import SignUpEmailScreen from '../features/auth/screens/SignUpEmailScreen';
 import SetupProfileScreen from '../features/auth/screens/SetupProfileScreen';
-import ReadingInterestsScreen from '../features/auth/screens/ReadingInterestsScreen';
+import QuizScreen from '../features/onboarding/screens/QuizScreen';
 import SignInScreen from '../features/auth/screens/SignInScreen';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -18,7 +18,7 @@ export type AuthStackParamList = {
     email: string;
     password: string;
   };
-  ReadingInterests: {
+  Quiz: {
     email: string;
     password: string;
     firstName: string;
@@ -37,7 +37,6 @@ export default function AuthStackNavigator() {
     firstName?: string;
     lastName?: string;
     username?: string;
-    interests?: string[];
   }>({});
 
   return (
@@ -113,7 +112,7 @@ export default function AuthStackNavigator() {
             onNext={(firstName, lastName, username) => {
               const { email, password } = props.route.params;
               setSignUpData((prev) => ({ ...prev, firstName, lastName, username }));
-              props.navigation.navigate('ReadingInterests', {
+              props.navigation.navigate('Quiz', {
                 email,
                 password,
                 firstName,
@@ -125,26 +124,14 @@ export default function AuthStackNavigator() {
         )}
       </Stack.Screen>
 
-      <Stack.Screen name="ReadingInterests">
+      <Stack.Screen name="Quiz">
         {(props) => (
-          <ReadingInterestsScreen
+          <QuizScreen
             {...props}
-            onComplete={async (interests, onError) => {
-              const { email, password, firstName, lastName, username } = props.route.params;
-              try {
-                // Create the account with Supabase - profile will be created automatically by trigger
-                // Pass username and other data as metadata so trigger can use it
-                await signUp(email, password, username, firstName, lastName, interests);
-                
-                console.log('Signup complete - profile should be created automatically');
-              } catch (error: any) {
-                console.error('Error completing signup:', error);
-                if (onError) {
-                  onError(
-                    error.message || 'Failed to create account. Please try again.'
-                  );
-                }
-              }
+            signupParams={props.route.params}
+            onSignupComplete={() => {
+              // Signup is handled inside QuizScreen
+              // Navigation to main app happens automatically via AuthContext
             }}
           />
         )}

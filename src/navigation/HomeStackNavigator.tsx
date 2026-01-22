@@ -9,6 +9,7 @@ import ActivityCommentsScreen from '../features/social/screens/ActivityCommentsS
 import UserProfileScreen from '../features/profile/screens/UserProfileScreen';
 import UserShelfScreen from '../features/social/screens/UserShelfScreen';
 import NotificationsScreen from '../features/social/screens/NotificationsScreen';
+import RecommendationsScreen from '../features/recommendations/screens/RecommendationsScreen';
 import { ActivityLikesParams, ActivityCommentsParams, BookRankingParams } from './types';
 
 export type HomeStackParamList = {
@@ -24,6 +25,7 @@ export type HomeStackParamList = {
     initialTab?: 'read' | 'currently_reading' | 'want_to_read';
   };
   Notifications: undefined;
+  Recommendations: undefined;
 };
 
 const Stack = createNativeStackNavigator<HomeStackParamList>();
@@ -92,6 +94,15 @@ export default function HomeStackNavigator() {
       <Stack.Screen
         name="UserShelf"
         component={UserShelfScreen}
+        options={{
+          presentation: 'card',
+          animation: 'slide_from_right',
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="Recommendations"
+        component={RecommendationsScreen}
         options={{
           presentation: 'card',
           animation: 'slide_from_right',

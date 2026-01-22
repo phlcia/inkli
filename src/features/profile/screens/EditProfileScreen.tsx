@@ -157,8 +157,8 @@ export default function EditProfileScreen() {
     // Reset all photo-related state
     setTempPhotoUri(null);
     setDeleteProfilePicture(false);
-    // Reload original profile data
-    loadProfileData();
+    // Navigate back to ProfileScreen
+    navigation.goBack();
   };
 
   const handleSave = async () => {
