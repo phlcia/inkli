@@ -35,9 +35,10 @@ interface QuizScreenProps {
     username: string;
   };
   onSignupComplete?: () => void;
+  onQuizComplete?: () => void;
 }
 
-export default function QuizScreen({ signupParams, onSignupComplete }: QuizScreenProps) {
+export default function QuizScreen({ signupParams, onSignupComplete, onQuizComplete }: QuizScreenProps) {
   const { user, signUp } = useAuth();
   const navigation = useNavigation();
   const route = useRoute<QuizScreenRouteProp>();
@@ -127,7 +128,7 @@ export default function QuizScreen({ signupParams, onSignupComplete }: QuizScree
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, signupComplete]);
 
   useEffect(() => {
     if (user && signupComplete) {
@@ -195,6 +196,7 @@ export default function QuizScreen({ signupParams, onSignupComplete }: QuizScree
                 Alert.alert('Error', error.message);
                 return;
               }
+              onQuizComplete?.();
               // After skipping, user will be logged in and AuthContext will navigate to main app
               // No need to navigate manually - App.tsx will handle it
             } catch (error) {
@@ -295,6 +297,7 @@ export default function QuizScreen({ signupParams, onSignupComplete }: QuizScree
         console.error('Error generating recommendations:', error);
         // Continue anyway - recommendations can be generated later
       }
+      onQuizComplete?.();
       // After quiz completion, user is logged in and AuthContext will navigate to main app
       // App.tsx will automatically show TabNavigator when user exists
       // The recommendations will be available when user navigates to that screen
@@ -451,6 +454,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 20,
     paddingTop: 20,
+    alignItems: 'center',
   },
   questionText: {
     fontSize: 24,
@@ -461,8 +465,8 @@ const styles = StyleSheet.create({
   },
   booksContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    justifyContent: 'center',
+    alignItems: 'flex-start',
     marginBottom: 24,
   },
   vsText: {

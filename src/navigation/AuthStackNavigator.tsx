@@ -18,18 +18,28 @@ export type AuthStackParamList = {
     email: string;
     password: string;
   };
-  Quiz: {
-    email: string;
-    password: string;
-    firstName: string;
-    lastName: string;
-    username: string;
-  };
+  Quiz:
+    | {
+        email: string;
+        password: string;
+        firstName: string;
+        lastName: string;
+        username: string;
+      }
+    | undefined;
 };
 
 const Stack = createNativeStackNavigator<AuthStackParamList>();
 
-export default function AuthStackNavigator() {
+interface AuthStackNavigatorProps {
+  initialRouteName?: keyof AuthStackParamList;
+  onQuizComplete?: () => void;
+}
+
+export default function AuthStackNavigator({
+  initialRouteName = 'Welcome',
+  onQuizComplete,
+}: AuthStackNavigatorProps) {
   const { signUp, signInWithApple, signInWithGoogle } = useAuth();
   const [signUpData, setSignUpData] = useState<{
     email?: string;
@@ -47,7 +57,7 @@ export default function AuthStackNavigator() {
           backgroundColor: colors.creamBackground,
         },
       }}
-      initialRouteName="Welcome"
+      initialRouteName={initialRouteName}
     >
       <Stack.Screen name="Welcome">
         {(props) => (
@@ -133,6 +143,7 @@ export default function AuthStackNavigator() {
               // Signup is handled inside QuizScreen
               // Navigation to main app happens automatically via AuthContext
             }}
+            onQuizComplete={onQuizComplete}
           />
         )}
       </Stack.Screen>

@@ -77,7 +77,14 @@ Deno.serve(async (req: Request) => {
 
     // If user has <5 comparisons, return popular books
     if (userComparisons.length < 5) {
-      const { data: popularBooks, error: popularError } = await supabase
+      const excludedIds = [
+        ...new Set([
+          ...userComparisons.map(c => c.winner_book_id),
+          ...userComparisons.map(c => c.loser_book_id)
+        ]),
+      ].filter(Boolean)
+
+      let popularQuery = supabase
         .from('books')
         .select(`
           id,
@@ -87,15 +94,15 @@ Deno.serve(async (req: Request) => {
           global_win_rate,
           total_comparisons
         `)
-        .not('id', 'in', `(${
-          [...new Set([
-            ...userComparisons.map(c => c.winner_book_id),
-            ...userComparisons.map(c => c.loser_book_id)
-          ])].map(id => `'${id}'`).join(',') || '00000000-0000-0000-0000-000000000000'
-        })`)
         .order('global_win_rate', { ascending: false, nullsLast: true })
         .order('total_comparisons', { ascending: false })
         .limit(20)
+
+      if (excludedIds.length > 0) {
+        popularQuery = popularQuery.not('id', 'in', `(${excludedIds.join(',')})`)
+      }
+
+      const { data: popularBooks, error: popularError } = await popularQuery
 
       if (popularError) {
         throw new Error(`Failed to fetch popular books: ${popularError.message}`)
@@ -219,14 +226,16 @@ Deno.serve(async (req: Request) => {
     ])
 
     // Get all books with genres/themes (excluding compared books)
-    const { data: allBooks, error: allBooksError } = await supabase
+    let allBooksQuery = supabase
       .from('books')
       .select('id, title, authors, cover_url')
-      .not('id', 'in', `(${
-        Array.from(comparedBookIds).map(id => `'${id}'`).join(',') || '00000000-0000-0000-0000-000000000000'
-      })`)
       .limit(1000) // Reasonable limit for MVP
 
+    if (comparedBookIds.size > 0) {
+      allBooksQuery = allBooksQuery.not('id', 'in', `(${Array.from(comparedBookIds).join(',')})`)
+    }
+
+    const { data: allBooks, error: allBooksError } = await allBooksQuery
     if (allBooksError) {
       throw new Error(`Failed to fetch books: ${allBooksError.message}`)
     }
