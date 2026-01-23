@@ -295,7 +295,9 @@ export default function QuizScreen({ signupParams, onSignupComplete, onQuizCompl
       const { error } = await generateRecommendations();
       if (error) {
         console.error('Error generating recommendations:', error);
-        // Continue anyway - recommendations can be generated later
+        Alert.alert('Recommendations', 'We could not save recommendations yet. You can refresh later.');
+      } else {
+        Alert.alert('Recommendations Ready', 'Your recommendations are saved and ready to view.');
       }
       onQuizComplete?.();
       // After quiz completion, user is logged in and AuthContext will navigate to main app

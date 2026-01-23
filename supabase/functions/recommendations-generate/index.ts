@@ -36,8 +36,6 @@ Deno.serve(async (req: Request) => {
       throw new Error('Missing Supabase environment variables')
     }
 
-    const supabase = createClient(supabaseUrl, supabaseAnonKey)
-
     // Get authenticated user
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
@@ -51,7 +49,21 @@ Deno.serve(async (req: Request) => {
     }
 
     const token = authHeader.replace('Bearer ', '')
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+
+    const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey, {
+      global: {
+        headers: {
+          Authorization: authHeader,
+        },
+      },
+    })
+
+    const supabaseDb = serviceRoleKey
+      ? createClient(supabaseUrl, serviceRoleKey)
+      : supabaseAuth
+
+    const { data: { user }, error: authError } = await supabaseAuth.auth.getUser(token)
     
     if (authError || !user) {
       return new Response(
@@ -63,8 +75,79 @@ Deno.serve(async (req: Request) => {
       )
     }
 
+    const algorithmVersion = 'v1'
+
+    const persistRecommendations = async (
+      recommendations: Array<{ book_id: string; score: number; reasoning: string }>
+    ) => {
+      const createdAt = new Date().toISOString()
+
+      const { error: deleteError } = await supabaseDb
+        .from('recommendations')
+        .delete()
+        .eq('user_id', user.id)
+
+      if (deleteError) {
+        throw new Error(`Failed to clear recommendations: ${deleteError.message}`)
+      }
+
+      if (recommendations.length > 0) {
+        const { error: insertError } = await supabaseDb
+          .from('recommendations')
+          .insert(
+            recommendations.map((rec) => ({
+              user_id: user.id,
+              book_id: rec.book_id,
+              score: rec.score,
+              reason: rec.reasoning,
+              algorithm_version: algorithmVersion,
+              created_at: createdAt,
+            }))
+          )
+
+        if (insertError) {
+          throw new Error(`Failed to insert recommendations: ${insertError.message}`)
+        }
+      }
+
+      const { data: stored, error: fetchError } = await supabaseDb
+        .from('recommendations')
+        .select(
+          `
+          id,
+          book_id,
+          score,
+          reason,
+          algorithm_version,
+          created_at,
+          shown_at,
+          clicked_at,
+          book:books (id, title, authors, cover_url)
+        `
+        )
+        .eq('user_id', user.id)
+        .order('score', { ascending: false })
+        .limit(20)
+
+      if (fetchError) {
+        throw new Error(`Failed to fetch stored recommendations: ${fetchError.message}`)
+      }
+
+      return (stored || []).map((rec) => ({
+        id: rec.id,
+        book_id: rec.book_id,
+        book: rec.book || null,
+        reasoning: rec.reason || 'Recommended for you',
+        score: rec.score,
+        algorithm_version: rec.algorithm_version,
+        created_at: rec.created_at,
+        shown_at: rec.shown_at,
+        clicked_at: rec.clicked_at,
+      }))
+    }
+
     // Get user's comparison history
-    const { data: comparisons, error: comparisonsError } = await supabase
+    const { data: comparisons, error: comparisonsError } = await supabaseDb
       .from('comparisons')
       .select('winner_book_id, loser_book_id')
       .eq('user_id', user.id)
@@ -84,7 +167,7 @@ Deno.serve(async (req: Request) => {
         ]),
       ].filter(Boolean)
 
-      let popularQuery = supabase
+      let popularQuery = supabaseDb
         .from('books')
         .select(`
           id,
@@ -120,8 +203,16 @@ Deno.serve(async (req: Request) => {
         score: (book.global_win_rate || 0) * (book.total_comparisons || 0),
       }))
 
+      const storedRecommendations = await persistRecommendations(
+        recommendations.map((rec) => ({
+          book_id: rec.book_id,
+          score: rec.score,
+          reasoning: rec.reasoning,
+        }))
+      )
+
       return new Response(
-        JSON.stringify({ recommendations }),
+        JSON.stringify({ recommendations: storedRecommendations }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
@@ -156,23 +247,23 @@ Deno.serve(async (req: Request) => {
     }
 
     // Get genres and themes for winner books
-    const { data: winnerGenres, error: winnerGenresError } = await supabase
+    const { data: winnerGenres, error: winnerGenresError } = await supabaseDb
       .from('book_genres')
       .select('book_id, genres!inner(name)')
       .in('book_id', winnerBookIds.length > 0 ? winnerBookIds : ['00000000-0000-0000-0000-000000000000'])
 
-    const { data: winnerThemes, error: winnerThemesError } = await supabase
+    const { data: winnerThemes, error: winnerThemesError } = await supabaseDb
       .from('book_themes')
       .select('book_id, themes!inner(name)')
       .in('book_id', winnerBookIds.length > 0 ? winnerBookIds : ['00000000-0000-0000-0000-000000000000'])
 
     // Get genres and themes for loser books
-    const { data: loserGenres, error: loserGenresError } = await supabase
+    const { data: loserGenres, error: loserGenresError } = await supabaseDb
       .from('book_genres')
       .select('book_id, genres!inner(name)')
       .in('book_id', loserBookIds.length > 0 ? loserBookIds : ['00000000-0000-0000-0000-000000000000'])
 
-    const { data: loserThemes, error: loserThemesError } = await supabase
+    const { data: loserThemes, error: loserThemesError } = await supabaseDb
       .from('book_themes')
       .select('book_id, themes!inner(name)')
       .in('book_id', loserBookIds.length > 0 ? loserBookIds : ['00000000-0000-0000-0000-000000000000'])
@@ -226,7 +317,7 @@ Deno.serve(async (req: Request) => {
     ])
 
     // Get all books with genres/themes (excluding compared books)
-    let allBooksQuery = supabase
+    let allBooksQuery = supabaseDb
       .from('books')
       .select('id, title, authors, cover_url')
       .limit(1000) // Reasonable limit for MVP
@@ -245,12 +336,12 @@ Deno.serve(async (req: Request) => {
 
     for (const book of allBooks || []) {
       // Get book's genres and themes
-      const { data: bookGenres } = await supabase
+      const { data: bookGenres } = await supabaseDb
         .from('book_genres')
         .select('genres!inner(name)')
         .eq('book_id', book.id)
 
-      const { data: bookThemes } = await supabase
+      const { data: bookThemes } = await supabaseDb
         .from('book_themes')
         .select('themes!inner(name)')
         .eq('book_id', book.id)
@@ -307,7 +398,7 @@ Deno.serve(async (req: Request) => {
 
     // Fetch full book data for top recommendations
     const topBookIds = topScores.map(bs => bs.book_id)
-    const { data: recommendedBooks, error: booksError } = await supabase
+    const { data: recommendedBooks, error: booksError } = await supabaseDb
       .from('books')
       .select('id, title, authors, cover_url')
       .in('id', topBookIds.length > 0 ? topBookIds : ['00000000-0000-0000-0000-000000000000'])
@@ -327,8 +418,16 @@ Deno.serve(async (req: Request) => {
       }
     }).filter(rec => rec.book !== null)
 
+    const storedRecommendations = await persistRecommendations(
+      recommendations.map((rec) => ({
+        book_id: rec.book_id,
+        score: rec.score,
+        reasoning: rec.reasoning,
+      }))
+    )
+
     return new Response(
-      JSON.stringify({ recommendations }),
+      JSON.stringify({ recommendations: storedRecommendations }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
 

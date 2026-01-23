@@ -77,6 +77,13 @@ function AppContent() {
   const needsOnboardingQuiz =
     hasUser &&
     profileFlags !== null &&
+    (() => {
+      if (!user?.created_at) return false;
+      const createdAt = new Date(user.created_at).getTime();
+      const now = Date.now();
+      const createdRecently = now - createdAt < 10 * 60 * 1000;
+      return createdRecently;
+    })() &&
     !profileFlags.completed_onboarding_quiz &&
     !profileFlags.skipped_onboarding_quiz;
 

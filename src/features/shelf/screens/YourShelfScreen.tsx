@@ -14,7 +14,7 @@ export default function YourShelfScreen() {
   const { user } = useAuth();
   const navigation = useNavigation<YourShelfScreenNavigationProp>();
   const route = useRoute();
-  const [initialTab, setInitialTab] = useState<'read' | 'currently_reading' | 'want_to_read'>('read');
+  const [initialTab, setInitialTab] = useState<'read' | 'currently_reading' | 'want_to_read' | 'recommended'>('read');
   const [refreshKey, setRefreshKey] = useState(0);
 
   // Listen for route params changes (triggered when ranking completes)
@@ -31,7 +31,7 @@ export default function YourShelfScreen() {
   useEffect(() => {
     const params = (route.params as any);
     if (params?.initialTab) {
-      const validTab = ['read', 'currently_reading', 'want_to_read'].includes(params.initialTab)
+      const validTab = ['read', 'currently_reading', 'want_to_read', 'recommended'].includes(params.initialTab)
         ? params.initialTab
         : 'read';
       setInitialTab(validTab);

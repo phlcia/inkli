@@ -21,8 +21,9 @@ import { SearchStackParamList } from '../../../navigation/SearchStackNavigator';
 import FilterPanel from '../../../components/filters/FilterPanel';
 import { filterBooks, groupBooksByShelf, getFilteredBookCounts } from '../../../utils/bookFilters';
 import { trackFilterApplied, trackFilterCleared, trackCustomLabelDeleted, ShelfContext } from '../../../services/analytics';
+import RecommendationsList from '../../recommendations/components/RecommendationsList';
 
-type ShelfTab = 'read' | 'currently_reading' | 'want_to_read';
+type ShelfTab = 'read' | 'currently_reading' | 'want_to_read' | 'recommended';
 
 type ShelfScreenProps = {
   ownerUserId: string;
@@ -52,6 +53,7 @@ export default function ShelfScreen({
   const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
   const [selectedCustomLabels, setSelectedCustomLabels] = useState<string[]>([]);
   const [customLabelSuggestions, setCustomLabelSuggestions] = useState<string[]>([]);
+  const canShowRecommendations = Boolean(currentUser?.id && currentUser.id === ownerUserId);
 
   const loadBooks = useCallback(async () => {
     if (!ownerUserId) {
@@ -121,12 +123,17 @@ export default function ShelfScreen({
 
   useEffect(() => {
     if (initialTab) {
-      const validTab = ['read', 'currently_reading', 'want_to_read'].includes(initialTab)
+      const validTab = ['read', 'currently_reading', 'want_to_read', 'recommended'].includes(initialTab)
         ? initialTab
         : 'read';
-      setActiveTab(validTab);
+      setActiveTab(validTab === 'recommended' && !canShowRecommendations ? 'read' : validTab);
     }
-  }, [initialTab]);
+  }, [initialTab, canShowRecommendations]);
+
+  const shelfContextForFilters: ShelfContext =
+    activeTab === 'read' || activeTab === 'currently_reading' || activeTab === 'want_to_read'
+      ? activeTab
+      : 'read';
 
   // Apply filters to all books (across all shelves)
   const filteredBooks = useMemo(() => {
@@ -176,15 +183,13 @@ export default function ShelfScreen({
 
   const handleTrackFilterApplied = useCallback((genres: string[], customLabels: string[], resultCount: number) => {
     if (!currentUser?.id) return;
-    const shelfContext: ShelfContext = activeTab === 'all' ? 'all' : activeTab;
-    trackFilterApplied(genres, customLabels, shelfContext, resultCount, currentUser.id);
-  }, [currentUser?.id, activeTab]);
+    trackFilterApplied(genres, customLabels, shelfContextForFilters, resultCount, currentUser.id);
+  }, [currentUser?.id, shelfContextForFilters]);
 
   const handleTrackFilterCleared = useCallback(() => {
     if (!currentUser?.id) return;
-    const shelfContext: ShelfContext = activeTab === 'all' ? 'all' : activeTab;
-    trackFilterCleared(shelfContext, currentUser.id);
-  }, [currentUser?.id, activeTab]);
+    trackFilterCleared(shelfContextForFilters, currentUser.id);
+  }, [currentUser?.id, shelfContextForFilters]);
 
   const handleDeleteCustomLabel = useCallback(async (label: string) => {
     if (!currentUser?.id) return;
@@ -321,6 +326,11 @@ export default function ShelfScreen({
           title: 'No books yet...',
           subtitle: 'No want-to-read books yet.',
         };
+      case 'recommended':
+        return {
+          title: 'No recommendations yet...',
+          subtitle: 'Keep ranking books to improve your recommendations.',
+        };
     }
   };
 
@@ -362,7 +372,12 @@ export default function ShelfScreen({
         </View>
       </View>
 
-      <View style={styles.tabContainer}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.tabScroll}
+        contentContainerStyle={styles.tabContainer}
+      >
         <TouchableOpacity style={styles.tab} onPress={() => setActiveTab('read')}>
           <Text style={[styles.tabText, activeTab === 'read' && styles.tabTextActive]}>
             Read
@@ -378,11 +393,20 @@ export default function ShelfScreen({
             Want to Read
           </Text>
         </TouchableOpacity>
-      </View>
+        {canShowRecommendations && (
+          <TouchableOpacity style={styles.tab} onPress={() => setActiveTab('recommended')}>
+            <Text style={[styles.tabText, activeTab === 'recommended' && styles.tabTextActive]}>
+              Recommended
+            </Text>
+          </TouchableOpacity>
+        )}
+      </ScrollView>
 
       <View style={styles.separator} />
 
-      {sortedBooks.length === 0 ? (
+      {activeTab === 'recommended' && canShowRecommendations ? (
+        <RecommendationsList showHeader={false} />
+      ) : sortedBooks.length === 0 ? (
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyText}>{emptyState.title}</Text>
           <Text style={styles.emptySubtext}>{emptyState.subtitle}</Text>
@@ -405,7 +429,7 @@ export default function ShelfScreen({
         selectedCustomLabels={selectedCustomLabels}
         onFiltersChange={handleFiltersChange}
         resultCount={filteredCounts.total}
-        shelfContext={activeTab === 'all' ? 'all' : activeTab}
+        shelfContext={shelfContextForFilters}
         customLabelSuggestions={customLabelSuggestions}
         onClearFilters={handleClearFilters}
         onTrackFilterApplied={handleTrackFilterApplied}
@@ -442,9 +466,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'flex-start',
     paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 4,
+    paddingTop: 0,
+    paddingBottom: 0,
     gap: 16,
+  },
+  tabScroll: {
+    flexGrow: 0,
+    flexShrink: 0,
   },
   tab: {
     alignItems: 'flex-start',
