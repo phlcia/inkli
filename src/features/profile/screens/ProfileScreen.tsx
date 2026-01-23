@@ -328,6 +328,16 @@ export default function ProfileScreen() {
     }
   };
 
+  const handleOpenRecommendations = () => {
+    const target = { screen: 'YourShelfMain', params: { initialTab: 'recommended' } };
+    const parentNav = (navigation as any).getParent?.();
+    if (parentNav?.navigate) {
+      parentNav.navigate('Your Shelf', target);
+      return;
+    }
+    (navigation as any).navigate('Your Shelf', target);
+  };
+
   const renderRecentActivityItem = (item: ActivityFeedItem) => (
     <RecentActivityCard
       key={item.id}
@@ -497,7 +507,8 @@ export default function ProfileScreen() {
           {renderShelfSection(
             require('../../../../assets/heart.png'), 
             'Recommended for You', 
-            0
+            0,
+            handleOpenRecommendations
           )}
         </View>
 

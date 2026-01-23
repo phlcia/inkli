@@ -458,31 +458,64 @@ export default function UserProfileScreen() {
             require('../../../../assets/add.png'),
             'Read',
             bookCounts.read,
-            () => (navigation as any).navigate('UserShelf', {
-              userId,
-              username: userProfile?.username,
-              initialTab: 'read',
-            })
+            () => {
+              const parentNav = (navigation as any).getParent?.();
+              const target = {
+                screen: 'UserShelf',
+                params: {
+                  userId,
+                  username: userProfile?.username,
+                  initialTab: 'read',
+                },
+              };
+              if (parentNav?.navigate) {
+                parentNav.navigate('Home', target);
+                return;
+              }
+              (navigation as any).navigate('Home', target);
+            }
           )}
           {renderShelfSection(
             require('../../../../assets/reading.png'),
             'Currently Reading',
             bookCounts.currently_reading,
-            () => (navigation as any).navigate('UserShelf', {
-              userId,
-              username: userProfile?.username,
-              initialTab: 'currently_reading',
-            })
+            () => {
+              const parentNav = (navigation as any).getParent?.();
+              const target = {
+                screen: 'UserShelf',
+                params: {
+                  userId,
+                  username: userProfile?.username,
+                  initialTab: 'currently_reading',
+                },
+              };
+              if (parentNav?.navigate) {
+                parentNav.navigate('Home', target);
+                return;
+              }
+              (navigation as any).navigate('Home', target);
+            }
           )}
           {renderShelfSection(
             require('../../../../assets/bookmark.png'),
             'Want to Read',
             bookCounts.want_to_read,
-            () => (navigation as any).navigate('UserShelf', {
-              userId,
-              username: userProfile?.username,
-              initialTab: 'want_to_read',
-            })
+            () => {
+              const parentNav = (navigation as any).getParent?.();
+              const target = {
+                screen: 'UserShelf',
+                params: {
+                  userId,
+                  username: userProfile?.username,
+                  initialTab: 'want_to_read',
+                },
+              };
+              if (parentNav?.navigate) {
+                parentNav.navigate('Home', target);
+                return;
+              }
+              (navigation as any).navigate('Home', target);
+            }
           )}
         </View>
 

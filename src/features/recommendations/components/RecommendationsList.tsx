@@ -3,24 +3,30 @@ import {
   View,
   Text,
   StyleSheet,
-  StatusBar,
   ScrollView,
   RefreshControl,
   TouchableOpacity,
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { colors, typography } from '../../../config/theme';
-import { generateRecommendations, refreshRecommendations, Recommendation } from '../../../services/recommendations';
-import RecommendationCard from '../components/RecommendationCard';
+import {
+  fetchRecommendations,
+  refreshRecommendations,
+  Recommendation,
+  markRecommendationsShown,
+  markRecommendationClicked,
+} from '../../../services/recommendations';
+import RecommendationCard from './RecommendationCard';
 import { useAuth } from '../../../contexts/AuthContext';
-import { useNavigation } from '@react-navigation/native';
 
-export default function RecommendationsScreen() {
+type RecommendationsListProps = {
+  showHeader?: boolean;
+};
+
+export default function RecommendationsList({ showHeader = true }: RecommendationsListProps) {
   const { user } = useAuth();
-  const navigation = useNavigation();
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -37,16 +43,12 @@ export default function RecommendationsScreen() {
     setError(null);
 
     try {
-      const { data, error: recError } = await generateRecommendations();
+      const { data, error: recError } = await fetchRecommendations(user.id);
       if (recError) {
         setError(recError.message);
         return;
       }
-      if (data) {
-        setRecommendations(data);
-      } else {
-        setError('No recommendations available');
-      }
+      setRecommendations(data || []);
     } catch (err) {
       console.error('Error loading recommendations:', err);
       setError('Failed to load recommendations');
@@ -62,6 +64,15 @@ export default function RecommendationsScreen() {
     }, [loadRecommendations])
   );
 
+  useEffect(() => {
+    if (recommendations.length === 0) return;
+    const unseenIds = recommendations
+      .filter((rec) => !rec.shown_at)
+      .map((rec) => rec.id);
+    if (unseenIds.length === 0) return;
+    markRecommendationsShown(unseenIds);
+  }, [recommendations]);
+
   const handleRefresh = useCallback(async () => {
     if (!user) return;
 
@@ -74,11 +85,7 @@ export default function RecommendationsScreen() {
         setError(recError.message);
         return;
       }
-      if (data) {
-        setRecommendations(data);
-      } else {
-        setError('No recommendations available');
-      }
+      setRecommendations(data || []);
     } catch (err) {
       console.error('Error refreshing recommendations:', err);
       setError('Failed to refresh recommendations');
@@ -87,44 +94,39 @@ export default function RecommendationsScreen() {
     }
   }, [user]);
 
-  const handleBookPress = useCallback((bookId: string) => {
-    // Navigate to book detail
-    // This will need to be implemented based on your navigation structure
+  const handleBookPress = useCallback((bookId: string, recommendationId: string) => {
+    markRecommendationClicked(recommendationId);
     console.log('Navigate to book:', bookId);
   }, []);
 
   const handleRankBook = useCallback((bookId: string) => {
-    // Navigate to comparison/ranking flow
-    // This will need to be implemented based on your navigation structure
     console.log('Rank book:', bookId);
     Alert.alert('Rank Book', 'Ranking feature will be implemented');
   }, []);
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-        <StatusBar barStyle="dark-content" backgroundColor={colors.creamBackground} />
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primaryBlue} />
-          <Text style={styles.loadingText}>Loading recommendations...</Text>
-        </View>
-      </SafeAreaView>
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={colors.primaryBlue} />
+        <Text style={styles.loadingText}>Loading recommendations...</Text>
+      </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-      <StatusBar barStyle="dark-content" backgroundColor={colors.creamBackground} />
-      <View style={styles.header}>
-        <Text style={styles.title}>Recommendations</Text>
-        <TouchableOpacity onPress={handleRefresh} disabled={refreshing} style={styles.refreshButton}>
-          {refreshing ? (
-            <ActivityIndicator size="small" color={colors.primaryBlue} />
-          ) : (
-            <Text style={styles.refreshButtonText}>Refresh</Text>
-          )}
-        </TouchableOpacity>
-      </View>
+    <View style={styles.container}>
+      {showHeader && (
+        <View style={styles.header}>
+          <Text style={styles.title}>Recommendations</Text>
+          <TouchableOpacity onPress={handleRefresh} disabled={refreshing} style={styles.refreshButton}>
+            {refreshing ? (
+              <ActivityIndicator size="small" color={colors.primaryBlue} />
+            ) : (
+              <Text style={styles.refreshButtonText}>Refresh</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      )}
 
       {error ? (
         <View style={styles.errorContainer}>
@@ -136,7 +138,9 @@ export default function RecommendationsScreen() {
       ) : recommendations.length === 0 ? (
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyText}>No recommendations yet.</Text>
-          <Text style={styles.emptySubtext}>Make some comparisons to get personalized recommendations!</Text>
+          <Text style={styles.emptySubtext}>
+            Keep ranking books to improve your recommendations.
+          </Text>
         </View>
       ) : (
         <ScrollView
@@ -150,17 +154,17 @@ export default function RecommendationsScreen() {
             if (!rec.book) return null;
             return (
               <RecommendationCard
-                key={rec.book_id}
+                key={rec.id}
                 book={rec.book}
                 reasoning={rec.reasoning}
-                onPress={() => handleBookPress(rec.book_id)}
+                onPress={() => handleBookPress(rec.book_id, rec.id)}
                 onRank={() => handleRankBook(rec.book_id)}
               />
             );
           })}
         </ScrollView>
       )}
-    </SafeAreaView>
+    </View>
   );
 }
 

@@ -7,7 +7,10 @@ import BookRankingScreen from '../features/books/screens/BookRankingScreen';
 import { BookRankingParams } from './types';
 
 export type YourShelfStackParamList = {
-  YourShelfMain: undefined;
+  YourShelfMain: {
+    initialTab?: 'read' | 'currently_reading' | 'want_to_read' | 'recommended';
+    refresh?: boolean;
+  };
   BookDetail: { book: any }; // Enriched book data
   BookRanking: BookRankingParams;
 };
