@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
 import {
@@ -24,8 +24,63 @@ function AppContent() {
   const { user, loading } = useAuth();
   const isLoading = Boolean(loading);
   const hasUser = Boolean(user);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileFlags, setProfileFlags] = useState<{
+    completed_onboarding_quiz: boolean;
+    skipped_onboarding_quiz: boolean;
+  } | null>(null);
+  const [profileRefreshCount, setProfileRefreshCount] = useState(0);
 
-  if (isLoading) {
+  useEffect(() => {
+    const fetchProfileFlags = async () => {
+      if (!user) {
+        setProfileFlags(null);
+        setProfileLoading(false);
+        return;
+      }
+
+      setProfileLoading(true);
+      try {
+        const { data, error } = await supabase
+          .from('user_profiles')
+          .select('completed_onboarding_quiz, skipped_onboarding_quiz')
+          .eq('user_id', user.id)
+          .single();
+
+        if (error || !data) {
+          console.error('Error loading onboarding flags:', error);
+          setProfileFlags({
+            completed_onboarding_quiz: false,
+            skipped_onboarding_quiz: false,
+          });
+          return;
+        }
+
+        setProfileFlags({
+          completed_onboarding_quiz: Boolean(data.completed_onboarding_quiz),
+          skipped_onboarding_quiz: Boolean(data.skipped_onboarding_quiz),
+        });
+      } catch (error) {
+        console.error('Exception loading onboarding flags:', error);
+        setProfileFlags({
+          completed_onboarding_quiz: false,
+          skipped_onboarding_quiz: false,
+        });
+      } finally {
+        setProfileLoading(false);
+      }
+    };
+
+    fetchProfileFlags();
+  }, [user, profileRefreshCount]);
+
+  const needsOnboardingQuiz =
+    hasUser &&
+    profileFlags !== null &&
+    !profileFlags.completed_onboarding_quiz &&
+    !profileFlags.skipped_onboarding_quiz;
+
+  if (isLoading || (hasUser && (profileLoading || profileFlags === null))) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={colors.primaryBlue} />
@@ -35,7 +90,18 @@ function AppContent() {
 
   return (
     <NavigationContainer key="main-navigator">
-      {hasUser ? <TabNavigator /> : <AuthStackNavigator />}
+      {hasUser ? (
+        needsOnboardingQuiz ? (
+          <AuthStackNavigator
+            initialRouteName="Quiz"
+            onQuizComplete={() => setProfileRefreshCount((count) => count + 1)}
+          />
+        ) : (
+          <TabNavigator />
+        )
+      ) : (
+        <AuthStackNavigator />
+      )}
     </NavigationContainer>
   );
 }

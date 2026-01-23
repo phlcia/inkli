@@ -33,7 +33,16 @@ export async function createComparison(
     });
 
     if (error) {
-      console.error('Error creating comparison:', error);
+      const context = (error as any)?.context;
+      const responseBody = context?.body;
+      const responseStatus = context?.status;
+      const responseStatusText = context?.statusText;
+      console.error('Error creating comparison:', {
+        message: error.message,
+        status: responseStatus,
+        statusText: responseStatusText,
+        body: responseBody,
+      });
       return { data: null, error: new Error(error.message || 'Failed to create comparison') };
     }
 

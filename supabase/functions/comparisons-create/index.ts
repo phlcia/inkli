@@ -23,6 +23,9 @@ Deno.serve(async (req: Request) => {
     return new Response('ok', { headers: corsHeaders })
   }
 
+  let isServiceRoleConfigured = false
+  let isServiceRoleDistinct = false
+
   if (req.method !== 'POST') {
     return new Response(
       JSON.stringify({ error: 'Method not allowed' }),
@@ -41,9 +44,6 @@ Deno.serve(async (req: Request) => {
       throw new Error('Missing Supabase environment variables')
     }
 
-    const supabase = createClient(supabaseUrl, supabaseAnonKey)
-
-    // Get authenticated user
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
       return new Response(
@@ -56,7 +56,24 @@ Deno.serve(async (req: Request) => {
     }
 
     const token = authHeader.replace('Bearer ', '')
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    isServiceRoleConfigured = Boolean(serviceRoleKey)
+    isServiceRoleDistinct = Boolean(serviceRoleKey && serviceRoleKey !== supabaseAnonKey)
+    console.log('comparisons-create auth config', {
+      hasServiceRoleKey: isServiceRoleConfigured,
+      serviceRoleDistinctFromAnon: isServiceRoleDistinct,
+    })
+
+    const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey, {
+      global: {
+        headers: {
+          Authorization: authHeader,
+        },
+      },
+    })
+
+    // Get authenticated user
+    const { data: { user }, error: authError } = await supabaseAuth.auth.getUser(token)
     
     if (authError || !user) {
       return new Response(
@@ -67,6 +84,10 @@ Deno.serve(async (req: Request) => {
         }
       )
     }
+
+    const supabaseDb = isServiceRoleConfigured
+      ? createClient(supabaseUrl, serviceRoleKey)
+      : supabaseAuth
 
     // Parse request body
     const body = await req.json()
@@ -94,7 +115,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // Check if books exist
-    const { data: books, error: booksError } = await supabase
+    const { data: books, error: booksError } = await supabaseDb
       .from('books')
       .select('id')
       .in('id', [winner_book_id, loser_book_id])
@@ -115,7 +136,7 @@ Deno.serve(async (req: Request) => {
 
     // Check for duplicate comparison (using unique index)
     // The unique index handles both orderings, but we check explicitly for better error message
-    const { data: existingComparison, error: checkError } = await supabase
+    const { data: existingComparison, error: checkError } = await supabaseDb
       .from('comparisons')
       .select('id')
       .eq('user_id', user.id)
@@ -137,7 +158,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // Insert comparison
-    const { data: comparison, error: insertError } = await supabase
+    const { data: comparison, error: insertError } = await supabaseDb
       .from('comparisons')
       .insert({
         user_id: user.id,
@@ -159,6 +180,7 @@ Deno.serve(async (req: Request) => {
           }
         )
       }
+      console.error('Insert comparison failed:', insertError)
       throw new Error(`Failed to create comparison: ${insertError.message}`)
     }
 
@@ -175,7 +197,13 @@ Deno.serve(async (req: Request) => {
   } catch (error) {
     console.error('Edge function error:', error)
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : 'Internal server error' }),
+      JSON.stringify({
+        error: error instanceof Error ? error.message : 'Internal server error',
+        debug: {
+          serviceRoleConfigured: isServiceRoleConfigured,
+          serviceRoleDistinctFromAnon: isServiceRoleDistinct,
+        },
+      }),
       { 
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
