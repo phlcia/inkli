@@ -319,17 +319,17 @@ export default function ShelfScreen({
       case 'currently_reading':
         return {
           title: 'No books yet...',
-          subtitle: 'No currently-reading books yet.',
+          subtitle: 'Currently-reading books will show up here.',
         };
       case 'want_to_read':
         return {
           title: 'No books yet...',
-          subtitle: 'No want-to-read books yet.',
+          subtitle: 'Want-to-read books will show up here.',
         };
       case 'recommended':
         return {
           title: 'No recommendations yet...',
-          subtitle: 'Keep ranking books to improve your recommendations.',
+          subtitle: 'Keep ranking books to improve your recommendations!',
         };
     }
   };

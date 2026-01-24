@@ -64,7 +64,7 @@ const styles = StyleSheet.create({
   },
   tagline: {
     fontSize: 30,
-    fontFamily: typography.logo,
+    fontFamily: typography.heroTitle,
     color: colors.brownText,
     marginBottom: 48,
     textAlign: 'center',
