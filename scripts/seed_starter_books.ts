@@ -83,6 +83,46 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey);
 async function seedStarterBooks() {
   console.log('Starting to seed 30 starter books...\n');
 
+  // Ensure genres/themes exist so recommendations can score books
+  const uniqueGenres = Array.from(new Set(starterBooks.flatMap((book) => book.genres))).sort();
+  const uniqueThemes = Array.from(new Set(starterBooks.flatMap((book) => book.themes))).sort();
+
+  const { error: seedGenresError } = await supabase
+    .from('genres')
+    .upsert(uniqueGenres.map((name) => ({ name })), { onConflict: 'name' });
+
+  if (seedGenresError) {
+    console.error('✗ Error seeding genres:', seedGenresError.message);
+  }
+
+  const { error: seedThemesError } = await supabase
+    .from('themes')
+    .upsert(uniqueThemes.map((name) => ({ name })), { onConflict: 'name' });
+
+  if (seedThemesError) {
+    console.error('✗ Error seeding themes:', seedThemesError.message);
+  }
+
+  const { data: genresData } = await supabase
+    .from('genres')
+    .select('id, name')
+    .in('name', uniqueGenres);
+
+  const { data: themesData } = await supabase
+    .from('themes')
+    .select('id, name')
+    .in('name', uniqueThemes);
+
+  const genreIdByName = new Map<string, string>();
+  (genresData || []).forEach((genre) => {
+    genreIdByName.set(genre.name, genre.id);
+  });
+
+  const themeIdByName = new Map<string, string>();
+  (themesData || []).forEach((theme) => {
+    themeIdByName.set(theme.name, theme.id);
+  });
+
   let successCount = 0;
   let skipCount = 0;
   let errorCount = 0;
@@ -136,37 +176,31 @@ async function seedStarterBooks() {
 
       // Link genres
       for (const genreName of bookData.genres) {
-        const { data: genre } = await supabase
-          .from('genres')
-          .select('id')
-          .eq('name', genreName)
-          .single();
-
-        if (genre) {
+        const genreId = genreIdByName.get(genreName);
+        if (genreId) {
           await supabase
             .from('book_genres')
             .upsert(
-              { book_id: bookId, genre_id: genre.id },
+              { book_id: bookId, genre_id: genreId },
               { onConflict: 'book_id,genre_id' }
             );
+        } else {
+          console.warn(`⚠️ Missing genre "${genreName}" for "${bookData.title}"`);
         }
       }
 
       // Link themes
       for (const themeName of bookData.themes) {
-        const { data: theme } = await supabase
-          .from('themes')
-          .select('id')
-          .eq('name', themeName)
-          .single();
-
-        if (theme) {
+        const themeId = themeIdByName.get(themeName);
+        if (themeId) {
           await supabase
             .from('book_themes')
             .upsert(
-              { book_id: bookId, theme_id: theme.id },
+              { book_id: bookId, theme_id: themeId },
               { onConflict: 'book_id,theme_id' }
             );
+        } else {
+          console.warn(`⚠️ Missing theme "${themeName}" for "${bookData.title}"`);
         }
       }
 
