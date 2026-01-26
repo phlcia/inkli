@@ -30,9 +30,6 @@ Deno.serve(async (req: Request) => {
       throw new Error('Missing Supabase environment variables')
     }
 
-    const supabase = createClient(supabaseUrl, supabaseAnonKey)
-
-    // Get authenticated user
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
       return new Response(
@@ -44,8 +41,21 @@ Deno.serve(async (req: Request) => {
       )
     }
 
+    const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey, {
+      global: {
+        headers: {
+          Authorization: authHeader,
+        },
+      },
+    })
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    const supabaseDb = serviceRoleKey
+      ? createClient(supabaseUrl, serviceRoleKey)
+      : supabaseAuth
+
+    // Get authenticated user
     const token = authHeader.replace('Bearer ', '')
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
+    const { data: { user }, error: authError } = await supabaseAuth.auth.getUser(token)
     
     if (authError || !user) {
       return new Response(
@@ -58,7 +68,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // Update user profile to mark quiz as skipped
-    const { error: updateError } = await supabase
+    const { error: updateError } = await supabaseDb
       .from('user_profiles')
       .update({ 
         skipped_onboarding_quiz: true,
@@ -68,6 +78,49 @@ Deno.serve(async (req: Request) => {
 
     if (updateError) {
       throw new Error(`Failed to update user profile: ${updateError.message}`)
+    }
+
+    // Seed recommendations with starter books for skipped quiz users.
+    const { data: starterBooks, error: starterError } = await supabaseDb
+      .from('books')
+      .select('id')
+      .eq('is_starter_book', true)
+      .eq('starter_set_id', 1)
+      .order('title', { ascending: true })
+      .limit(30)
+
+    if (starterError) {
+      throw new Error(`Failed to fetch starter books: ${starterError.message}`)
+    }
+
+    const createdAt = new Date().toISOString()
+
+    const { error: deleteError } = await supabaseDb
+      .from('recommendations')
+      .delete()
+      .eq('user_id', user.id)
+
+    if (deleteError) {
+      throw new Error(`Failed to clear recommendations: ${deleteError.message}`)
+    }
+
+    if (starterBooks && starterBooks.length > 0) {
+      const { error: insertError } = await supabaseDb
+        .from('recommendations')
+        .insert(
+          starterBooks.map((book, index) => ({
+            user_id: user.id,
+            book_id: book.id,
+            score: starterBooks.length - index,
+            reason: 'Starter book',
+            algorithm_version: 'starter-v1',
+            created_at: createdAt,
+          }))
+        )
+
+      if (insertError) {
+        throw new Error(`Failed to insert recommendations: ${insertError.message}`)
+      }
     }
 
     return new Response(
