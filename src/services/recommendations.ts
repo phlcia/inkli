@@ -47,12 +47,17 @@ function normalizeRecommendations(raw: any[]): Recommendation[] {
 /**
  * Fetch stored recommendations for a user
  */
-export async function fetchRecommendations(userId: string): Promise<{
+export async function fetchRecommendations(
+  userId: string,
+  options?: { limit?: number; offset?: number }
+): Promise<{
   data: Recommendation[] | null;
   error: Error | null;
 }> {
   try {
-    const { data, error } = await supabase
+    const limit = options?.limit;
+    const offset = options?.offset ?? 0;
+    let query = supabase
       .from('recommendations')
       .select(
         `
@@ -68,13 +73,21 @@ export async function fetchRecommendations(userId: string): Promise<{
           id,
           title,
           authors,
-          cover_url
+          cover_url,
+          open_library_id,
+          isbn_10,
+          isbn_13
         )
       `
       )
       .eq('user_id', userId)
-      .order('score', { ascending: false })
-      .limit(20);
+      .order('score', { ascending: false });
+
+    if (typeof limit === 'number') {
+      query = query.range(offset, offset + limit - 1);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       console.error('Error fetching recommendations:', error);
@@ -158,15 +171,28 @@ export async function generateRecommendations(): Promise<{
   error: Error | null;
 }> {
   try {
-    const { data, error } = await supabase.functions.invoke('recommendations-generate', {
-      method: 'POST',
-    });
-
-    if (error) {
-      console.error('Error generating recommendations:', error);
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    if (!session) {
       return {
         data: null,
-        error: new Error(error.message || 'Failed to generate recommendations'),
+        error: new Error('Not authenticated'),
+      };
+    }
+
+    const { data, error } = await supabase.functions.invoke('recommendations-generate', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
+      },
+    });
+
+    // Check for errors in the response body (HTTP errors don't throw)
+    if (error || data?.error) {
+      console.error('Error generating recommendations:', error || data.error);
+      return {
+        data: null,
+        error: new Error(error?.message || data?.error || 'Failed to generate recommendations'),
       };
     }
 
@@ -196,20 +222,33 @@ export async function refreshRecommendations(): Promise<{
   error: Error | null;
 }> {
   try {
-    const { data, error } = await supabase.functions.invoke('recommendations-refresh', {
-      method: 'POST',
-    });
-
-    if (error) {
-      console.error('Error refreshing recommendations:', error);
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    if (!session) {
       return {
         data: null,
-        error: new Error(error.message || 'Failed to refresh recommendations'),
+        error: new Error('Not authenticated'),
+      };
+    }
+
+    const { data, error } = await supabase.functions.invoke('recommendations-refresh', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
+      },
+    });
+
+    // Check for errors in the response body (HTTP errors don't throw)
+    if (error || data?.error) {
+      console.error('Error refreshing recommendations:', error || data.error);
+      return {
+        data: null,
+        error: new Error(error?.message || data?.error || 'Failed to refresh recommendations'),
       };
     }
 
     if (!data?.success || !data?.recommendations) {
-      const errorMessage = data?.error || 'Invalid response from recommendations-refresh';
+      const errorMessage = 'Invalid response from recommendations-refresh';
       return {
         data: null,
         error: new Error(errorMessage),

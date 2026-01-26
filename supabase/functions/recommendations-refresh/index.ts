@@ -116,7 +116,15 @@ Deno.serve(async (req: Request) => {
           created_at,
           shown_at,
           clicked_at,
-          book:books (id, title, authors, cover_url)
+          book:books (
+            id,
+            title,
+            authors,
+            cover_url,
+            open_library_id,
+            isbn_10,
+            isbn_13
+          )
         `
         )
         .eq('user_id', user.id)

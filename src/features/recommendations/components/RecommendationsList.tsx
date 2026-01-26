@@ -3,7 +3,7 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
+  FlatList,
   RefreshControl,
   TouchableOpacity,
   ActivityIndicator,
@@ -21,6 +21,8 @@ import {
 import { useAuth } from '../../../contexts/AuthContext';
 import { getBookCircles, BookCircleStats, formatCount } from '../../../services/books';
 import { supabase } from '../../../config/supabase';
+import { isBookSparse } from '../../../utils/bookHelpers';
+import { enrichBook } from '../../../services/enrichment';
 
 type RecommendationsListProps = {
   showHeader?: boolean;
@@ -29,10 +31,15 @@ type RecommendationsListProps = {
 export default function RecommendationsList({ showHeader = true }: RecommendationsListProps) {
   const { user } = useAuth();
   const navigation = useNavigation<any>();
+  const pageSize = 30;
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [enrichingBookId, setEnrichingBookId] = useState<string | null>(null);
   const [circleStats, setCircleStats] = useState<Map<string, BookCircleStats>>(new Map());
   const [circleLoading, setCircleLoading] = useState<Set<string>>(new Set());
 
@@ -71,27 +78,34 @@ export default function RecommendationsList({ showHeader = true }: Recommendatio
     setCircleLoading(new Set(loadingSet));
   }, []);
 
-  const loadRecommendations = useCallback(async (isRefresh = false) => {
+  const loadRecommendations = useCallback(async (targetPage = 0, append = false) => {
     if (!user) return;
 
-    if (isRefresh) {
-      setRefreshing(true);
-    } else {
+    const isInitial = targetPage === 0 && !append;
+    if (isInitial) {
       setLoading(true);
+    } else {
+      setLoadingMore(true);
     }
     setError(null);
 
     try {
-      const { data, error: recError } = await fetchRecommendations(user.id);
+      const { data, error: recError } = await fetchRecommendations(user.id, {
+        limit: pageSize,
+        offset: targetPage * pageSize,
+      });
       if (recError) {
         setError(recError.message);
         return;
       }
-      setRecommendations(data || []);
+      const nextRecommendations = data || [];
+      setRecommendations((prev) => (append ? [...prev, ...nextRecommendations] : nextRecommendations));
+      setPage(targetPage);
+      setHasMore(nextRecommendations.length === pageSize);
       
       // Load circle stats for all recommended books
-      if (data && data.length > 0) {
-        const bookIds = data.map((rec) => rec.book_id).filter(Boolean);
+      if (nextRecommendations.length > 0) {
+        const bookIds = nextRecommendations.map((rec) => rec.book_id).filter(Boolean);
         if (bookIds.length > 0) {
           await loadCircleStats(bookIds);
         }
@@ -101,13 +115,13 @@ export default function RecommendationsList({ showHeader = true }: Recommendatio
       setError('Failed to load recommendations');
     } finally {
       setLoading(false);
-      setRefreshing(false);
+      setLoadingMore(false);
     }
-  }, [user, loadCircleStats]);
+  }, [user, loadCircleStats, pageSize]);
 
   useFocusEffect(
     useCallback(() => {
-      loadRecommendations();
+      loadRecommendations(0, false);
     }, [loadRecommendations])
   );
 
@@ -127,38 +141,55 @@ export default function RecommendationsList({ showHeader = true }: Recommendatio
     setError(null);
 
     try {
-      const { data, error: recError } = await refreshRecommendations();
+      const { error: recError } = await refreshRecommendations();
       if (recError) {
         setError(recError.message);
         return;
       }
-      setRecommendations(data || []);
-      
-      // Load circle stats for all recommended books
-      if (data && data.length > 0) {
-        const bookIds = data.map((rec) => rec.book_id).filter(Boolean);
-        if (bookIds.length > 0) {
-          await loadCircleStats(bookIds);
-        }
-      }
+      await loadRecommendations(0, false);
     } catch (err) {
       console.error('Error refreshing recommendations:', err);
       setError('Failed to refresh recommendations');
     } finally {
       setRefreshing(false);
     }
-  }, [user, loadCircleStats]);
+  }, [user, loadRecommendations]);
+  
+  const handleLoadMore = useCallback(async () => {
+    if (loadingMore || loading || refreshing || !hasMore) return;
+    await loadRecommendations(page + 1, true);
+  }, [loadingMore, loading, refreshing, hasMore, loadRecommendations, page]);
 
   const handleBookPress = useCallback(async (rec: Recommendation) => {
     if (!rec.book) return;
-    
+
     markRecommendationClicked(rec.id);
+
+    let bookForDetail = rec.book;
+    const needsEnrichment = isBookSparse(rec.book) && Boolean(rec.book.open_library_id);
+
+    if (needsEnrichment) {
+      setEnrichingBookId(rec.book_id);
+      try {
+        const { data: enrichedBook } = await enrichBook(
+          rec.book.id,
+          rec.book.open_library_id as string
+        );
+        if (enrichedBook) {
+          bookForDetail = enrichedBook;
+        }
+      } catch (error) {
+        console.error('Error enriching book:', error);
+      } finally {
+        setEnrichingBookId(null);
+      }
+    }
 
     try {
       const { data: fullBook, error } = await supabase
         .from('books')
         .select('*')
-        .eq('id', rec.book_id)
+        .eq('id', bookForDetail.id)
         .single();
 
       if (error) throw error;
@@ -224,6 +255,7 @@ export default function RecommendationsList({ showHeader = true }: Recommendatio
         key={rec.id}
         style={styles.bookItem}
         activeOpacity={0.7}
+        disabled={enrichingBookId === rec.book_id}
         onPress={() => handleBookPress(rec)}
       >
         <View style={styles.bookInfo}>
@@ -243,15 +275,21 @@ export default function RecommendationsList({ showHeader = true }: Recommendatio
         </View>
 
         <View style={[styles.ratingCircle, { backgroundColor: scoreColor }]}>
-          <Text style={styles.circleScore}>
-            {formatCircleScore(score)}
-          </Text>
-          {Boolean(count) && (
-            <View style={styles.circleCountBadge}>
-              <Text style={styles.circleCountText}>
-                {formatCircleCount(count)}
+          {enrichingBookId === rec.book_id ? (
+            <ActivityIndicator size="small" color={colors.white} />
+          ) : (
+            <>
+              <Text style={styles.circleScore}>
+                {formatCircleScore(score)}
               </Text>
-            </View>
+              {Boolean(count) && (
+                <View style={styles.circleCountBadge}>
+                  <Text style={styles.circleCountText}>
+                    {formatCircleCount(count)}
+                  </Text>
+                </View>
+              )}
+            </>
           )}
         </View>
       </TouchableOpacity>
@@ -269,43 +307,55 @@ export default function RecommendationsList({ showHeader = true }: Recommendatio
 
   return (
     <View style={styles.container}>
-      {showHeader && (
-        <View style={styles.header}>
-          <Text style={styles.title}>Recommendations</Text>
-          <TouchableOpacity onPress={handleRefresh} disabled={refreshing} style={styles.refreshButton}>
-            {refreshing ? (
-              <ActivityIndicator size="small" color={colors.primaryBlue} />
-            ) : (
-              <Text style={styles.refreshButtonText}>Refresh</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-      )}
-
       {error ? (
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={() => loadRecommendations()}>
+          <TouchableOpacity style={styles.retryButton} onPress={() => loadRecommendations(0, false)}>
             <Text style={styles.retryButtonText}>Retry</Text>
           </TouchableOpacity>
         </View>
-      ) : recommendations.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>No recommendations yet.</Text>
-          <Text style={styles.emptySubtext}>
-            Keep ranking books to improve your recommendations.
-          </Text>
-        </View>
       ) : (
-        <ScrollView
+        <FlatList
+          data={recommendations}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item, index }) => renderBookItem(item, index)}
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primaryBlue} />
           }
-        >
-          {recommendations.map((rec, index) => renderBookItem(rec, index))}
-        </ScrollView>
+          ListHeaderComponent={
+            showHeader ? (
+              <View style={styles.header}>
+                <Text style={styles.title}>Recommendations</Text>
+                <TouchableOpacity onPress={handleRefresh} disabled={refreshing} style={styles.refreshButton}>
+                  {refreshing ? (
+                    <ActivityIndicator size="small" color={colors.primaryBlue} />
+                  ) : (
+                    <Text style={styles.refreshButtonText}>Refresh</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            ) : null
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>No recommendations yet.</Text>
+              <Text style={styles.emptySubtext}>
+                Keep ranking books to improve your recommendations.
+              </Text>
+            </View>
+          }
+          ListFooterComponent={
+            loadingMore ? (
+              <View style={styles.loadingMoreContainer}>
+                <ActivityIndicator size="small" color={colors.primaryBlue} />
+              </View>
+            ) : null
+          }
+          onEndReached={handleLoadMore}
+          onEndReachedThreshold={0.6}
+        />
       )}
     </View>
   );
@@ -401,6 +451,10 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: 20,
     paddingTop: 8,
+  },
+  loadingMoreContainer: {
+    paddingVertical: 16,
+    alignItems: 'center',
   },
   bookItem: {
     flexDirection: 'row',

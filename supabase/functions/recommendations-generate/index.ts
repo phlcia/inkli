@@ -22,6 +22,114 @@ interface BookScore {
   reasoning: string;
 }
 
+interface OpenLibraryWorkData {
+  title: string;
+  authors?: Array<{ author: { key: string } }>;
+  covers?: number[];
+  description?: string | { value: string };
+  first_publish_date?: string;
+}
+
+async function fetchAndInsertBookFromOpenLibrary(
+  workId: string,
+  supabaseDb: any
+): Promise<boolean> {
+  try {
+    const response = await fetch(`https://openlibrary.org/works/${workId}.json`);
+    if (!response.ok) {
+      console.error(`Failed to fetch work ${workId}: ${response.status}`);
+      return false;
+    }
+
+    const workData: OpenLibraryWorkData = await response.json();
+
+    const authorNames: string[] = [];
+    if (workData.authors && workData.authors.length > 0) {
+      for (const authorRef of workData.authors.slice(0, 3)) {
+        try {
+          const authorKey = authorRef.author.key;
+          const authorResponse = await fetch(`https://openlibrary.org${authorKey}.json`);
+          if (authorResponse.ok) {
+            const authorData = await authorResponse.json();
+            if (authorData.name) {
+              authorNames.push(authorData.name);
+            }
+          }
+        } catch (error) {
+          console.error('Error fetching author:', error);
+        }
+      }
+    }
+
+    let coverUrl: string | null = null;
+    if (workData.covers && workData.covers.length > 0) {
+      coverUrl = `https://covers.openlibrary.org/b/id/${workData.covers[0]}-L.jpg`;
+    }
+
+    let description: string | null = null;
+    if (workData.description) {
+      description =
+        typeof workData.description === 'string'
+          ? workData.description
+          : workData.description.value;
+    }
+
+    let publishedYear: number | null = null;
+    if (workData.first_publish_date) {
+      const yearMatch = workData.first_publish_date.match(/\d{4}/);
+      if (yearMatch) {
+        publishedYear = parseInt(yearMatch[0], 10);
+      }
+    }
+
+    const { error: insertError } = await supabaseDb.from('books').insert({
+      id: workId,
+      title: workData.title,
+      authors: authorNames.length > 0 ? authorNames : ['Unknown'],
+      cover_url: coverUrl,
+      description: description,
+      published_year: publishedYear,
+      language: 'en',
+    });
+
+    if (insertError) {
+      console.error(`Failed to insert book ${workId}:`, insertError.message);
+      return false;
+    }
+
+    console.log(`Auto-populated book: ${workData.title} (${workId})`);
+    return true;
+  } catch (error) {
+    console.error(`Error auto-populating book ${workId}:`, error);
+    return false;
+  }
+}
+
+async function ensureBooksExist(
+  bookIds: string[],
+  supabaseDb: any
+): Promise<void> {
+  if (bookIds.length === 0) return;
+
+  const { data: existingBooks } = await supabaseDb
+    .from('books')
+    .select('id')
+    .in('id', bookIds);
+
+  const existingIds = new Set((existingBooks || []).map((b: any) => b.id));
+  const missingIds = bookIds.filter((id) => !existingIds.has(id));
+
+  if (missingIds.length === 0) {
+    return;
+  }
+
+  console.log(`Auto-populating ${missingIds.length} missing books...`);
+  for (const bookId of missingIds) {
+    await fetchAndInsertBookFromOpenLibrary(bookId, supabaseDb);
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+}
+
 Deno.serve(async (req: Request) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -122,7 +230,15 @@ Deno.serve(async (req: Request) => {
           created_at,
           shown_at,
           clicked_at,
-          book:books (id, title, authors, cover_url)
+          book:books (
+            id,
+            title,
+            authors,
+            cover_url,
+            open_library_id,
+            isbn_10,
+            isbn_13
+          )
         `
         )
         .eq('user_id', user.id)
@@ -160,12 +276,22 @@ Deno.serve(async (req: Request) => {
 
     // If user has <5 comparisons, return popular books
     if (userComparisons.length < 5) {
-      const excludedIds = [
-        ...new Set([
-          ...userComparisons.map(c => c.winner_book_id),
-          ...userComparisons.map(c => c.loser_book_id)
-        ]),
-      ].filter(Boolean)
+      // Calculate which books user has seen frequently (5+ times)
+      const bookStats = new Map<string, { wins: number; total: number }>()
+      for (const comp of userComparisons) {
+        const winnerStats = bookStats.get(comp.winner_book_id) || { wins: 0, total: 0 }
+        winnerStats.wins++
+        winnerStats.total++
+        bookStats.set(comp.winner_book_id, winnerStats)
+
+        const loserStats = bookStats.get(comp.loser_book_id) || { wins: 0, total: 0 }
+        loserStats.total++
+        bookStats.set(comp.loser_book_id, loserStats)
+      }
+
+      const frequentlySeenBooks = Array.from(bookStats.entries())
+        .filter(([_, stats]) => stats.total >= 5)
+        .map(([id]) => id)
 
       let popularQuery = supabaseDb
         .from('books')
@@ -175,14 +301,16 @@ Deno.serve(async (req: Request) => {
           authors,
           cover_url,
           global_win_rate,
-          total_comparisons
+          total_comparisons,
+          is_starter_book
         `)
+        .order('is_starter_book', { ascending: false, nullsLast: true })
         .order('global_win_rate', { ascending: false, nullsLast: true })
         .order('total_comparisons', { ascending: false })
-        .limit(20)
+        .limit(30)
 
-      if (excludedIds.length > 0) {
-        popularQuery = popularQuery.not('id', 'in', `(${excludedIds.join(',')})`)
+      if (frequentlySeenBooks.length > 0) {
+        popularQuery = popularQuery.not('id', 'in', `(${frequentlySeenBooks.join(',')})`)
       }
 
       const { data: popularBooks, error: popularError } = await popularQuery
@@ -193,12 +321,15 @@ Deno.serve(async (req: Request) => {
 
       const recommendations = (popularBooks || []).map(book => ({
         book_id: book.id,
-        book: {
-          id: book.id,
-          title: book.title,
-          authors: book.authors,
-          cover_url: book.cover_url,
-        },
+          book: {
+            id: book.id,
+            title: book.title,
+            authors: book.authors,
+            cover_url: book.cover_url,
+            open_library_id: book.open_library_id || null,
+            isbn_10: book.isbn_10 || null,
+            isbn_13: book.isbn_13 || null,
+          },
         reasoning: 'Popular book',
         score: (book.global_win_rate || 0) * (book.total_comparisons || 0),
       }))
@@ -310,20 +441,23 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // Get all books user has compared (to exclude them)
-    const comparedBookIds = new Set([
-      ...userComparisons.map(c => c.winner_book_id),
-      ...userComparisons.map(c => c.loser_book_id)
-    ])
+    // Only exclude books user REALLY disliked
+    const reallyDislikedBookIds = new Set<string>()
+    for (const [bookId, stats] of bookStats.entries()) {
+      const winRate = stats.total > 0 ? stats.wins / stats.total : 0
+      if (winRate < 0.3 && stats.total >= 3) {
+        reallyDislikedBookIds.add(bookId)
+      }
+    }
 
-    // Get all books with genres/themes (excluding compared books)
+    // Get all books with genres/themes (excluding really disliked books)
     let allBooksQuery = supabaseDb
       .from('books')
-      .select('id, title, authors, cover_url')
+      .select('id, title, authors, cover_url, open_library_id, isbn_10, isbn_13')
       .limit(1000) // Reasonable limit for MVP
 
-    if (comparedBookIds.size > 0) {
-      allBooksQuery = allBooksQuery.not('id', 'in', `(${Array.from(comparedBookIds).join(',')})`)
+    if (reallyDislikedBookIds.size > 0) {
+      allBooksQuery = allBooksQuery.not('id', 'in', `(${Array.from(reallyDislikedBookIds).join(',')})`)
     }
 
     const { data: allBooks, error: allBooksError } = await allBooksQuery
@@ -394,10 +528,40 @@ Deno.serve(async (req: Request) => {
 
     // Sort by score descending and get top 20
     bookScores.sort((a, b) => b.score - a.score)
-    const topScores = bookScores.slice(0, 20)
+
+    // Apply diversity filter - max 2 books per author
+    const diverseScores: BookScore[] = []
+    const authorBookCount = new Map<string, number>()
+
+    for (const score of bookScores) {
+      const book = (allBooks || []).find(b => b.id === score.book_id)
+      if (!book) continue
+
+      // Get first author (normalized to lowercase)
+      const firstAuthor = (book.authors && book.authors.length > 0)
+        ? book.authors[0].toLowerCase()
+        : 'unknown'
+
+      const currentCount = authorBookCount.get(firstAuthor) || 0
+
+      // Only include if we haven't hit the limit for this author
+      if (currentCount < 2) {
+        diverseScores.push(score)
+        authorBookCount.set(firstAuthor, currentCount + 1)
+      }
+
+      // Stop once we have 20 diverse recommendations
+      if (diverseScores.length >= 20) break
+    }
+
+    // Use diverse scores if we got enough, otherwise fall back to top scores
+    const topScores = diverseScores.length >= 10
+      ? diverseScores.slice(0, 20)
+      : bookScores.slice(0, 20)
 
     // Fetch full book data for top recommendations
     const topBookIds = topScores.map(bs => bs.book_id)
+    await ensureBooksExist(topBookIds, supabaseDb)
     const { data: recommendedBooks, error: booksError } = await supabaseDb
       .from('books')
       .select('id, title, authors, cover_url')
