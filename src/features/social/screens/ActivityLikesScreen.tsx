@@ -30,6 +30,8 @@ import {
   unfollowUser,
   getFollowingIds,
   getFollowerIds,
+  getOutgoingFollowRequests,
+  cancelFollowRequest,
 } from '../../../services/userProfile';
 
 type ActivityLikesRoute = RouteProp<
@@ -55,6 +57,7 @@ export default function ActivityLikesScreen() {
   const [loading, setLoading] = useState(true);
   const [followingIds, setFollowingIds] = useState<Set<string>>(new Set());
   const [followerIds, setFollowerIds] = useState<Set<string>>(new Set());
+  const [pendingRequestIds, setPendingRequestIds] = useState<Set<string>>(new Set());
   const [followLoading, setFollowLoading] = useState<Set<string>>(new Set());
 
   const loadLikes = useCallback(async () => {
@@ -76,12 +79,14 @@ export default function ActivityLikesScreen() {
       }
 
       if (currentUser?.id) {
-        const [followingIdsRes, followerIdsRes] = await Promise.all([
+        const [followingIdsRes, followerIdsRes, outgoingRequestsRes] = await Promise.all([
           getFollowingIds(currentUser.id),
           getFollowerIds(currentUser.id),
+          getOutgoingFollowRequests(currentUser.id),
         ]);
         setFollowingIds(new Set(followingIdsRes.followingIds));
         setFollowerIds(new Set(followerIdsRes.followerIds));
+        setPendingRequestIds(new Set(outgoingRequestsRes.requests.map((req) => req.requested_id)));
       }
     } finally {
       setLoading(false);
@@ -107,6 +112,7 @@ export default function ActivityLikesScreen() {
     setFollowLoading((prev) => new Set(prev).add(targetId));
     try {
       const isFollowing = followingIds.has(targetId);
+      const isPending = pendingRequestIds.has(targetId);
       if (isFollowing) {
         const { error } = await unfollowUser(currentUser.id, targetId);
         if (!error) {
@@ -116,10 +122,23 @@ export default function ActivityLikesScreen() {
             return next;
           });
         }
-      } else {
-        const { error } = await followUser(currentUser.id, targetId);
+      } else if (isPending) {
+        const { error } = await cancelFollowRequest(currentUser.id, targetId);
         if (!error) {
-          setFollowingIds((prev) => new Set(prev).add(targetId));
+          setPendingRequestIds((prev) => {
+            const next = new Set(prev);
+            next.delete(targetId);
+            return next;
+          });
+        }
+      } else {
+        const { action, error } = await followUser(currentUser.id, targetId);
+        if (!error) {
+          if (action === 'following') {
+            setFollowingIds((prev) => new Set(prev).add(targetId));
+          } else {
+            setPendingRequestIds((prev) => new Set(prev).add(targetId));
+          }
         }
       }
     } finally {
@@ -139,8 +158,10 @@ export default function ActivityLikesScreen() {
     const username = item.username || 'user';
     const avatarUrl = item.avatar_url || null;
     const isFollowing = followingIds.has(item.user_id);
+    const isPending = pendingRequestIds.has(item.user_id);
     const isLoading = followLoading.has(item.user_id);
     const followsYou = followerIds.has(item.user_id);
+    const followLabel = isFollowing ? 'Following' : isPending ? 'Requested' : 'Follow';
 
     return (
       <TouchableOpacity
@@ -171,7 +192,7 @@ export default function ActivityLikesScreen() {
         </View>
         {item.user_id !== currentUser?.id && (
           <TouchableOpacity
-            style={[styles.followButton, isFollowing && styles.followingButton]}
+            style={[styles.followButton, (isFollowing || isPending) && styles.followingButton]}
             onPress={(e) => {
               e.stopPropagation();
               handleToggleFollow(item.user_id);
@@ -181,13 +202,13 @@ export default function ActivityLikesScreen() {
             {isLoading ? (
               <ActivityIndicator
                 size="small"
-                color={isFollowing ? colors.brownText : colors.white}
+                color={(isFollowing || isPending) ? colors.brownText : colors.white}
               />
             ) : (
               <Text
-                style={[styles.followButtonText, isFollowing && styles.followingButtonText]}
+                style={[styles.followButtonText, (isFollowing || isPending) && styles.followingButtonText]}
               >
-                {isFollowing ? 'Following' : 'Follow'}
+                {followLabel}
               </Text>
             )}
           </TouchableOpacity>

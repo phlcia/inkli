@@ -62,6 +62,7 @@ CREATE TABLE IF NOT EXISTS user_profiles (
   member_since TIMESTAMPTZ DEFAULT NOW(),
   weekly_streak INTEGER DEFAULT 0,
   notifications_last_seen_at TIMESTAMPTZ,
+  account_type TEXT NOT NULL DEFAULT 'public' CHECK (account_type IN ('public', 'private')),
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -76,7 +77,7 @@ DROP POLICY IF EXISTS "Anyone can view public profile fields" ON user_profiles;
 CREATE POLICY "Anyone can view public profile fields"
   ON user_profiles
   FOR SELECT
-  USING (true);
+  USING (can_view_profile(auth.uid(), user_id));
 
 DROP POLICY IF EXISTS "Users can update own profile" ON user_profiles;
 CREATE POLICY "Users can update own profile"
@@ -116,13 +117,279 @@ DROP POLICY IF EXISTS "Users can insert own follows" ON user_follows;
 CREATE POLICY "Users can insert own follows"
   ON user_follows
   FOR INSERT
-  WITH CHECK (auth.uid() = follower_id);
+  WITH CHECK (
+    auth.uid() = follower_id
+    AND NOT is_blocked_between(follower_id, following_id)
+  );
 
 DROP POLICY IF EXISTS "Users can delete own follows" ON user_follows;
 CREATE POLICY "Users can delete own follows"
   ON user_follows
   FOR DELETE
   USING (auth.uid() = follower_id);
+
+-- Follow requests table (private accounts)
+CREATE TABLE IF NOT EXISTS follow_requests (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  requester_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  requested_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'rejected')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (requester_id, requested_id),
+  CHECK (requester_id != requested_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_follow_requests_requester ON follow_requests(requester_id);
+CREATE INDEX IF NOT EXISTS idx_follow_requests_requested ON follow_requests(requested_id);
+CREATE INDEX IF NOT EXISTS idx_follow_requests_status ON follow_requests(status);
+CREATE INDEX IF NOT EXISTS idx_follow_requests_requested_status ON follow_requests(requested_id, status);
+
+-- Blocked users table
+CREATE TABLE IF NOT EXISTS blocked_users (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  blocker_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  blocked_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (blocker_id, blocked_id),
+  CHECK (blocker_id != blocked_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_blocked_users_blocker ON blocked_users(blocker_id);
+CREATE INDEX IF NOT EXISTS idx_blocked_users_blocked ON blocked_users(blocked_id);
+CREATE INDEX IF NOT EXISTS idx_blocked_users_pair ON blocked_users(blocker_id, blocked_id);
+
+-- Muted users table
+CREATE TABLE IF NOT EXISTS muted_users (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  muter_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  muted_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (muter_id, muted_id),
+  CHECK (muter_id != muted_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_muted_users_muter ON muted_users(muter_id);
+CREATE INDEX IF NOT EXISTS idx_muted_users_muted ON muted_users(muted_id);
+CREATE INDEX IF NOT EXISTS idx_muted_users_pair ON muted_users(muter_id, muted_id);
+
+-- Privacy helper functions
+CREATE OR REPLACE FUNCTION is_blocked_between(p_user_a uuid, p_user_b uuid)
+RETURNS boolean
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+SET row_security = off
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM blocked_users
+    WHERE (blocker_id = p_user_a AND blocked_id = p_user_b)
+       OR (blocker_id = p_user_b AND blocked_id = p_user_a)
+  );
+$$;
+
+CREATE OR REPLACE FUNCTION is_muted_between(p_user_a uuid, p_user_b uuid)
+RETURNS boolean
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+SET row_security = off
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM muted_users
+    WHERE (muter_id = p_user_a AND muted_id = p_user_b)
+       OR (muter_id = p_user_b AND muted_id = p_user_a)
+  );
+$$;
+
+CREATE OR REPLACE FUNCTION can_view_profile(p_viewer_id uuid, p_owner_id uuid)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+SET row_security = off
+AS $$
+DECLARE
+  has_profile boolean;
+BEGIN
+  IF p_owner_id IS NULL THEN
+    RETURN false;
+  END IF;
+
+  IF p_viewer_id IS NOT NULL AND p_viewer_id = p_owner_id THEN
+    RETURN true;
+  END IF;
+
+  SELECT EXISTS (SELECT 1 FROM user_profiles WHERE user_id = p_owner_id) INTO has_profile;
+  IF NOT has_profile THEN
+    RETURN false;
+  END IF;
+
+  IF p_viewer_id IS NULL THEN
+    RETURN false;
+  END IF;
+
+  IF is_blocked_between(p_viewer_id, p_owner_id) THEN
+    IF EXISTS (
+      SELECT 1 FROM blocked_users
+      WHERE blocker_id = p_viewer_id
+        AND blocked_id = p_owner_id
+    ) THEN
+      RETURN true;
+    END IF;
+    RETURN false;
+  END IF;
+
+  RETURN true;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION can_view_content(p_viewer_id uuid, p_owner_id uuid)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+SET row_security = off
+AS $$
+DECLARE
+  is_public boolean;
+  is_following boolean;
+BEGIN
+  IF p_owner_id IS NULL THEN
+    RETURN false;
+  END IF;
+
+  IF p_viewer_id IS NOT NULL AND p_viewer_id = p_owner_id THEN
+    RETURN true;
+  END IF;
+
+  SELECT (account_type = 'public') INTO is_public
+  FROM user_profiles
+  WHERE user_id = p_owner_id;
+
+  IF is_public IS NULL THEN
+    RETURN false;
+  END IF;
+
+  IF p_viewer_id IS NULL THEN
+    RETURN is_public;
+  END IF;
+
+  IF is_blocked_between(p_viewer_id, p_owner_id) THEN
+    RETURN false;
+  END IF;
+
+  IF is_public THEN
+    RETURN true;
+  END IF;
+
+  SELECT EXISTS (
+    SELECT 1
+    FROM user_follows
+    WHERE follower_id = p_viewer_id
+      AND following_id = p_owner_id
+  ) INTO is_following;
+
+  RETURN is_following;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION should_notify(p_actor_id uuid, p_recipient_id uuid)
+RETURNS boolean
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+SET row_security = off
+AS $$
+  SELECT NOT is_blocked_between(p_actor_id, p_recipient_id)
+     AND NOT is_muted_between(p_actor_id, p_recipient_id)
+     AND p_actor_id IS NOT NULL
+     AND p_recipient_id IS NOT NULL
+     AND p_actor_id != p_recipient_id;
+$$;
+
+-- Follow requests updated_at trigger
+CREATE OR REPLACE FUNCTION update_follow_requests_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS update_follow_requests_updated_at ON follow_requests;
+CREATE TRIGGER update_follow_requests_updated_at
+  BEFORE UPDATE ON follow_requests
+  FOR EACH ROW EXECUTE FUNCTION update_follow_requests_updated_at();
+
+-- RLS for privacy tables
+ALTER TABLE follow_requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE blocked_users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE muted_users ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users can view relevant follow requests" ON follow_requests;
+CREATE POLICY "Users can view relevant follow requests"
+  ON follow_requests
+  FOR SELECT
+  USING (auth.uid() = requester_id OR auth.uid() = requested_id);
+
+DROP POLICY IF EXISTS "Users can create follow requests" ON follow_requests;
+CREATE POLICY "Users can create follow requests"
+  ON follow_requests
+  FOR INSERT
+  WITH CHECK (
+    auth.uid() = requester_id
+    AND NOT is_blocked_between(requester_id, requested_id)
+  );
+
+DROP POLICY IF EXISTS "Users can respond to follow requests" ON follow_requests;
+CREATE POLICY "Users can respond to follow requests"
+  ON follow_requests
+  FOR UPDATE
+  USING (auth.uid() = requested_id)
+  WITH CHECK (auth.uid() = requested_id);
+
+DROP POLICY IF EXISTS "Users can delete their follow requests" ON follow_requests;
+CREATE POLICY "Users can delete their follow requests"
+  ON follow_requests
+  FOR DELETE
+  USING (auth.uid() = requester_id OR auth.uid() = requested_id);
+
+DROP POLICY IF EXISTS "Users can view block relationships involving them" ON blocked_users;
+CREATE POLICY "Users can view block relationships involving them"
+  ON blocked_users
+  FOR SELECT
+  USING (auth.uid() = blocker_id OR auth.uid() = blocked_id);
+
+DROP POLICY IF EXISTS "Users can create blocks as themselves" ON blocked_users;
+CREATE POLICY "Users can create blocks as themselves"
+  ON blocked_users
+  FOR INSERT
+  WITH CHECK (auth.uid() = blocker_id);
+
+DROP POLICY IF EXISTS "Users can delete blocks as themselves" ON blocked_users;
+CREATE POLICY "Users can delete blocks as themselves"
+  ON blocked_users
+  FOR DELETE
+  USING (auth.uid() = blocker_id);
+
+DROP POLICY IF EXISTS "Users can view muted users" ON muted_users;
+CREATE POLICY "Users can view muted users"
+  ON muted_users
+  FOR SELECT
+  USING (auth.uid() = muter_id);
+
+DROP POLICY IF EXISTS "Users can create mutes as themselves" ON muted_users;
+CREATE POLICY "Users can create mutes as themselves"
+  ON muted_users
+  FOR INSERT
+  WITH CHECK (auth.uid() = muter_id);
+
+DROP POLICY IF EXISTS "Users can delete mutes as themselves" ON muted_users;
+CREATE POLICY "Users can delete mutes as themselves"
+  ON muted_users
+  FOR DELETE
+  USING (auth.uid() = muter_id);
 
 -- User books table (junction table for user's shelf)
 CREATE TABLE IF NOT EXISTS user_books (
@@ -155,6 +422,21 @@ CREATE INDEX IF NOT EXISTS idx_user_books_user_updated_at ON user_books(user_id,
 CREATE INDEX IF NOT EXISTS idx_user_books_created_at ON user_books(user_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_user_books_updated_at ON user_books(user_id, updated_at);
 
+ALTER TABLE user_books ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "User books are readable by viewers" ON user_books;
+CREATE POLICY "User books are readable by viewers"
+  ON user_books
+  FOR SELECT
+  USING (can_view_content(auth.uid(), user_id));
+
+DROP POLICY IF EXISTS "Users can manage their own user books" ON user_books;
+CREATE POLICY "Users can manage their own user books"
+  ON user_books
+  FOR ALL
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
 -- Activity cards table
 CREATE TABLE IF NOT EXISTS activity_cards (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -173,10 +455,10 @@ CREATE INDEX IF NOT EXISTS idx_activity_cards_user_book_id
 ALTER TABLE activity_cards ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Activity cards are readable by anyone" ON activity_cards;
-CREATE POLICY "Activity cards are readable by anyone"
+CREATE POLICY "Activity cards are readable by viewers"
   ON activity_cards
   FOR SELECT
-  USING (true);
+  USING (can_view_content(auth.uid(), user_id));
 
 DROP POLICY IF EXISTS "Users can create their own activity cards" ON activity_cards;
 CREATE POLICY "Users can create their own activity cards"
@@ -218,10 +500,10 @@ ALTER TABLE activity_likes
 ALTER TABLE activity_likes ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Activity likes are readable by anyone" ON activity_likes;
-CREATE POLICY "Activity likes are readable by anyone"
+CREATE POLICY "Activity likes are readable by viewers"
   ON activity_likes
   FOR SELECT
-  USING (true);
+  USING (can_view_content(auth.uid(), user_id));
 
 DROP POLICY IF EXISTS "Users can like activity as themselves" ON activity_likes;
 CREATE POLICY "Users can like activity as themselves"
@@ -263,10 +545,10 @@ CREATE INDEX IF NOT EXISTS idx_activity_comments_likes_count ON activity_comment
 ALTER TABLE activity_comments ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Activity comments are readable by anyone" ON activity_comments;
-CREATE POLICY "Activity comments are readable by anyone"
+CREATE POLICY "Activity comments are readable by viewers"
   ON activity_comments
   FOR SELECT
-  USING (true);
+  USING (can_view_content(auth.uid(), user_id));
 
 DROP POLICY IF EXISTS "Users can add comments as themselves" ON activity_comments;
 CREATE POLICY "Users can add comments as themselves"
@@ -308,10 +590,10 @@ ALTER TABLE activity_comment_likes
 ALTER TABLE activity_comment_likes ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Comment likes are readable by anyone" ON activity_comment_likes;
-CREATE POLICY "Comment likes are readable by anyone"
+CREATE POLICY "Comment likes are readable by viewers"
   ON activity_comment_likes
   FOR SELECT
-  USING (true);
+  USING (can_view_content(auth.uid(), user_id));
 
 DROP POLICY IF EXISTS "Users can like comments as themselves" ON activity_comment_likes;
 CREATE POLICY "Users can like comments as themselves"
@@ -330,7 +612,8 @@ CREATE TABLE IF NOT EXISTS notifications (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   recipient_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   actor_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  type TEXT NOT NULL CHECK (type IN ('like', 'comment', 'follow')),
+  type TEXT NOT NULL CONSTRAINT notifications_type_check
+    CHECK (type IN ('like', 'comment', 'follow', 'follow_request', 'follow_accept', 'follow_reject')),
   user_book_id UUID REFERENCES user_books(id) ON DELETE CASCADE,
   comment_id UUID REFERENCES activity_comments(id) ON DELETE CASCADE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -586,6 +869,36 @@ CREATE TRIGGER activity_comment_likes_count_trigger
   FOR EACH ROW EXECUTE FUNCTION update_comment_likes_count();
 
 -- Notifications triggers
+CREATE OR REPLACE FUNCTION notify_follow_request()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.status = 'pending' AND should_notify(NEW.requester_id, NEW.requested_id) THEN
+    INSERT INTO notifications (recipient_id, actor_id, type, created_at)
+    VALUES (NEW.requested_id, NEW.requester_id, 'follow_request', NEW.created_at);
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION notify_follow_request_update()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF OLD.status = NEW.status THEN
+    RETURN NEW;
+  END IF;
+
+  IF NEW.status = 'accepted' AND should_notify(NEW.requested_id, NEW.requester_id) THEN
+    INSERT INTO notifications (recipient_id, actor_id, type, created_at)
+    VALUES (NEW.requester_id, NEW.requested_id, 'follow_accept', NEW.updated_at);
+  ELSIF NEW.status = 'rejected' AND should_notify(NEW.requested_id, NEW.requester_id) THEN
+    INSERT INTO notifications (recipient_id, actor_id, type, created_at)
+    VALUES (NEW.requester_id, NEW.requested_id, 'follow_reject', NEW.updated_at);
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
 CREATE OR REPLACE FUNCTION notify_activity_like()
 RETURNS TRIGGER AS $$
 DECLARE
@@ -595,7 +908,7 @@ BEGIN
   FROM user_books
   WHERE id = NEW.user_book_id;
 
-  IF recipient_uuid IS NULL OR recipient_uuid = NEW.user_id THEN
+  IF recipient_uuid IS NULL OR NOT should_notify(NEW.user_id, recipient_uuid) THEN
     RETURN NEW;
   END IF;
 
@@ -615,7 +928,7 @@ BEGIN
   FROM user_books
   WHERE id = NEW.user_book_id;
 
-  IF recipient_uuid IS NULL OR recipient_uuid = NEW.user_id THEN
+  IF recipient_uuid IS NULL OR NOT should_notify(NEW.user_id, recipient_uuid) THEN
     RETURN NEW;
   END IF;
 
@@ -633,8 +946,10 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  INSERT INTO notifications (recipient_id, actor_id, type, created_at)
-  VALUES (NEW.following_id, NEW.follower_id, 'follow', NEW.created_at);
+  IF should_notify(NEW.follower_id, NEW.following_id) THEN
+    INSERT INTO notifications (recipient_id, actor_id, type, created_at)
+    VALUES (NEW.following_id, NEW.follower_id, 'follow', NEW.created_at);
+  END IF;
 
   RETURN NEW;
 END;
@@ -650,10 +965,186 @@ CREATE TRIGGER activity_comments_notification_trigger
   AFTER INSERT ON activity_comments
   FOR EACH ROW EXECUTE FUNCTION notify_activity_comment();
 
+DROP TRIGGER IF EXISTS follow_requests_notification_trigger ON follow_requests;
+CREATE TRIGGER follow_requests_notification_trigger
+  AFTER INSERT ON follow_requests
+  FOR EACH ROW EXECUTE FUNCTION notify_follow_request();
+
+DROP TRIGGER IF EXISTS follow_requests_update_notification_trigger ON follow_requests;
+CREATE TRIGGER follow_requests_update_notification_trigger
+  AFTER UPDATE ON follow_requests
+  FOR EACH ROW EXECUTE FUNCTION notify_follow_request_update();
+
 DROP TRIGGER IF EXISTS user_follows_notification_trigger ON user_follows;
 CREATE TRIGGER user_follows_notification_trigger
   AFTER INSERT ON user_follows
   FOR EACH ROW EXECUTE FUNCTION notify_follow();
+
+-- Follow + privacy RPC helpers
+CREATE OR REPLACE FUNCTION request_follow(p_requester_id uuid, p_requested_id uuid)
+RETURNS TEXT
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+SET row_security = off
+AS $$
+DECLARE
+  target_type text;
+  existing_request text;
+BEGIN
+  IF p_requester_id IS NULL OR p_requested_id IS NULL THEN
+    RAISE EXCEPTION 'Missing user ids';
+  END IF;
+
+  IF p_requester_id = p_requested_id THEN
+    RAISE EXCEPTION 'Cannot follow yourself';
+  END IF;
+
+  IF is_blocked_between(p_requester_id, p_requested_id) THEN
+    RAISE EXCEPTION 'User is not available';
+  END IF;
+
+  SELECT status INTO existing_request
+  FROM follow_requests
+  WHERE requester_id = p_requester_id
+    AND requested_id = p_requested_id
+  LIMIT 1;
+
+  IF EXISTS (
+    SELECT 1 FROM user_follows
+    WHERE follower_id = p_requester_id
+      AND following_id = p_requested_id
+  ) THEN
+    RETURN 'following';
+  END IF;
+
+  SELECT account_type INTO target_type
+  FROM user_profiles
+  WHERE user_id = p_requested_id;
+
+  IF target_type IS NULL OR target_type = 'public' THEN
+    INSERT INTO user_follows (follower_id, following_id)
+    VALUES (p_requester_id, p_requested_id)
+    ON CONFLICT DO NOTHING;
+
+    UPDATE follow_requests
+    SET status = 'accepted'
+    WHERE requester_id = p_requester_id
+      AND requested_id = p_requested_id
+      AND status = 'pending';
+
+    RETURN 'following';
+  END IF;
+
+  IF existing_request = 'pending' THEN
+    RETURN 'requested';
+  END IF;
+
+  INSERT INTO follow_requests (requester_id, requested_id, status)
+  VALUES (p_requester_id, p_requested_id, 'pending')
+  ON CONFLICT DO NOTHING;
+
+  RETURN 'requested';
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION accept_follow_request(p_request_id uuid)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+SET row_security = off
+AS $$
+DECLARE
+  req record;
+  acting_user uuid;
+BEGIN
+  acting_user := auth.uid();
+  SELECT * INTO req FROM follow_requests WHERE id = p_request_id FOR UPDATE;
+
+  IF req IS NULL THEN
+    RAISE EXCEPTION 'Request not found';
+  END IF;
+
+  IF acting_user IS NULL OR acting_user != req.requested_id THEN
+    RAISE EXCEPTION 'Not authorized';
+  END IF;
+
+  IF req.status != 'pending' THEN
+    RETURN;
+  END IF;
+
+  UPDATE follow_requests
+  SET status = 'accepted'
+  WHERE id = p_request_id;
+
+  INSERT INTO user_follows (follower_id, following_id)
+  VALUES (req.requester_id, req.requested_id)
+  ON CONFLICT DO NOTHING;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION reject_follow_request(p_request_id uuid)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+SET row_security = off
+AS $$
+DECLARE
+  req record;
+  acting_user uuid;
+BEGIN
+  acting_user := auth.uid();
+  SELECT * INTO req FROM follow_requests WHERE id = p_request_id FOR UPDATE;
+
+  IF req IS NULL THEN
+    RAISE EXCEPTION 'Request not found';
+  END IF;
+
+  IF acting_user IS NULL OR acting_user != req.requested_id THEN
+    RAISE EXCEPTION 'Not authorized';
+  END IF;
+
+  IF req.status != 'pending' THEN
+    RETURN;
+  END IF;
+
+  UPDATE follow_requests
+  SET status = 'rejected'
+  WHERE id = p_request_id;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION block_user(p_blocker_id uuid, p_blocked_id uuid)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+SET row_security = off
+AS $$
+BEGIN
+  IF p_blocker_id IS NULL OR p_blocked_id IS NULL THEN
+    RAISE EXCEPTION 'Missing user ids';
+  END IF;
+
+  IF p_blocker_id = p_blocked_id THEN
+    RAISE EXCEPTION 'Cannot block yourself';
+  END IF;
+
+  INSERT INTO blocked_users (blocker_id, blocked_id)
+  VALUES (p_blocker_id, p_blocked_id)
+  ON CONFLICT DO NOTHING;
+
+  DELETE FROM user_follows
+  WHERE (follower_id = p_blocker_id AND following_id = p_blocked_id)
+     OR (follower_id = p_blocked_id AND following_id = p_blocker_id);
+
+  DELETE FROM follow_requests
+  WHERE (requester_id = p_blocker_id AND requested_id = p_blocked_id)
+     OR (requester_id = p_blocked_id AND requested_id = p_blocker_id);
+END;
+$$;
 
 -- Activity feed emit + RPC
 CREATE OR REPLACE FUNCTION emit_activity_card_from_user_books()
@@ -789,6 +1280,12 @@ AS $$
     OR p_cursor_id IS NULL
     OR (ac.created_at, ac.id) < (p_cursor_created_at, p_cursor_id)
   )
+  AND NOT is_blocked_between(p_user_id, ac.user_id)
+  AND NOT EXISTS (
+    SELECT 1 FROM muted_users
+    WHERE muter_id = p_user_id
+      AND muted_id = ac.user_id
+  )
   ORDER BY ac.created_at DESC, ac.id DESC
   LIMIT p_limit;
 $$;
@@ -886,6 +1383,12 @@ AS $$
     p_cursor_updated_at IS NULL
     OR p_cursor_id IS NULL
     OR (ub.updated_at, ub.id) < (p_cursor_updated_at, p_cursor_id)
+  )
+  AND NOT is_blocked_between(p_user_id, ub.user_id)
+  AND NOT EXISTS (
+    SELECT 1 FROM muted_users
+    WHERE muter_id = p_user_id
+      AND muted_id = ub.user_id
   )
   ORDER BY ub.updated_at DESC, ub.id DESC
   LIMIT p_limit;

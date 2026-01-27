@@ -16,11 +16,13 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import { colors, typography } from '../../../config/theme';
 import { useAuth } from '../../../contexts/AuthContext';
 import { HomeStackParamList } from '../../../navigation/HomeStackNavigator';
+import { supabase } from '../../../config/supabase';
 import {
   fetchNotifications,
   NotificationItem,
   updateNotificationsLastSeen,
 } from '../../../services/notifications';
+import { acceptFollowRequest, rejectFollowRequest } from '../../../services/userProfile';
 import { formatActivityTimestamp } from '../../../utils/dateUtils';
 
 export default function NotificationsScreen() {
@@ -107,6 +109,16 @@ export default function NotificationsScreen() {
       return;
     }
 
+    if (item.type === 'follow_request') {
+      navigation.navigate('UserProfile', { userId: item.actorId });
+      return;
+    }
+
+    if (item.type === 'follow_accept' || item.type === 'follow_reject') {
+      navigation.navigate('UserProfile', { userId: item.actorId });
+      return;
+    }
+
     if (item.type === 'comment' && item.userBookId) {
       navigation.navigate('ActivityComments', {
         userBookId: item.userBookId,
@@ -178,6 +190,27 @@ export default function NotificationsScreen() {
             {timestamp}
           </Text>
         );
+      case 'follow_request':
+        return (
+          <Text style={styles.actionText} onTextLayout={onLayout}>
+            {user} requested to follow you
+            {timestamp}
+          </Text>
+        );
+      case 'follow_accept':
+        return (
+          <Text style={styles.actionText} onTextLayout={onLayout}>
+            {user} accepted your follow request
+            {timestamp}
+          </Text>
+        );
+      case 'follow_reject':
+        return (
+          <Text style={styles.actionText} onTextLayout={onLayout}>
+            {user} declined your follow request
+            {timestamp}
+          </Text>
+        );
       default:
         return null;
     }
@@ -191,6 +224,46 @@ export default function NotificationsScreen() {
           new Date(lastSeenAt).getTime()
         : false);
     const isSingleLine = singleLineIds.has(item.id);
+    const handleAccept = async () => {
+      if (!user) return;
+      try {
+        const { data, error } = await supabase
+          .from('follow_requests')
+          .select('id')
+          .eq('requester_id', item.actorId)
+          .eq('requested_id', user.id)
+          .eq('status', 'pending')
+          .single();
+
+        if (error || !data?.id) return;
+        await acceptFollowRequest(data.id);
+        await supabase.from('notifications').delete().eq('id', item.id);
+        setNotifications((prev) => prev.filter((n) => n.id !== item.id));
+      } catch (error) {
+        console.error('Error accepting follow request:', error);
+      }
+    };
+
+    const handleReject = async () => {
+      if (!user) return;
+      try {
+        const { data, error } = await supabase
+          .from('follow_requests')
+          .select('id')
+          .eq('requester_id', item.actorId)
+          .eq('requested_id', user.id)
+          .eq('status', 'pending')
+          .single();
+
+        if (error || !data?.id) return;
+        await rejectFollowRequest(data.id);
+        await supabase.from('notifications').delete().eq('id', item.id);
+        setNotifications((prev) => prev.filter((n) => n.id !== item.id));
+      } catch (error) {
+        console.error('Error rejecting follow request:', error);
+      }
+    };
+
     return (
       <Pressable
         onPress={() => handleNotificationPress(item)}
@@ -223,6 +296,28 @@ export default function NotificationsScreen() {
             {renderActionText(item, handleTextLayout(item.id))}
           </View>
         </View>
+        {item.type === 'follow_request' && (
+          <View style={styles.requestActions}>
+            <TouchableOpacity
+              style={[styles.requestIconButton, styles.acceptIconButton]}
+              onPress={(e) => {
+                e.stopPropagation();
+                handleAccept();
+              }}
+            >
+              <Text style={styles.requestIconText}>✓</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.requestIconButton, styles.rejectIconButton]}
+              onPress={(e) => {
+                e.stopPropagation();
+                handleReject();
+              }}
+            >
+              <Text style={styles.requestIconText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </Pressable>
     );
   };
@@ -383,6 +478,30 @@ const styles = StyleSheet.create({
     color: colors.brownText,
     opacity: 0.8,
     fontFamily: typography.body,
+  },
+  requestActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  requestIconButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  requestIconText: {
+    fontSize: 16,
+    fontFamily: typography.body,
+    color: colors.white,
+    fontWeight: '700',
+  },
+  acceptIconButton: {
+    backgroundColor: colors.primaryBlue,
+  },
+  rejectIconButton: {
+    backgroundColor: colors.brownText,
   },
   emptyState: {
     flex: 1,

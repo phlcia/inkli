@@ -70,6 +70,47 @@ function ProfileTabIcon({ focused }: { focused: boolean }) {
 }
 
 export default function TabNavigator() {
+  const { user } = useAuth();
+  const [pendingRequestsCount, setPendingRequestsCount] = useState<number>(0);
+
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const loadPendingRequests = async () => {
+      const { count, error } = await supabase
+        .from('follow_requests')
+        .select('id', { count: 'exact', head: true })
+        .eq('requested_id', user.id)
+        .eq('status', 'pending');
+
+      if (!error) {
+        setPendingRequestsCount(count ?? 0);
+      }
+    };
+
+    loadPendingRequests();
+
+    const channel = supabase
+      .channel(`follow_requests_incoming:${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'follow_requests',
+          filter: `requested_id=eq.${user.id}`,
+        },
+        () => {
+          loadPendingRequests();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id]);
+
   return (
     <Tab.Navigator
       screenOptions={{

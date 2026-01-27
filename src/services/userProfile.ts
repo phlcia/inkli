@@ -10,6 +10,7 @@ export interface UserProfile {
   bio: string | null;
   reading_interests: string[];
   profile_photo_url: string | null;
+  account_type: 'public' | 'private';
   created_at: string;
   updated_at: string;
 }
@@ -21,6 +22,12 @@ export interface UserSummary {
   last_name: string;
   profile_photo_url: string | null;
 }
+
+export type AccountType = 'public' | 'private';
+
+export type FollowRequestStatus = 'pending' | 'accepted' | 'rejected';
+
+export type FollowAction = 'following' | 'requested';
 
 /**
  * Get user profile by user ID
@@ -138,6 +145,50 @@ export async function updateUserProfile(
   } catch (error) {
     console.error('Exception updating user profile:', error);
     return { profile: null, error };
+  }
+}
+
+export async function getAccountType(
+  userId: string
+): Promise<{ accountType: AccountType; error: any }> {
+  try {
+    const { data, error } = await supabase
+      .from('user_profiles')
+      .select('account_type')
+      .eq('user_id', userId)
+      .single();
+
+    if (error) {
+      console.error('Error fetching account type:', error);
+      return { accountType: 'public', error };
+    }
+
+    return { accountType: (data?.account_type || 'public') as AccountType, error: null };
+  } catch (error) {
+    console.error('Exception fetching account type:', error);
+    return { accountType: 'public', error };
+  }
+}
+
+export async function updateAccountType(
+  userId: string,
+  accountType: AccountType
+): Promise<{ success: boolean; error: any }> {
+  try {
+    const { error } = await supabase
+      .from('user_profiles')
+      .update({ account_type: accountType })
+      .eq('user_id', userId);
+
+    if (error) {
+      console.error('Error updating account type:', error);
+      return { success: false, error };
+    }
+
+    return { success: true, error: null };
+  } catch (error) {
+    console.error('Exception updating account type:', error);
+    return { success: false, error };
   }
 }
 
@@ -564,6 +615,7 @@ export async function searchMembers(
   first_name: string;
   last_name: string;
   profile_photo_url: string | null;
+  account_type: AccountType;
 }>; error: any }> {
   try {
     const searchTerm = `%${query}%`;
@@ -572,7 +624,7 @@ export async function searchMembers(
     // Note: ilike is case-insensitive, so we don't need toLowerCase
     const { data, error } = await supabase
       .from('user_profiles')
-      .select('user_id, username, first_name, last_name, profile_photo_url')
+      .select('user_id, username, first_name, last_name, profile_photo_url, account_type')
       .or(`username.ilike.${searchTerm},first_name.ilike.${searchTerm},last_name.ilike.${searchTerm}`)
       .limit(20);
 
@@ -594,23 +646,131 @@ export async function searchMembers(
 export async function followUser(
   followerId: string,
   followingId: string
-): Promise<{ success: boolean; error: any }> {
+): Promise<{ success: boolean; action: FollowAction | null; error: any }> {
   try {
-    const { error } = await supabase
-      .from('user_follows')
-      .insert({
-        follower_id: followerId,
-        following_id: followingId,
-      });
+    const { data, error } = await supabase.rpc('request_follow', {
+      p_requester_id: followerId,
+      p_requested_id: followingId,
+    });
 
     if (error) {
       console.error('Error following user:', error);
+      return { success: false, action: null, error };
+    }
+
+    const action = (data as FollowAction) || 'following';
+    return { success: true, action, error: null };
+  } catch (error) {
+    console.error('Exception following user:', error);
+    return { success: false, action: null, error };
+  }
+}
+
+export async function getOutgoingFollowRequests(
+  requesterId: string
+): Promise<{ requests: Array<{ id: string; requested_id: string; status: FollowRequestStatus }>; error: any }> {
+  try {
+    const { data, error } = await supabase
+      .from('follow_requests')
+      .select('id, requested_id, status')
+      .eq('requester_id', requesterId)
+      .eq('status', 'pending');
+
+    if (error) {
+      console.error('Error fetching outgoing follow requests:', error);
+      return { requests: [], error };
+    }
+
+    return { requests: (data || []) as any, error: null };
+  } catch (error) {
+    console.error('Exception fetching outgoing follow requests:', error);
+    return { requests: [], error };
+  }
+}
+
+export async function getIncomingFollowRequests(
+  requestedId: string
+): Promise<{ requests: Array<{ id: string; requester_id: string; status: FollowRequestStatus; created_at: string }>; error: any }> {
+  try {
+    const { data, error } = await supabase
+      .from('follow_requests')
+      .select('id, requester_id, status, created_at')
+      .eq('requested_id', requestedId)
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching incoming follow requests:', error);
+      return { requests: [], error };
+    }
+
+    return { requests: (data || []) as any, error: null };
+  } catch (error) {
+    console.error('Exception fetching incoming follow requests:', error);
+    return { requests: [], error };
+  }
+}
+
+export async function acceptFollowRequest(
+  requestId: string
+): Promise<{ success: boolean; error: any }> {
+  try {
+    const { error } = await supabase.rpc('accept_follow_request', {
+      p_request_id: requestId,
+    });
+
+    if (error) {
+      console.error('Error accepting follow request:', error);
       return { success: false, error };
     }
 
     return { success: true, error: null };
   } catch (error) {
-    console.error('Exception following user:', error);
+    console.error('Exception accepting follow request:', error);
+    return { success: false, error };
+  }
+}
+
+export async function rejectFollowRequest(
+  requestId: string
+): Promise<{ success: boolean; error: any }> {
+  try {
+    const { error } = await supabase.rpc('reject_follow_request', {
+      p_request_id: requestId,
+    });
+
+    if (error) {
+      console.error('Error rejecting follow request:', error);
+      return { success: false, error };
+    }
+
+    return { success: true, error: null };
+  } catch (error) {
+    console.error('Exception rejecting follow request:', error);
+    return { success: false, error };
+  }
+}
+
+export async function cancelFollowRequest(
+  requesterId: string,
+  requestedId: string
+): Promise<{ success: boolean; error: any }> {
+  try {
+    const { error } = await supabase
+      .from('follow_requests')
+      .delete()
+      .eq('requester_id', requesterId)
+      .eq('requested_id', requestedId)
+      .eq('status', 'pending');
+
+    if (error) {
+      console.error('Error canceling follow request:', error);
+      return { success: false, error };
+    }
+
+    return { success: true, error: null };
+  } catch (error) {
+    console.error('Exception canceling follow request:', error);
     return { success: false, error };
   }
 }
@@ -638,6 +798,207 @@ export async function unfollowUser(
   } catch (error) {
     console.error('Exception unfollowing user:', error);
     return { success: false, error };
+  }
+}
+
+export async function getBlockStatus(
+  viewerId: string,
+  targetId: string
+): Promise<{ blockedByViewer: boolean; blockedByTarget: boolean; error: any }> {
+  try {
+    const { data, error } = await supabase
+      .from('blocked_users')
+      .select('blocker_id, blocked_id')
+      .or(`and(blocker_id.eq.${viewerId},blocked_id.eq.${targetId}),and(blocker_id.eq.${targetId},blocked_id.eq.${viewerId})`);
+
+    if (error) {
+      console.error('Error fetching block status:', error);
+      return { blockedByViewer: false, blockedByTarget: false, error };
+    }
+
+    const blockedByViewer = (data || []).some(
+      (row: any) => row.blocker_id === viewerId && row.blocked_id === targetId
+    );
+    const blockedByTarget = (data || []).some(
+      (row: any) => row.blocker_id === targetId && row.blocked_id === viewerId
+    );
+
+    return { blockedByViewer, blockedByTarget, error: null };
+  } catch (error) {
+    console.error('Exception fetching block status:', error);
+    return { blockedByViewer: false, blockedByTarget: false, error };
+  }
+}
+
+export async function blockUser(
+  blockerId: string,
+  blockedId: string
+): Promise<{ success: boolean; error: any }> {
+  try {
+    const { error } = await supabase.rpc('block_user', {
+      p_blocker_id: blockerId,
+      p_blocked_id: blockedId,
+    });
+
+    if (error) {
+      console.error('Error blocking user:', error);
+      return { success: false, error };
+    }
+
+    return { success: true, error: null };
+  } catch (error) {
+    console.error('Exception blocking user:', error);
+    return { success: false, error };
+  }
+}
+
+export async function unblockUser(
+  blockerId: string,
+  blockedId: string
+): Promise<{ success: boolean; error: any }> {
+  try {
+    const { error } = await supabase
+      .from('blocked_users')
+      .delete()
+      .eq('blocker_id', blockerId)
+      .eq('blocked_id', blockedId);
+
+    if (error) {
+      console.error('Error unblocking user:', error);
+      return { success: false, error };
+    }
+
+    return { success: true, error: null };
+  } catch (error) {
+    console.error('Exception unblocking user:', error);
+    return { success: false, error };
+  }
+}
+
+export async function getBlockedUsers(
+  blockerId: string
+): Promise<{ users: UserSummary[]; error: any }> {
+  try {
+    const { data, error } = await supabase
+      .from('blocked_users')
+      .select('blocked_id')
+      .eq('blocker_id', blockerId);
+
+    if (error) {
+      console.error('Error fetching blocked users:', error);
+      return { users: [], error };
+    }
+
+    const blockedIds = (data || []).map((row: any) => row.blocked_id);
+    const users = await fetchProfilesByIds(blockedIds);
+    return { users, error: null };
+  } catch (error) {
+    console.error('Exception fetching blocked users:', error);
+    return { users: [], error };
+  }
+}
+
+export async function muteUser(
+  muterId: string,
+  mutedId: string
+): Promise<{ success: boolean; error: any }> {
+  try {
+    const { error } = await supabase
+      .from('muted_users')
+      .insert({ muter_id: muterId, muted_id: mutedId });
+
+    if (error) {
+      console.error('Error muting user:', error);
+      return { success: false, error };
+    }
+
+    return { success: true, error: null };
+  } catch (error) {
+    console.error('Exception muting user:', error);
+    return { success: false, error };
+  }
+}
+
+export async function unmuteUser(
+  muterId: string,
+  mutedId: string
+): Promise<{ success: boolean; error: any }> {
+  try {
+    const { error } = await supabase
+      .from('muted_users')
+      .delete()
+      .eq('muter_id', muterId)
+      .eq('muted_id', mutedId);
+
+    if (error) {
+      console.error('Error unmuting user:', error);
+      return { success: false, error };
+    }
+
+    return { success: true, error: null };
+  } catch (error) {
+    console.error('Exception unmuting user:', error);
+    return { success: false, error };
+  }
+}
+
+export async function getMutedUsers(
+  muterId: string
+): Promise<{ users: UserSummary[]; error: any }> {
+  try {
+    const { data, error } = await supabase
+      .from('muted_users')
+      .select('muted_id')
+      .eq('muter_id', muterId);
+
+    if (error) {
+      console.error('Error fetching muted users:', error);
+      return { users: [], error };
+    }
+
+    const mutedIds = (data || []).map((row: any) => row.muted_id);
+    const users = await fetchProfilesByIds(mutedIds);
+    return { users, error: null };
+  } catch (error) {
+    console.error('Exception fetching muted users:', error);
+    return { users: [], error };
+  }
+}
+
+export async function checkIfMuted(
+  muterId: string,
+  mutedId: string
+): Promise<boolean> {
+  try {
+    const { data, error } = await supabase
+      .from('muted_users')
+      .select('id')
+      .eq('muter_id', muterId)
+      .eq('muted_id', mutedId)
+      .single();
+
+    return !!data && !error;
+  } catch (error) {
+    return false;
+  }
+}
+
+export async function checkPendingFollowRequest(
+  requesterId: string,
+  requestedId: string
+): Promise<boolean> {
+  try {
+    const { data, error } = await supabase
+      .from('follow_requests')
+      .select('id')
+      .eq('requester_id', requesterId)
+      .eq('requested_id', requestedId)
+      .eq('status', 'pending')
+      .single();
+
+    return !!data && !error;
+  } catch (error) {
+    return false;
   }
 }
 
