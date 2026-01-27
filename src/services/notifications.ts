@@ -1,6 +1,12 @@
 import { supabase } from './supabase';
 
-export type NotificationType = 'like' | 'comment' | 'follow';
+export type NotificationType =
+  | 'like'
+  | 'comment'
+  | 'follow'
+  | 'follow_request'
+  | 'follow_accept'
+  | 'follow_reject';
 
 export type NotificationItem = {
   id: string;

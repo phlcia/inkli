@@ -23,7 +23,20 @@ import {
 } from '../../../services/books';
 import { fetchUserActivityCards } from '../../../services/activityFeed';
 import { ActivityFeedItem } from '../../../types/activityCards';
-import { getFollowerCount, getFollowingCount } from '../../../services/userProfile';
+import {
+  acceptFollowRequest,
+  getAccountType,
+  getBlockedUsers,
+  getFollowerCount,
+  getFollowingCount,
+  getIncomingFollowRequests,
+  getMutedUsers,
+  rejectFollowRequest,
+  unblockUser,
+  unmuteUser,
+  updateAccountType,
+} from '../../../services/userProfile';
+import type { AccountType, UserSummary } from '../../../services/userProfile';
 import RecentActivityCard from '../../social/components/RecentActivityCard';
 import { supabase } from '../../../config/supabase';
 
@@ -58,6 +71,16 @@ export default function ProfileScreen() {
   } | null>(null);
   const [followerCount, setFollowerCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
+  const [accountType, setAccountType] = useState<AccountType>('public');
+  const [privacyUpdating, setPrivacyUpdating] = useState(false);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [incomingRequests, setIncomingRequests] = useState<Array<{
+    id: string;
+    requester: UserSummary;
+    created_at: string;
+  }>>([]);
+  const [blockedUsers, setBlockedUsers] = useState<UserSummary[]>([]);
+  const [mutedUsers, setMutedUsers] = useState<UserSummary[]>([]);
 
   const fetchUserProfile = async (userId: string) => {
     try {
@@ -106,6 +129,31 @@ export default function ProfileScreen() {
     }
   };
 
+  const hydrateRequesters = async (
+    requests: Array<{ id: string; requester_id: string; created_at: string }>
+  ) => {
+    if (requests.length === 0) return [] as Array<{
+      id: string;
+      requester: UserSummary;
+      created_at: string;
+    }>;
+
+    const requesterIds = requests.map((req) => req.requester_id);
+    const { data } = await supabase
+      .from('user_profiles')
+      .select('user_id, username, first_name, last_name, profile_photo_url')
+      .in('user_id', requesterIds);
+
+    const map = new Map((data || []).map((row: any) => [row.user_id, row]));
+    return requests
+      .map((req) => ({
+        id: req.id,
+        requester: map.get(req.requester_id) as UserSummary,
+        created_at: req.created_at,
+      }))
+      .filter((item) => item.requester);
+  };
+
   const loadProfileData = async () => {
     if (!user) {
       setLoading(false);
@@ -115,12 +163,26 @@ export default function ProfileScreen() {
     try {
       setLoading(true);
       console.log('=== ProfileScreen: Loading profile data ===');
-      const [counts, recent, profile, followers, following] = await Promise.all([
+      const [
+        counts,
+        recent,
+        profile,
+        followers,
+        following,
+        accountTypeResult,
+        incomingRequestsResult,
+        blockedUsersResult,
+        mutedUsersResult,
+      ] = await Promise.all([
         getUserBookCounts(user.id),
         fetchUserActivityCards(user.id, { limit: 20 }),
         fetchUserProfile(user.id),
         getFollowerCount(user.id),
         getFollowingCount(user.id),
+        getAccountType(user.id),
+        getIncomingFollowRequests(user.id),
+        getBlockedUsers(user.id),
+        getMutedUsers(user.id),
       ]);
       console.log('=== ProfileScreen: Data loaded ===');
       console.log('Recent books count:', recent.length);
@@ -138,6 +200,17 @@ export default function ProfileScreen() {
       setViewerShelfMap(map);
       setFollowerCount(followers.count);
       setFollowingCount(following.count);
+      setAccountType(accountTypeResult.accountType);
+      setBlockedUsers(blockedUsersResult.users);
+      setMutedUsers(mutedUsersResult.users);
+      const hydratedRequests = await hydrateRequesters(
+        incomingRequestsResult.requests.map((req) => ({
+          id: req.id,
+          requester_id: req.requester_id,
+          created_at: req.created_at,
+        }))
+      );
+      setIncomingRequests(hydratedRequests);
       // Always set profile (even if placeholder) to prevent errors
       setUserProfile(profile || {
         username: 'New User',
@@ -193,6 +266,65 @@ export default function ProfileScreen() {
     const month = date.toLocaleString('default', { month: 'long' });
     const year = date.getFullYear();
     return `${month} ${year}`;
+  };
+
+  const handleAccountTypeSelect = async (nextType: AccountType) => {
+    if (!user || privacyUpdating) return;
+    setProfileMenuOpen(false);
+    if (nextType === accountType) return;
+    setPrivacyUpdating(true);
+    try {
+      const result = await updateAccountType(user.id, nextType);
+      if (result.error) throw result.error;
+      setAccountType(nextType);
+    } catch (error) {
+      Alert.alert('Error', 'Unable to update privacy settings.');
+    } finally {
+      setPrivacyUpdating(false);
+    }
+  };
+
+  const handleAcceptRequest = async (requestId: string) => {
+    try {
+      const { error } = await acceptFollowRequest(requestId);
+      if (error) throw error;
+      setIncomingRequests((prev) => prev.filter((req) => req.id !== requestId));
+      setFollowerCount((prev) => prev + 1);
+    } catch (error) {
+      Alert.alert('Error', 'Unable to accept follow request.');
+    }
+  };
+
+  const handleRejectRequest = async (requestId: string) => {
+    try {
+      const { error } = await rejectFollowRequest(requestId);
+      if (error) throw error;
+      setIncomingRequests((prev) => prev.filter((req) => req.id !== requestId));
+    } catch (error) {
+      Alert.alert('Error', 'Unable to reject follow request.');
+    }
+  };
+
+  const handleUnblock = async (userId: string) => {
+    if (!user) return;
+    try {
+      const { error } = await unblockUser(user.id, userId);
+      if (error) throw error;
+      setBlockedUsers((prev) => prev.filter((item) => item.user_id !== userId));
+    } catch (error) {
+      Alert.alert('Error', 'Unable to unblock user.');
+    }
+  };
+
+  const handleUnmute = async (userId: string) => {
+    if (!user) return;
+    try {
+      const { error } = await unmuteUser(user.id, userId);
+      if (error) throw error;
+      setMutedUsers((prev) => prev.filter((item) => item.user_id !== userId));
+    } catch (error) {
+      Alert.alert('Error', 'Unable to unmute user.');
+    }
   };
 
   // Get username from profile or fallback to email
@@ -472,15 +604,44 @@ export default function ProfileScreen() {
 
           {/* Action Buttons */}
           <View style={styles.actionButtons}>
-            <TouchableOpacity
-              style={styles.outlinedButton}
-              onPress={() => navigation.navigate('EditProfile')}
-            >
-              <Text style={styles.outlinedButtonText}>Edit profile</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.outlinedButton}>
-              <Text style={styles.outlinedButtonText}>Share profile</Text>
-            </TouchableOpacity>
+            <View style={styles.followGroup}>
+              <TouchableOpacity
+                style={[styles.followButton, styles.followButtonConnected]}
+                onPress={() => navigation.navigate('EditProfile')}
+              >
+                <Text style={styles.followButtonText}>Edit profile</Text>
+              </TouchableOpacity>
+              <>
+                <TouchableOpacity
+                  style={styles.followMenuTrigger}
+                  onPress={() => setProfileMenuOpen((prev) => !prev)}
+                  activeOpacity={0.8}
+                  disabled={privacyUpdating}
+                >
+                  <Text style={styles.followMenuTriggerText}>v</Text>
+                </TouchableOpacity>
+                {profileMenuOpen && (
+                  <View style={styles.followMenu}>
+                    <TouchableOpacity
+                      style={styles.followMenuItem}
+                      onPress={() => handleAccountTypeSelect('public')}
+                    >
+                      <Text style={styles.followMenuItemText}>
+                        {accountType === 'public' ? '✓ ' : ''}Public account
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.followMenuItem}
+                      onPress={() => handleAccountTypeSelect('private')}
+                    >
+                      <Text style={styles.followMenuItemText}>
+                        {accountType === 'private' ? '✓ ' : ''}Private account
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </>
+            </View>
           </View>
         </View>
 
@@ -561,7 +722,91 @@ export default function ProfileScreen() {
           )}
           {activeTab === 'profile' && (
             <View style={styles.profileContent}>
-              <Text style={styles.emptyText}>Taste profile coming soon</Text>
+              <View style={styles.settingsSection}>
+                <Text style={styles.sectionTitle}>
+                  Follow Requests {incomingRequests.length > 0 ? `(${incomingRequests.length})` : ''}
+                </Text>
+                {incomingRequests.length === 0 ? (
+                  <Text style={styles.sectionEmpty}>No pending requests.</Text>
+                ) : (
+                  incomingRequests.map((request) => (
+                    <View key={request.id} style={styles.requestRow}>
+                      <View style={styles.requestInfo}>
+                        <Text style={styles.requestName}>
+                          {request.requester.first_name} {request.requester.last_name}
+                        </Text>
+                        <Text style={styles.requestHandle}>@{request.requester.username}</Text>
+                      </View>
+                      <View style={styles.requestActions}>
+                        <TouchableOpacity
+                          style={[styles.actionPill, styles.acceptPill]}
+                          onPress={() => handleAcceptRequest(request.id)}
+                        >
+                          <Text style={styles.actionPillText}>Accept</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.actionPill, styles.rejectPill]}
+                          onPress={() => handleRejectRequest(request.id)}
+                        >
+                          <Text style={styles.actionPillText}>Reject</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ))
+                )}
+              </View>
+
+              <View style={styles.settingsSection}>
+                <Text style={styles.sectionTitle}>
+                  Blocked Users {blockedUsers.length > 0 ? `(${blockedUsers.length})` : ''}
+                </Text>
+                {blockedUsers.length === 0 ? (
+                  <Text style={styles.sectionEmpty}>You have not blocked anyone.</Text>
+                ) : (
+                  blockedUsers.map((blocked) => (
+                    <View key={blocked.user_id} style={styles.requestRow}>
+                      <View style={styles.requestInfo}>
+                        <Text style={styles.requestName}>
+                          {blocked.first_name} {blocked.last_name}
+                        </Text>
+                        <Text style={styles.requestHandle}>@{blocked.username}</Text>
+                      </View>
+                      <TouchableOpacity
+                        style={[styles.actionPill, styles.neutralPill]}
+                        onPress={() => handleUnblock(blocked.user_id)}
+                      >
+                        <Text style={styles.actionPillText}>Unblock</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))
+                )}
+              </View>
+
+              <View style={styles.settingsSection}>
+                <Text style={styles.sectionTitle}>
+                  Muted Users {mutedUsers.length > 0 ? `(${mutedUsers.length})` : ''}
+                </Text>
+                {mutedUsers.length === 0 ? (
+                  <Text style={styles.sectionEmpty}>You have not muted anyone.</Text>
+                ) : (
+                  mutedUsers.map((muted) => (
+                    <View key={muted.user_id} style={styles.requestRow}>
+                      <View style={styles.requestInfo}>
+                        <Text style={styles.requestName}>
+                          {muted.first_name} {muted.last_name}
+                        </Text>
+                        <Text style={styles.requestHandle}>@{muted.username}</Text>
+                      </View>
+                      <TouchableOpacity
+                        style={[styles.actionPill, styles.neutralPill]}
+                        onPress={() => handleUnmute(muted.user_id)}
+                      >
+                        <Text style={styles.actionPillText}>Unmute</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))
+                )}
+              </View>
             </View>
           )}
         </View>
@@ -1022,6 +1267,78 @@ const styles = StyleSheet.create({
     height: 18,
     tintColor: colors.brownText,
   },
+  followGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    position: 'relative',
+    width: '100%',
+  },
+  followButton: {
+    flex: 1,
+    height: 40,
+    paddingVertical: 0,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    backgroundColor: colors.primaryBlue,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.white,
+  },
+  followButtonConnected: {
+    borderTopRightRadius: 0,
+    borderBottomRightRadius: 0,
+  },
+  followButtonText: {
+    fontSize: 14,
+    fontFamily: typography.button,
+    color: colors.white,
+    fontWeight: '600',
+  },
+  followMenuTrigger: {
+    height: 40,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: colors.white,
+    borderLeftWidth: 0,
+    borderTopRightRadius: 8,
+    borderBottomRightRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primaryBlue,
+  },
+  followMenuTriggerText: {
+    fontSize: 14,
+    fontFamily: typography.button,
+    color: colors.white,
+    fontWeight: '600',
+  },
+  followMenu: {
+    position: 'absolute',
+    top: 44,
+    right: 0,
+    backgroundColor: colors.primaryBlue,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: `${colors.brownText}1A`,
+    paddingVertical: 6,
+    minWidth: 160,
+    zIndex: 10,
+    shadowColor: colors.brownText,
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+  },
+  followMenuItem: {
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+  },
+  followMenuItemText: {
+    fontSize: 14,
+    fontFamily: typography.body,
+    color: colors.white,
+  },
   cardTimestamp: {
     fontSize: 12,
     fontFamily: typography.body,
@@ -1038,5 +1355,91 @@ const styles = StyleSheet.create({
     color: colors.brownText,
     opacity: 0.6,
     textAlign: 'center',
+  },
+  settingsSection: {
+    backgroundColor: colors.white,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: `${colors.brownText}14`,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontFamily: typography.body,
+    color: colors.brownText,
+    fontWeight: '600',
+    marginBottom: 12,
+  },
+  sectionHint: {
+    fontSize: 12,
+    fontFamily: typography.body,
+    color: colors.brownText,
+    opacity: 0.7,
+    marginTop: 8,
+  },
+  sectionEmpty: {
+    fontSize: 13,
+    fontFamily: typography.body,
+    color: colors.brownText,
+    opacity: 0.6,
+  },
+  rowBetween: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  settingLabel: {
+    fontSize: 14,
+    fontFamily: typography.body,
+    color: colors.brownText,
+  },
+  requestRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: `${colors.brownText}10`,
+  },
+  requestInfo: {
+    flex: 1,
+    marginRight: 12,
+  },
+  requestName: {
+    fontSize: 14,
+    fontFamily: typography.body,
+    color: colors.brownText,
+    fontWeight: '600',
+  },
+  requestHandle: {
+    fontSize: 12,
+    fontFamily: typography.body,
+    color: colors.brownText,
+    opacity: 0.7,
+  },
+  requestActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  actionPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  actionPillText: {
+    fontSize: 12,
+    fontFamily: typography.body,
+    color: colors.white,
+    fontWeight: '600',
+  },
+  acceptPill: {
+    backgroundColor: colors.primaryBlue,
+  },
+  rejectPill: {
+    backgroundColor: colors.brownText,
+  },
+  neutralPill: {
+    backgroundColor: colors.primaryBlue,
   },
 });

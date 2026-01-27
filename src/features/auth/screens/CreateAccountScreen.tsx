@@ -110,7 +110,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 30,
-    fontFamily: typography.logo,
+    fontFamily: typography.heroTitle,
     color: colors.brownText,
     textAlign: 'center',
     marginBottom: 40,

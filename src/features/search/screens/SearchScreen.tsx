@@ -16,7 +16,14 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import { colors, typography } from '../../../config/theme';
 import { searchBooksWithStats, enrichBookWithGoogleBooks, checkDatabaseForBook, saveBookToDatabase } from '../../../services/books';
 import { resolveCoverUrl, CoverResolvableBook } from '../../../services/coverResolver';
-import { searchMembers, followUser, unfollowUser, getFollowingIds } from '../../../services/userProfile';
+import {
+  searchMembers,
+  followUser,
+  unfollowUser,
+  getFollowingIds,
+  getOutgoingFollowRequests,
+  cancelFollowRequest,
+} from '../../../services/userProfile';
 import { SearchStackParamList } from '../../../navigation/SearchStackNavigator';
 import { useAuth } from '../../../contexts/AuthContext';
 import { supabase } from '../../../config/supabase';
@@ -31,6 +38,7 @@ interface MemberResult {
   first_name: string;
   last_name: string;
   profile_photo_url: string | null;
+  account_type: 'public' | 'private';
 }
 
 interface RecentSearch {
@@ -176,6 +184,7 @@ export default function SearchScreen() {
   const [loading, setLoading] = useState(false);
   const [enrichingBookId, setEnrichingBookId] = useState<string | null>(null);
   const [followingIds, setFollowingIds] = useState<Set<string>>(new Set());
+  const [pendingRequestIds, setPendingRequestIds] = useState<Set<string>>(new Set());
   const [followLoading, setFollowLoading] = useState<Set<string>>(new Set());
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const searchRequestIdRef = useRef(0);
@@ -186,13 +195,14 @@ export default function SearchScreen() {
     loadRecentMemberSearches();
     if (user?.id) {
       loadFollowingIds();
+      loadPendingRequestIds();
     }
   }, [user]);
 
   useEffect(() => {
     if (!user?.id) return;
 
-    const channel = supabase
+    const followsChannel = supabase
       .channel(`user_follows:${user.id}`)
       .on(
         'postgres_changes',
@@ -208,8 +218,25 @@ export default function SearchScreen() {
       )
       .subscribe();
 
+    const requestsChannel = supabase
+      .channel(`follow_requests:${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'follow_requests',
+          filter: `requester_id=eq.${user.id}`,
+        },
+        () => {
+          loadPendingRequestIds();
+        }
+      )
+      .subscribe();
+
     return () => {
-      supabase.removeChannel(channel);
+      supabase.removeChannel(followsChannel);
+      supabase.removeChannel(requestsChannel);
     };
   }, [user?.id]);
 
@@ -343,6 +370,13 @@ export default function SearchScreen() {
     if (!user?.id) return;
     const { followingIds: ids } = await getFollowingIds(user.id);
     setFollowingIds(new Set(ids));
+  };
+
+  const loadPendingRequestIds = async () => {
+    if (!user?.id) return;
+    const { requests } = await getOutgoingFollowRequests(user.id);
+    const ids = requests.map((request) => request.requested_id);
+    setPendingRequestIds(new Set(ids));
   };
 
 
@@ -489,6 +523,7 @@ export default function SearchScreen() {
     
     try {
       const isFollowing = followingIds.has(memberId);
+      const isPending = pendingRequestIds.has(memberId);
       if (isFollowing) {
         const { error } = await unfollowUser(user.id, memberId);
         if (!error) {
@@ -498,10 +533,23 @@ export default function SearchScreen() {
             return newSet;
           });
         }
-      } else {
-        const { error } = await followUser(user.id, memberId);
+      } else if (isPending) {
+        const { error } = await cancelFollowRequest(user.id, memberId);
         if (!error) {
-          setFollowingIds(prev => new Set(prev).add(memberId));
+          setPendingRequestIds(prev => {
+            const next = new Set(prev);
+            next.delete(memberId);
+            return next;
+          });
+        }
+      } else {
+        const { action, error } = await followUser(user.id, memberId);
+        if (!error) {
+          if (action === 'following') {
+            setFollowingIds(prev => new Set(prev).add(memberId));
+          } else {
+            setPendingRequestIds(prev => new Set(prev).add(memberId));
+          }
         }
       }
     } catch (error) {
@@ -555,8 +603,16 @@ export default function SearchScreen() {
 
   const renderMemberItem = ({ item }: { item: MemberResult }) => {
     const isFollowing = followingIds.has(item.user_id);
+    const isPending = pendingRequestIds.has(item.user_id);
     const isLoading = followLoading.has(item.user_id);
     const fullName = `${item.first_name} ${item.last_name}`;
+    const followLabel = isFollowing
+      ? 'Following'
+      : isPending
+        ? 'Requested'
+        : item.account_type === 'private'
+          ? 'Request'
+          : 'Follow';
 
     return (
       <TouchableOpacity
@@ -582,7 +638,7 @@ export default function SearchScreen() {
         <TouchableOpacity
           style={[
             styles.followButton,
-            isFollowing && styles.followingButton,
+            (isFollowing || isPending) && styles.followingButton,
             isLoading && styles.followButtonDisabled
           ]}
           onPress={(e) => {
@@ -592,13 +648,13 @@ export default function SearchScreen() {
           disabled={isLoading}
         >
           {isLoading ? (
-            <ActivityIndicator size="small" color={isFollowing ? colors.brownText : colors.white} />
+            <ActivityIndicator size="small" color={(isFollowing || isPending) ? colors.brownText : colors.white} />
           ) : (
             <Text style={[
               styles.followButtonText,
-              isFollowing && styles.followingButtonText
+              (isFollowing || isPending) && styles.followingButtonText
             ]}>
-              {isFollowing ? 'Following' : 'Follow'}
+              {followLabel}
             </Text>
           )}
         </TouchableOpacity>

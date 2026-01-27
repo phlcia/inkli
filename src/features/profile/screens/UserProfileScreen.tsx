@@ -27,7 +27,16 @@ import {
   followUser,
   unfollowUser,
   checkIfFollowing,
+  checkIfMuted,
+  checkPendingFollowRequest,
+  getBlockStatus,
+  blockUser,
+  unblockUser,
+  muteUser,
+  unmuteUser,
+  cancelFollowRequest,
 } from '../../../services/userProfile';
+import type { AccountType } from '../../../services/userProfile';
 import RecentActivityCard from '../../social/components/RecentActivityCard';
 import { supabase } from '../../../config/supabase';
 
@@ -66,8 +75,14 @@ export default function UserProfileScreen() {
   const [followerCount, setFollowerCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
   const [isFollowing, setIsFollowing] = useState(false);
+  const [isFollowedByTarget, setIsFollowedByTarget] = useState(false);
   const [followLoading, setFollowLoading] = useState(false);
-  const [messageActive, setMessageActive] = useState(false);
+  const [followMenuOpen, setFollowMenuOpen] = useState(false);
+  const [accountType, setAccountType] = useState<AccountType>('public');
+  const [followRequestPending, setFollowRequestPending] = useState(false);
+  const [blockedByViewer, setBlockedByViewer] = useState(false);
+  const [blockedByTarget, setBlockedByTarget] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
 
   useEffect(() => {
     loadUserProfile();
@@ -77,10 +92,21 @@ export default function UserProfileScreen() {
     try {
       setLoading(true);
 
+      if (currentUser?.id && currentUser.id !== userId) {
+        const blockStatus = await getBlockStatus(currentUser.id, userId);
+        setBlockedByViewer(blockStatus.blockedByViewer);
+        setBlockedByTarget(blockStatus.blockedByTarget);
+        if (blockStatus.blockedByTarget) {
+          setUserProfile(null);
+          setLoading(false);
+          return;
+        }
+      }
+
       // Fetch user profile
       const { data: profile, error: profileError } = await supabase
         .from('user_profiles')
-        .select('username, first_name, last_name, books_read_count, weekly_streak, global_rank, member_since, profile_photo_url, bio')
+        .select('username, first_name, last_name, books_read_count, weekly_streak, global_rank, member_since, profile_photo_url, bio, account_type')
         .eq('user_id', userId)
         .single();
 
@@ -92,6 +118,7 @@ export default function UserProfileScreen() {
       }
 
       setUserProfile(profile);
+      setAccountType((profile?.account_type || 'public') as AccountType);
 
       // Fetch counts and recent activity in parallel
       const [counts, recent, followers, following] = await Promise.all([
@@ -128,8 +155,16 @@ export default function UserProfileScreen() {
 
       // Check if current user is following this user
       if (currentUser?.id && currentUser.id !== userId) {
-        const following = await checkIfFollowing(currentUser.id, userId);
+        const [following, pending, muted, followedByTarget] = await Promise.all([
+          checkIfFollowing(currentUser.id, userId),
+          checkPendingFollowRequest(currentUser.id, userId),
+          checkIfMuted(currentUser.id, userId),
+          checkIfFollowing(userId, currentUser.id),
+        ]);
         setIsFollowing(following);
+        setFollowRequestPending(pending);
+        setIsMuted(muted);
+        setIsFollowedByTarget(followedByTarget);
       }
 
     } catch (error) {
@@ -145,17 +180,35 @@ export default function UserProfileScreen() {
 
     setFollowLoading(true);
     try {
+      if (blockedByViewer) {
+        const { error } = await unblockUser(currentUser.id, userId);
+        if (!error) {
+          setBlockedByViewer(false);
+        }
+        return;
+      }
       if (isFollowing) {
         const { error } = await unfollowUser(currentUser.id, userId);
         if (!error) {
           setIsFollowing(false);
+          setFollowMenuOpen(false);
           setFollowerCount(prev => Math.max(0, prev - 1));
         }
-      } else {
-        const { error } = await followUser(currentUser.id, userId);
+      } else if (followRequestPending) {
+        const { error } = await cancelFollowRequest(currentUser.id, userId);
         if (!error) {
-          setIsFollowing(true);
-          setFollowerCount(prev => prev + 1);
+          setFollowRequestPending(false);
+        }
+      } else {
+        const { action, error } = await followUser(currentUser.id, userId);
+        if (!error) {
+          if (action === 'following') {
+            setIsFollowing(true);
+            setFollowerCount(prev => prev + 1);
+            setFollowRequestPending(false);
+          } else {
+            setFollowRequestPending(true);
+          }
         }
       }
     } catch (error) {
@@ -174,6 +227,68 @@ export default function UserProfileScreen() {
       return `${month} ${year}`;
     }
     return 'Unknown';
+  };
+
+  const isPrivateLocked =
+    accountType === 'private' &&
+    !isFollowing &&
+    currentUser?.id !== userId;
+
+  const followLabel = isFollowing
+    ? 'Following'
+    : followRequestPending
+      ? 'Requested (Private)'
+      : blockedByViewer
+        ? 'Unblock'
+        : accountType === 'private'
+          ? 'Follow'
+          : 'Follow';
+
+  const handleMutePress = () => {
+    setFollowMenuOpen(false);
+    if (!currentUser?.id || currentUser.id === userId) return;
+    if (isMuted) {
+      unmuteUser(currentUser.id, userId).then(({ error }) => {
+        if (!error) setIsMuted(false);
+      });
+      return;
+    }
+    muteUser(currentUser.id, userId).then(({ error }) => {
+      if (!error) setIsMuted(true);
+    });
+  };
+
+  const handleBlockPress = () => {
+    setFollowMenuOpen(false);
+    if (!currentUser?.id || currentUser.id === userId) return;
+    if (blockedByViewer) {
+      unblockUser(currentUser.id, userId).then(({ error }) => {
+        if (!error) setBlockedByViewer(false);
+      });
+      return;
+    }
+    Alert.alert('Block user?', 'They will not be able to view your profile or activity.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Block',
+        style: 'destructive',
+        onPress: async () => {
+          const { error } = await blockUser(currentUser.id, userId);
+          if (!error) {
+            setBlockedByViewer(true);
+            if (isFollowing) {
+              setFollowerCount((prev) => Math.max(0, prev - 1));
+            }
+            if (isFollowedByTarget) {
+              setFollowingCount((prev) => Math.max(0, prev - 1));
+            }
+            setIsFollowing(false);
+            setIsFollowedByTarget(false);
+            setFollowRequestPending(false);
+          }
+        },
+      },
+    ]);
   };
 
   const renderShelfSection = (
@@ -327,6 +442,17 @@ export default function UserProfileScreen() {
 
   const isOwnProfile = currentUser?.id === userId;
 
+  if (blockedByTarget) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={styles.loadingContainer}>
+          <Text style={styles.emptyStateTitle}>User unavailable</Text>
+          <Text style={styles.emptyStateText}>This profile is not available.</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
@@ -374,212 +500,237 @@ export default function UserProfileScreen() {
           )}
 
           {/* Stats Row */}
-          <View style={styles.statsRow}>
-            <TouchableOpacity
-              style={styles.statBox}
-              onPress={() =>
-                (navigation as any).navigate('FollowersFollowing', {
-                  userId,
-                  username: userProfile?.username || initialUsername,
-                  initialTab: 'followers',
-                })
-              }
-              activeOpacity={0.7}
-            >
-              <Text style={styles.statBoxValue}>{followerCount}</Text>
-              <Text style={styles.statBoxLabel}>Followers</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.statBox}
-              onPress={() =>
-                (navigation as any).navigate('FollowersFollowing', {
-                  userId,
-                  username: userProfile?.username || initialUsername,
-                  initialTab: 'following',
-                })
-              }
-              activeOpacity={0.7}
-            >
-              <Text style={styles.statBoxValue}>{followingCount}</Text>
-              <Text style={styles.statBoxLabel}>Following</Text>
-            </TouchableOpacity>
-            <View style={styles.statBox}>
-              <Text style={styles.statBoxValue}>
-                {userProfile?.global_rank ? `#${userProfile.global_rank}` : '--'}
-              </Text>
-              <Text style={styles.statBoxLabel}>Rank</Text>
+          {!isPrivateLocked && (
+            <View style={styles.statsRow}>
+              <TouchableOpacity
+                style={styles.statBox}
+                onPress={() =>
+                  (navigation as any).navigate('FollowersFollowing', {
+                    userId,
+                    username: userProfile?.username || initialUsername,
+                    initialTab: 'followers',
+                  })
+                }
+                activeOpacity={0.7}
+              >
+                <Text style={styles.statBoxValue}>{followerCount}</Text>
+                <Text style={styles.statBoxLabel}>Followers</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.statBox}
+                onPress={() =>
+                  (navigation as any).navigate('FollowersFollowing', {
+                    userId,
+                    username: userProfile?.username || initialUsername,
+                    initialTab: 'following',
+                  })
+                }
+                activeOpacity={0.7}
+              >
+                <Text style={styles.statBoxValue}>{followingCount}</Text>
+                <Text style={styles.statBoxLabel}>Following</Text>
+              </TouchableOpacity>
+              <View style={styles.statBox}>
+                <Text style={styles.statBoxValue}>
+                  {userProfile?.global_rank ? `#${userProfile.global_rank}` : '--'}
+                </Text>
+                <Text style={styles.statBoxLabel}>Rank</Text>
+              </View>
             </View>
-          </View>
+          )}
 
           {/* Action Buttons */}
           {!isOwnProfile && (
             <View style={styles.actionButtons}>
+              <View style={styles.followGroup}>
+                <TouchableOpacity
+                  style={[
+                    styles.followButton,
+                    (isFollowing || followRequestPending) && styles.followingButton,
+                    styles.followButtonConnected,
+                  ]}
+                  onPress={handleFollowToggle}
+                  disabled={followLoading}
+                >
+                  {followLoading ? (
+                    <ActivityIndicator size="small" color={(isFollowing || followRequestPending) ? colors.brownText : colors.white} />
+                  ) : (
+                    <Text
+                      style={[
+                        styles.followButtonText,
+                        (isFollowing || followRequestPending) && styles.followingButtonText,
+                      ]}
+                    >
+                      {followLabel}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+                <>
+                  <TouchableOpacity
+                    style={[
+                      styles.followMenuTrigger,
+                      (isFollowing || followRequestPending) && styles.followingButton,
+                    ]}
+                    onPress={() => setFollowMenuOpen(prev => !prev)}
+                    activeOpacity={0.8}
+                  >
+                    <Text
+                      style={[
+                        styles.followMenuTriggerText,
+                        (isFollowing || followRequestPending) && styles.followingButtonText,
+                      ]}
+                    >
+                      v
+                    </Text>
+                  </TouchableOpacity>
+                  {followMenuOpen && (
+                    <View style={styles.followMenu}>
+                      <TouchableOpacity style={styles.followMenuItem} onPress={handleMutePress}>
+                        <Text style={styles.followMenuItemText}>{isMuted ? 'Unmute' : 'Mute'}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.followMenuItem} onPress={handleBlockPress}>
+                        <Text style={styles.followMenuItemText}>{blockedByViewer ? 'Unblock' : 'Block'}</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </>
+              </View>
+            </View>
+          )}
+        </View>
+
+        {!isPrivateLocked && (
+          <>
+            {/* Shelf Sections */}
+            <View style={styles.shelfCardsContainer}>
+              {renderShelfSection(
+                require('../../../../assets/add.png'),
+                'Read',
+                bookCounts.read,
+                () => {
+                  const parentNav = (navigation as any).getParent?.();
+                  const target = {
+                    screen: 'UserShelf',
+                    params: {
+                      userId,
+                      username: userProfile?.username,
+                      initialTab: 'read',
+                    },
+                  };
+                  if (parentNav?.navigate) {
+                    parentNav.navigate('Home', target);
+                    return;
+                  }
+                  (navigation as any).navigate('Home', target);
+                }
+              )}
+              {renderShelfSection(
+                require('../../../../assets/reading.png'),
+                'Currently Reading',
+                bookCounts.currently_reading,
+                () => {
+                  const parentNav = (navigation as any).getParent?.();
+                  const target = {
+                    screen: 'UserShelf',
+                    params: {
+                      userId,
+                      username: userProfile?.username,
+                      initialTab: 'currently_reading',
+                    },
+                  };
+                  if (parentNav?.navigate) {
+                    parentNav.navigate('Home', target);
+                    return;
+                  }
+                  (navigation as any).navigate('Home', target);
+                }
+              )}
+              {renderShelfSection(
+                require('../../../../assets/bookmark.png'),
+                'Want to Read',
+                bookCounts.want_to_read,
+                () => {
+                  const parentNav = (navigation as any).getParent?.();
+                  const target = {
+                    screen: 'UserShelf',
+                    params: {
+                      userId,
+                      username: userProfile?.username,
+                      initialTab: 'want_to_read',
+                    },
+                  };
+                  if (parentNav?.navigate) {
+                    parentNav.navigate('Home', target);
+                    return;
+                  }
+                  (navigation as any).navigate('Home', target);
+                }
+              )}
+            </View>
+
+            {/* Stats Cards */}
+            <View style={styles.statsCardsRow}>
+              {renderStatCard(
+                require('../../../../assets/rank.png'),
+                'Rank on Inkli',
+                userProfile?.global_rank ? `#${userProfile.global_rank}` : '--'
+              )}
+              {renderStatCard(
+                require('../../../../assets/fire.png'),
+                'Weekly Streak',
+                `${userProfile?.weekly_streak ?? 0} weeks`
+              )}
+            </View>
+
+            {/* Tabs */}
+            <View style={styles.tabs}>
               <TouchableOpacity
-                style={[
-                  styles.followButton,
-                  isFollowing && styles.followingButton
-                ]}
-                onPress={handleFollowToggle}
-                disabled={followLoading}
-              >
-                {followLoading ? (
-                  <ActivityIndicator size="small" color={isFollowing ? colors.brownText : colors.white} />
-                ) : (
-                  <Text style={[
-                    styles.followButtonText,
-                    isFollowing && styles.followingButtonText
-                  ]}>
-                    {isFollowing ? 'Following' : 'Follow'}
-                  </Text>
-                )}
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.followButton,
-                  messageActive && styles.followingButton
-                ]}
+                style={[styles.tab, activeTab === 'activity' && styles.tabActive]}
+                onPress={() => setActiveTab('activity')}
               >
                 <Text
                   style={[
-                    styles.followButtonText,
-                    messageActive && styles.followingButtonText
+                    styles.tabText,
+                    activeTab === 'activity' && styles.tabTextActive,
                   ]}
                 >
-                  Message
+                  Recent Activity
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.tab, activeTab === 'profile' && styles.tabActive]}
+                onPress={() => setActiveTab('profile')}
+              >
+                <Text
+                  style={[
+                    styles.tabText,
+                    activeTab === 'profile' && styles.tabTextActive,
+                  ]}
+                >
+                  Taste Profile
                 </Text>
               </TouchableOpacity>
             </View>
-          )}
-        </View>
 
-        {/* Shelf Sections */}
-        <View style={styles.shelfCardsContainer}>
-          {renderShelfSection(
-            require('../../../../assets/add.png'),
-            'Read',
-            bookCounts.read,
-            () => {
-              const parentNav = (navigation as any).getParent?.();
-              const target = {
-                screen: 'UserShelf',
-                params: {
-                  userId,
-                  username: userProfile?.username,
-                  initialTab: 'read',
-                },
-              };
-              if (parentNav?.navigate) {
-                parentNav.navigate('Home', target);
-                return;
-              }
-              (navigation as any).navigate('Home', target);
-            }
-          )}
-          {renderShelfSection(
-            require('../../../../assets/reading.png'),
-            'Currently Reading',
-            bookCounts.currently_reading,
-            () => {
-              const parentNav = (navigation as any).getParent?.();
-              const target = {
-                screen: 'UserShelf',
-                params: {
-                  userId,
-                  username: userProfile?.username,
-                  initialTab: 'currently_reading',
-                },
-              };
-              if (parentNav?.navigate) {
-                parentNav.navigate('Home', target);
-                return;
-              }
-              (navigation as any).navigate('Home', target);
-            }
-          )}
-          {renderShelfSection(
-            require('../../../../assets/bookmark.png'),
-            'Want to Read',
-            bookCounts.want_to_read,
-            () => {
-              const parentNav = (navigation as any).getParent?.();
-              const target = {
-                screen: 'UserShelf',
-                params: {
-                  userId,
-                  username: userProfile?.username,
-                  initialTab: 'want_to_read',
-                },
-              };
-              if (parentNav?.navigate) {
-                parentNav.navigate('Home', target);
-                return;
-              }
-              (navigation as any).navigate('Home', target);
-            }
-          )}
-        </View>
-
-        {/* Stats Cards */}
-        <View style={styles.statsCardsRow}>
-          {renderStatCard(
-            require('../../../../assets/rank.png'),
-            'Rank on Inkli',
-            userProfile?.global_rank ? `#${userProfile.global_rank}` : '--'
-          )}
-          {renderStatCard(
-            require('../../../../assets/fire.png'),
-            'Weekly Streak',
-            `${userProfile?.weekly_streak ?? 0} weeks`
-          )}
-        </View>
-
-        {/* Tabs */}
-        <View style={styles.tabs}>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'activity' && styles.tabActive]}
-            onPress={() => setActiveTab('activity')}
-          >
-            <Text
-              style={[
-                styles.tabText,
-                activeTab === 'activity' && styles.tabTextActive,
-              ]}
-            >
-              Recent Activity
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'profile' && styles.tabActive]}
-            onPress={() => setActiveTab('profile')}
-          >
-            <Text
-              style={[
-                styles.tabText,
-                activeTab === 'profile' && styles.tabTextActive,
-              ]}
-            >
-              Taste Profile
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Tab Content */}
-        <View style={styles.tabContent}>
-          {activeTab === 'activity' && (
-            <View style={styles.activityContent}>
-              {recentBooks.length > 0 ? (
-                recentBooks.map((book) => renderRecentActivityItem(book))
-              ) : (
-                <Text style={styles.emptyText}>No recent activity</Text>
+            {/* Tab Content */}
+            <View style={styles.tabContent}>
+              {activeTab === 'activity' && (
+                <View style={styles.activityContent}>
+                  {recentBooks.length > 0 ? (
+                    recentBooks.map((book) => renderRecentActivityItem(book))
+                  ) : (
+                    <Text style={styles.emptyText}>No recent activity</Text>
+                  )}
+                </View>
+              )}
+              {activeTab === 'profile' && (
+                <View style={styles.profileContent}>
+                  <Text style={styles.emptyText}>Taste profile coming soon</Text>
+                </View>
               )}
             </View>
-          )}
-          {activeTab === 'profile' && (
-            <View style={styles.profileContent}>
-              <Text style={styles.emptyText}>Taste profile coming soon</Text>
-            </View>
-          )}
-        </View>
+          </>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -718,19 +869,35 @@ const styles = StyleSheet.create({
   },
   actionButtons: {
     flexDirection: 'row',
-    gap: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
     width: '100%',
     paddingHorizontal: 16,
   },
+  followGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    position: 'relative',
+    width: '100%',
+  },
   followButton: {
     flex: 1,
-    paddingVertical: 10,
+    height: 40,
+    paddingVertical: 0,
+    paddingHorizontal: 16,
     borderRadius: 8,
     backgroundColor: colors.primaryBlue,
     alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.white,
+  },
+  followButtonConnected: {
+    borderTopRightRadius: 0,
+    borderBottomRightRadius: 0,
   },
   followingButton: {
-    backgroundColor: 'transparent',
+    backgroundColor: colors.white,
     borderWidth: 1,
     borderColor: colors.primaryBlue,
   },
@@ -742,6 +909,50 @@ const styles = StyleSheet.create({
   },
   followingButtonText: {
     color: colors.primaryBlue,
+  },
+  followMenuTrigger: {
+    height: 40,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: colors.white,
+    borderLeftWidth: 0,
+    borderTopRightRadius: 8,
+    borderBottomRightRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primaryBlue,
+  },
+  followMenuTriggerText: {
+    fontSize: 14,
+    fontFamily: typography.button,
+    color: colors.white,
+    fontWeight: '600',
+  },
+  followMenu: {
+    position: 'absolute',
+    top: 44,
+    right: 0,
+    backgroundColor: colors.primaryBlue,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: `${colors.brownText}1A`,
+    paddingVertical: 6,
+    minWidth: 140,
+    zIndex: 10,
+    shadowColor: colors.brownText,
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+  },
+  followMenuItem: {
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+  },
+  followMenuItemText: {
+    fontSize: 14,
+    fontFamily: typography.body,
+    color: colors.white,
   },
   // ... copy all other styles from ProfileScreen.tsx ...
   shelfCardsContainer: {
@@ -1001,5 +1212,33 @@ const styles = StyleSheet.create({
     color: colors.brownText,
     opacity: 0.6,
     textAlign: 'center',
+  },
+  privateNotice: {
+    fontSize: 13,
+    fontFamily: typography.body,
+    color: colors.brownText,
+    opacity: 0.7,
+    textAlign: 'center',
+    marginTop: 8,
+  },
+  emptyStateTitle: {
+    fontSize: 18,
+    fontFamily: typography.body,
+    color: colors.brownText,
+    fontWeight: '600',
+    marginBottom: 6,
+  },
+  emptyStateText: {
+    fontSize: 13,
+    fontFamily: typography.body,
+    color: colors.brownText,
+    opacity: 0.7,
+    textAlign: 'center',
+  },
+  privateBadge: {
+    fontSize: 12,
+    fontFamily: typography.body,
+    color: colors.primaryBlue,
+    marginTop: 4,
   },
 });
