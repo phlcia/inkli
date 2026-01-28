@@ -55,14 +55,17 @@ export default function ActivityLikesScreen() {
   >([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [followingIds, setFollowingIds] = useState<Set<string>>(new Set());
   const [followerIds, setFollowerIds] = useState<Set<string>>(new Set());
   const [pendingRequestIds, setPendingRequestIds] = useState<Set<string>>(new Set());
   const [followLoading, setFollowLoading] = useState<Set<string>>(new Set());
 
-  const loadLikes = useCallback(async () => {
+  const loadLikes = useCallback(async (showLoading = true) => {
     try {
-      setLoading(true);
+      if (showLoading) {
+        setLoading(true);
+      }
       if (commentId) {
         const data = await getCommentLikesList(commentId);
         setLikes(data);
@@ -89,12 +92,23 @@ export default function ActivityLikesScreen() {
         setPendingRequestIds(new Set(outgoingRequestsRes.requests.map((req) => req.requested_id)));
       }
     } finally {
-      setLoading(false);
+      if (showLoading) {
+        setLoading(false);
+      }
     }
   }, [commentId, currentUser?.id, userBookId]);
 
   React.useEffect(() => {
     loadLikes();
+  }, [loadLikes]);
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await loadLikes(false);
+    } finally {
+      setRefreshing(false);
+    }
   }, [loadLikes]);
 
   const filteredLikes = useMemo(() => {
@@ -250,6 +264,8 @@ export default function ActivityLikesScreen() {
           data={filteredLikes}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
+          refreshing={refreshing}
+          onRefresh={handleRefresh}
           contentContainerStyle={styles.listContent}
           ListEmptyComponent={
             <Text style={styles.emptyText}>No likes yet</Text>

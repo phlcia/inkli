@@ -9,6 +9,7 @@ import {
   Alert,
   Image,
   Platform,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -59,6 +60,7 @@ export default function UserProfileScreen() {
   });
   const [recentBooks, setRecentBooks] = useState<UserBook[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<'activity' | 'profile'>('activity');
   const [viewerShelfMap, setViewerShelfMap] = useState<Record<string, { id: string; status: UserBook['status'] }>>({});
   const [userProfile, setUserProfile] = useState<{
@@ -88,9 +90,11 @@ export default function UserProfileScreen() {
     loadUserProfile();
   }, [userId]);
 
-  const loadUserProfile = async () => {
+  const loadUserProfile = async (showLoading = true) => {
     try {
-      setLoading(true);
+      if (showLoading) {
+        setLoading(true);
+      }
 
       if (currentUser?.id && currentUser.id !== userId) {
         const blockStatus = await getBlockStatus(currentUser.id, userId);
@@ -163,15 +167,26 @@ export default function UserProfileScreen() {
         ]);
         setIsFollowing(following);
         setFollowRequestPending(pending);
-        setIsMuted(muted);
-        setIsFollowedByTarget(followedByTarget);
-      }
+      setIsMuted(muted);
+      setIsFollowedByTarget(followedByTarget);
+    }
 
-    } catch (error) {
-      console.error('Error loading user profile:', error);
-      Alert.alert('Error', 'Failed to load profile data');
-    } finally {
+  } catch (error) {
+    console.error('Error loading user profile:', error);
+    Alert.alert('Error', 'Failed to load profile data');
+  } finally {
+    if (showLoading) {
       setLoading(false);
+    }
+  }
+  };
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await loadUserProfile(false);
+    } finally {
+      setRefreshing(false);
     }
   };
 
@@ -473,6 +488,13 @@ export default function UserProfileScreen() {
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.primaryBlue}
+          />
+        }
       >
         {/* Profile Section */}
         <View style={styles.profileSection}>

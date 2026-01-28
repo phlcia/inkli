@@ -55,6 +55,7 @@ export default function FollowersFollowingScreen() {
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [followers, setFollowers] = useState<UserSummary[]>([]);
   const [following, setFollowing] = useState<UserSummary[]>([]);
   const [followingIds, setFollowingIds] = useState<Set<string>>(new Set());
@@ -62,9 +63,11 @@ export default function FollowersFollowingScreen() {
   const [pendingRequestIds, setPendingRequestIds] = useState<Set<string>>(new Set());
   const [followLoading, setFollowLoading] = useState<Set<string>>(new Set());
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (showLoading = true) => {
     try {
-      setLoading(true);
+      if (showLoading) {
+        setLoading(true);
+      }
       const [followersRes, followingRes] = await Promise.all([
         getFollowersList(userId),
         getFollowingList(userId),
@@ -84,12 +87,23 @@ export default function FollowersFollowingScreen() {
         setPendingRequestIds(new Set(outgoingRequestsRes.requests.map((req) => req.requested_id)));
       }
     } finally {
-      setLoading(false);
+      if (showLoading) {
+        setLoading(false);
+      }
     }
   }, [currentUser?.id, userId]);
 
   React.useEffect(() => {
     loadData();
+  }, [loadData]);
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await loadData(false);
+    } finally {
+      setRefreshing(false);
+    }
   }, [loadData]);
 
   const data = activeTab === 'followers' ? followers : following;
@@ -257,6 +271,8 @@ export default function FollowersFollowingScreen() {
           data={filteredData}
           keyExtractor={(item) => item.user_id}
           renderItem={renderItem}
+          refreshing={refreshing}
+          onRefresh={handleRefresh}
           contentContainerStyle={styles.listContent}
         />
       )}

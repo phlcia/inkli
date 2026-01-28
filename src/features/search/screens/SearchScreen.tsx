@@ -8,6 +8,7 @@ import {
   Image,
   TouchableOpacity,
   ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -182,6 +183,7 @@ export default function SearchScreen() {
   const [recentSearches, setRecentSearches] = useState<RecentSearch[]>([]);
   const [recentMemberSearches, setRecentMemberSearches] = useState<RecentMemberSearch[]>([]);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [enrichingBookId, setEnrichingBookId] = useState<string | null>(null);
   const [followingIds, setFollowingIds] = useState<Set<string>>(new Set());
   const [pendingRequestIds, setPendingRequestIds] = useState<Set<string>>(new Set());
@@ -380,17 +382,21 @@ export default function SearchScreen() {
   };
 
 
-  const performBookSearch = async (searchQuery: string) => {
+  const performBookSearch = async (searchQuery: string, showLoading = true) => {
     if (!searchQuery.trim() || searchQuery.trim().length < 2) {
       searchRequestIdRef.current += 1;
       setBookResults([]);
-      setLoading(false);
+      if (showLoading) {
+        setLoading(false);
+      }
       return;
     }
 
     const requestId = ++searchRequestIdRef.current;
     try {
-      setLoading(true);
+      if (showLoading) {
+        setLoading(true);
+      }
       const books = await searchBooksWithStats(searchQuery);
       if (requestId !== searchRequestIdRef.current) return;
       setBookResults(books);
@@ -399,23 +405,27 @@ export default function SearchScreen() {
       if (requestId !== searchRequestIdRef.current) return;
       setBookResults([]);
     } finally {
-      if (requestId === searchRequestIdRef.current) {
+      if (requestId === searchRequestIdRef.current && showLoading) {
         setLoading(false);
       }
     }
   };
 
-  const performMemberSearch = async (searchQuery: string) => {
+  const performMemberSearch = async (searchQuery: string, showLoading = true) => {
     if (!searchQuery.trim() || searchQuery.trim().length < 2) {
       searchRequestIdRef.current += 1;
       setMemberResults([]);
-      setLoading(false);
+      if (showLoading) {
+        setLoading(false);
+      }
       return;
     }
 
     const requestId = ++searchRequestIdRef.current;
     try {
-      setLoading(true);
+      if (showLoading) {
+        setLoading(true);
+      }
       const { members, error } = await searchMembers(searchQuery);
       if (requestId !== searchRequestIdRef.current) return;
       if (error) {
@@ -432,7 +442,7 @@ export default function SearchScreen() {
       if (requestId !== searchRequestIdRef.current) return;
       setMemberResults([]);
     } finally {
-      if (requestId === searchRequestIdRef.current) {
+      if (requestId === searchRequestIdRef.current && showLoading) {
         setLoading(false);
       }
     }
@@ -446,6 +456,30 @@ export default function SearchScreen() {
       await performBookSearch(query);
     } else {
       await performMemberSearch(query);
+    }
+  };
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      if (activeTab === 'books') {
+        if (query.trim().length >= 2) {
+          await performBookSearch(query, false);
+        } else {
+          await loadRecentSearches();
+        }
+      } else {
+        if (query.trim().length >= 2) {
+          await performMemberSearch(query, false);
+        } else {
+          await loadRecentMemberSearches();
+        }
+        if (user?.id) {
+          await Promise.all([loadFollowingIds(), loadPendingRequestIds()]);
+        }
+      }
+    } finally {
+      setRefreshing(false);
     }
   };
 
@@ -769,6 +803,13 @@ export default function SearchScreen() {
               renderItem={renderRecentSearchItem}
               keyExtractor={(item) => item.id}
               contentContainerStyle={styles.listContainer}
+              refreshControl={
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={handleRefresh}
+                  tintColor={colors.primaryBlue}
+                />
+              }
             />
           </View>
         )}
@@ -787,6 +828,13 @@ export default function SearchScreen() {
               renderItem={renderRecentMemberItem}
               keyExtractor={(item) => item.user_id}
               contentContainerStyle={styles.listContainer}
+              refreshControl={
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={handleRefresh}
+                  tintColor={colors.primaryBlue}
+                />
+              }
             />
           </View>
         )}
@@ -809,6 +857,13 @@ export default function SearchScreen() {
                 }
               }}
               contentContainerStyle={styles.listContainer}
+              refreshControl={
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={handleRefresh}
+                  tintColor={colors.primaryBlue}
+                />
+              }
             />
           )
         )}

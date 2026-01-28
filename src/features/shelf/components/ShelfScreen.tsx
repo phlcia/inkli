@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   TouchableOpacity,
   Alert,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -46,6 +47,7 @@ export default function ShelfScreen({
   const navigation = useNavigation<ShelfNavigationProp>();
   const [books, setBooks] = useState<UserBook[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<ShelfTab>(initialTab || 'read');
   
   // Filter state
@@ -55,14 +57,18 @@ export default function ShelfScreen({
   const [customLabelSuggestions, setCustomLabelSuggestions] = useState<string[]>([]);
   const canShowRecommendations = Boolean(currentUser?.id && currentUser.id === ownerUserId);
 
-  const loadBooks = useCallback(async () => {
+  const loadBooks = useCallback(async (showLoading = true) => {
     if (!ownerUserId) {
-      setLoading(false);
+      if (showLoading) {
+        setLoading(false);
+      }
       return;
     }
 
     try {
-      setLoading(true);
+      if (showLoading) {
+        setLoading(true);
+      }
       const userBooks = await getUserBooks(ownerUserId);
       setBooks(userBooks);
       
@@ -105,7 +111,9 @@ export default function ShelfScreen({
     } catch (error) {
       console.error('Error loading books:', error);
     } finally {
-      setLoading(false);
+      if (showLoading) {
+        setLoading(false);
+      }
     }
   }, [ownerUserId]);
 
@@ -120,6 +128,15 @@ export default function ShelfScreen({
       loadBooks();
     }
   }, [refreshKey, loadBooks]);
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await loadBooks(false);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [loadBooks]);
 
   useEffect(() => {
     if (initialTab) {
@@ -407,15 +424,33 @@ export default function ShelfScreen({
       {activeTab === 'recommended' && canShowRecommendations ? (
         <RecommendationsList showHeader={false} />
       ) : sortedBooks.length === 0 ? (
-        <View style={styles.emptyContainer}>
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={[styles.scrollContent, styles.emptyContainer]}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={colors.primaryBlue}
+            />
+          }
+        >
           <Text style={styles.emptyText}>{emptyState.title}</Text>
           <Text style={styles.emptySubtext}>{emptyState.subtitle}</Text>
-        </View>
+        </ScrollView>
       ) : (
         <ScrollView
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={colors.primaryBlue}
+            />
+          }
         >
           {sortedBooks.map((book, index) => renderBookItem(book, index + 1))}
         </ScrollView>
