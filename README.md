@@ -33,6 +33,9 @@ A social book ranking and discovery app built with Expo (React Native), Supabase
 - **Book shelf**: Organize books by status (Read, Currently Reading, Want to Read) with tabbed interface
 - **Book details**: View and edit ratings (liked/fine/disliked), notes, start/finish dates
 - **Auto-save**: Notes and dates automatically save as you type/select them
+- **Genre & label filtering**: Filter books by preset genres and custom labels
+- **Custom labels**: Create and manage custom labels for book organization
+- **Read sessions**: Track multiple read sessions with start/finish dates for each book
 - **Community stats**: See average scores and member counts for books
 - **Secure catalog writes**: `public.books` is read-only to clients; inserts handled by Edge Function
 
@@ -50,13 +53,24 @@ A social book ranking and discovery app built with Expo (React Native), Supabase
 - **User following**: Follow/unfollow other users
 - **Member search**: Search for users by username, first name, or last name
 - **Profile viewing**: View other users' profiles and reading stats
- - **Comments & likes**: Activity comments/likes with counts and detail screens
+- **Comments & likes**: Activity comments/likes with counts and detail screens
+- **Notifications**: In-app notifications for follow requests, likes, comments, and other interactions
+- **Followers/Following**: View and manage followers and following lists
+- **Account privacy**: Public/private account types with follow request system
+- **Block & mute**: Block or mute users for content moderation
+
+#### Recommendations & Discovery
+- **Onboarding quiz**: Taste profile quiz with book comparisons to build initial recommendations
+- **Personalized recommendations**: Book recommendations based on reading history and preferences
+- **Book circles**: See which users in your network have read specific books
+- **Friends' rankings**: View friends' rankings and ratings for books
 
 #### Navigation & UI
 - **Tab navigation**: Home, Your Shelf, Search, Leaderboard, Profile
 - **Stack navigation**: Nested navigation for search results and profile editing
-- **Onboarding flow**: Welcome screen, account creation, profile setup, reading interests
+- **Onboarding flow**: Welcome screen, account creation, profile setup, taste quiz
 - **Responsive design**: Safe area handling, proper keyboard avoidance
+- **Haptic feedback**: Tactile feedback for interactions (expo-haptics)
 
 ### 🚧 In Progress / Needs Work
 
@@ -81,8 +95,9 @@ A social book ranking and discovery app built with Expo (React Native), Supabase
 
 #### Search & Discovery
 - ✅ Simplified search result cards (cleaner UI)
-- Search filters (genre, author, year, etc.)
-- Book recommendations based on reading history
+- ✅ Genre and custom label filtering
+- ✅ Book recommendations based on reading history
+- Advanced search filters (author, year, publication date range, etc.)
 - Trending books section
 - Recently added books by followed users
 
@@ -168,19 +183,77 @@ Then press `i` for iOS simulator, `a` for Android emulator, or scan the QR code 
 inkli/
 ├── src/
 │   ├── components/
-│   │   ├── BookActionModal.tsx          # Book actions (edit, remove)
-│   │   ├── BookComparisonModal.tsx      # Binary search comparison UI
-│   │   ├── BookDetailModal.tsx          # Book details and add to shelf
-│   │   ├── BookRankingModal.tsx         # Ranking flow modal
-│   │   ├── DatePicker.tsx               # Date picker component
-│   │   ├── DatePickerModal.tsx          # Date picker modal
-│   │   ├── OnboardingTabBar.tsx         # Custom tab bar for onboarding
-│   │   └── ProfilePhotoActionSheet.tsx  # Profile photo actions
+│   │   ├── books/
+│   │   │   └── GenreLabelPicker.tsx     # Genre and label picker component
+│   │   ├── filters/
+│   │   │   ├── CustomLabelInput.tsx     # Custom label input component
+│   │   │   ├── FilterPanel.tsx          # Filtration panel for books
+│   │   │   └── GenreChip.tsx            # Genre chip component
+│   │   └── ui/
+│   │       └── DateRangePickerModal.tsx # Date range picker modal
 │   ├── config/
 │   │   ├── supabase.ts                  # Supabase client configuration
 │   │   └── theme.ts                     # Colors and typography config
 │   ├── contexts/
 │   │   └── AuthContext.tsx              # Authentication context provider
+│   ├── features/
+│   │   ├── auth/
+│   │   │   ├── components/
+│   │   │   │   └── OnboardingTabBar.tsx # Custom tab bar for onboarding
+│   │   │   └── screens/
+│   │   │       ├── CreateAccountScreen.tsx
+│   │   │       ├── LoginScreen.tsx
+│   │   │       ├── SetupProfileScreen.tsx
+│   │   │       ├── SignInScreen.tsx
+│   │   │       ├── SignUpEmailScreen.tsx
+│   │   │       └── WelcomeScreen.tsx
+│   │   ├── books/
+│   │   │   ├── components/
+│   │   │   │   ├── BookActionModal.tsx  # Book actions (edit, remove)
+│   │   │   │   ├── BookComparisonModal.tsx # Binary search comparison UI
+│   │   │   │   └── BookCoverPlaceholder.tsx # Placeholder for book covers
+│   │   │   └── screens/
+│   │   │       ├── BookDetailScreen.tsx # Book detail view
+│   │   │       └── BookRankingScreen.tsx # Book ranking with notes and dates
+│   │   ├── home/
+│   │   │   └── screens/
+│   │   │       └── HomeScreen.tsx       # Home activity feed
+│   │   ├── leaderboard/
+│   │   │   └── screens/
+│   │   │       └── LeaderboardScreen.tsx # Global leaderboard
+│   │   ├── onboarding/
+│   │   │   ├── components/
+│   │   │   │   ├── QuizBookCard.tsx     # Book card for onboarding quiz
+│   │   │   │   └── TasteProfileCard.tsx # Profile card for taste quiz
+│   │   │   └── screens/
+│   │   │       └── QuizScreen.tsx       # Onboarding quiz screen
+│   │   ├── profile/
+│   │   │   ├── components/
+│   │   │   │   └── ProfilePhotoActionSheet.tsx # Profile photo actions
+│   │   │   └── screens/
+│   │   │       ├── EditProfileScreen.tsx
+│   │   │       ├── ProfileScreen.tsx    # User profile with activity feed
+│   │   │       └── UserProfileScreen.tsx # Public profile view
+│   │   ├── recommendations/
+│   │   │   └── components/
+│   │   │       └── RecommendationsList.tsx # Book recommendations list
+│   │   ├── search/
+│   │   │   └── screens/
+│   │   │       └── SearchScreen.tsx     # Book search
+│   │   ├── shelf/
+│   │   │   ├── components/
+│   │   │   │   └── ShelfScreen.tsx      # Shelf view component
+│   │   │   └── screens/
+│   │   │       └── YourShelfScreen.tsx  # User's book shelf
+│   │   └── social/
+│   │       ├── components/
+│   │       │   └── RecentActivityCard.tsx # Activity card UI component
+│   │       └── screens/
+│   │           ├── ActivityCommentsScreen.tsx # Activity comments thread
+│   │           ├── ActivityLikesScreen.tsx    # Activity likes list
+│   │           ├── FollowersFollowingScreen.tsx # Followers/following list
+│   │           ├── NotificationsScreen.tsx    # Notifications screen
+│   │           └── UserShelfScreen.tsx        # Public shelves
 │   ├── hooks/
 │   │   └── useBookRanking.ts            # Binary search ranking hook
 │   ├── navigation/
@@ -188,33 +261,36 @@ inkli/
 │   │   ├── HomeStackNavigator.tsx       # Home feed stack
 │   │   ├── ProfileStackNavigator.tsx    # Profile screen stack
 │   │   ├── SearchStackNavigator.tsx     # Search screen stack
-│   │   └── TabNavigator.tsx             # Bottom tab navigation
-│   ├── screens/
-│   │   ├── HomeScreen.tsx               # Home activity feed
-│   │   ├── YourShelfScreen.tsx         # User's book shelf
-│   │   ├── SearchScreen.tsx             # Book search
-│   │   ├── BookDetailScreen.tsx         # Book detail view
-│   │   ├── BookRankingScreen.tsx        # Book ranking with notes and dates
-│   │   ├── LeaderboardScreen.tsx        # Global leaderboard
-│   │   ├── ProfileScreen.tsx           # User profile with activity feed
-│   │   ├── UserProfileScreen.tsx        # Public profile view
-│   │   ├── UserShelfScreen.tsx          # Public shelves
-│   │   ├── ActivityLikesScreen.tsx      # Activity likes list
-│   │   ├── ActivityCommentsScreen.tsx   # Activity comments thread
-│   │   ├── EditProfileScreen.tsx        # Edit profile
-│   │   ├── WelcomeScreen.tsx            # Onboarding welcome
-│   │   ├── CreateAccountScreen.tsx      # Account creation
-│   │   ├── SignInScreen.tsx             # Sign in
-│   │   ├── SignUpEmailScreen.tsx        # Email signup
-│   │   ├── SetupProfileScreen.tsx       # Profile setup
-│   │   └── ReadingInterestsScreen.tsx   # Reading interests selection
+│   │   ├── TabNavigator.tsx             # Bottom tab navigation
+│   │   ├── YourShelfStackNavigator.tsx  # Your Shelf stack
+│   │   └── types.ts                     # Navigation types
 │   ├── services/
-│   │   ├── books.ts                     # Book-related API functions
+│   │   ├── activityCommentLikes.ts      # Comment likes API
+│   │   ├── activityComments.ts          # Activity comments API
 │   │   ├── activityFeed.ts              # Home feed RPC + pagination
-│   │   └── userProfile.ts               # User profile API functions
+│   │   ├── activityLikes.ts             # Activity likes API
+│   │   ├── analytics.ts                 # Analytics service
+│   │   ├── books.ts                     # Book-related API functions
+│   │   ├── comparisons.ts               # Book comparison service
+│   │   ├── coverResolver.ts             # Cover URL resolution service
+│   │   ├── enrichment.ts                # Book enrichment service
+│   │   ├── notifications.ts             # Notifications service
+│   │   ├── quiz.ts                      # Onboarding quiz service
+│   │   ├── recommendations.ts           # Book recommendations service
+│   │   ├── supabase.ts                  # Supabase service exports
+│   │   ├── userProfile.ts               # User profile API functions
+│   │   └── users.ts                     # User management service
+│   ├── types/
+│   │   ├── activityCards.ts             # Activity card types
+│   │   ├── activityComments.ts          # Activity comment types
+│   │   ├── activityLikes.ts             # Activity like types
+│   │   └── users.ts                     # User types
 │   └── utils/
+│       ├── bookFilters.ts               # Book filtering utilities
+│       ├── bookHelpers.ts               # Book helper functions
 │       ├── bookRanking.ts               # Binary search ranking algorithm
-│       ├── bookRanking.example.ts       # Ranking example/guide
+│       ├── dateUtils.ts                 # Date utility functions
+│       ├── genreMapper.ts               # Genre mapping utilities
 │       └── rankScoreColors.ts           # Score color utilities
 ├── supabase/
 │   ├── schema.sql                       # Consolidated schema (current)
@@ -228,35 +304,141 @@ inkli/
 └── package.json                         # Dependencies
 ```
 
+### Architecture Overview
+
+The codebase follows a **feature-based architecture** where domain-specific code is organized into feature modules under `src/features/`. Each feature contains its own:
+- **screens/** - Screen components for that feature
+- **components/** - Feature-specific UI components (where applicable)
+
+This structure promotes:
+- **Modularity**: Each feature is self-contained and independent
+- **Scalability**: Easy to add new features without affecting existing ones
+- **Maintainability**: Related code is grouped together, making it easier to locate and modify
+
+**Feature Modules:**
+- **auth/** - Authentication screens (welcome, sign in/up, account creation)
+- **books/** - Book detail, ranking, and comparison interfaces
+- **home/** - Home activity feed
+- **leaderboard/** - Global user leaderboard
+- **onboarding/** - Onboarding quiz and taste profile setup
+- **profile/** - User profile management and viewing
+- **recommendations/** - Book recommendations
+- **search/** - Book search functionality
+- **shelf/** - User's book shelf management
+- **social/** - Social features (activity cards, comments, likes, followers, notifications)
+
+**Shared code** is organized outside the features directory:
+- **components/** - Reusable UI components used across features
+- **services/** - API and data access layer
+- **hooks/** - Custom React hooks
+- **utils/** - Utility functions and helpers
+- **types/** - TypeScript type definitions
+- **navigation/** - Navigation configuration
+- **contexts/** - React context providers
+- **config/** - App configuration files
+
 ## 🔧 Core Functions
 
 ### Book Services (`src/services/books.ts`)
+Core book management and search functionality:
 - `searchBooks(query)` - Search Open Library API
 - `searchBooksWithStats(query)` - Search with community statistics
 - `enrichBookWithGoogleBooks(olBook)` - Enrich with Google Books data
+- `buildBookFromOpenLibrary(olBook)` - Build book object from Open Library data
+- `checkDatabaseForBook(openLibraryId, googleBooksId)` - Check if book exists in database
 - `addBookToShelf(bookData, status, userId, options)` - Add book to shelf
 - `getUserBooks(userId)` - Get user's books ordered by rank
-- `updateBookRankScore(userId, rating, userBookId, position)` - Update ranking
-- `updateUserBookDetails(userBookId, userId, updates)` - Update book details (rating, notes, dates)
 - `getUserBooksByRating(userId, rating)` - Get books by rating category
+- `getUserBookCounts(userId)` - Get count of books by status
+- `updateUserBookDetails(userBookId, userId, updates)` - Update book details (rating, notes, dates)
+- `updateBookStatus(userBookId, userId, newStatus)` - Update book status
+- `removeBookFromShelf(userBookId, userId)` - Remove book from shelf
 - `getRecentUserBooks(userId, limit)` - Get recent activity with notes and dates
+- `getBookCircles(bookId, userId, limit)` - Get users who have read a book
+- `updateBookCommunityStats(bookId)` - Update community stats for a book
+- `updateBookGenres(userBookId, userId, genres)` - Update book genres
+- `getFriendsRankingsForBook(userId, bookId)` - Get friends' rankings for a book
+
+### Read Sessions (`src/services/books.ts`)
+Track reading sessions for books:
+- `getReadSessions(userBookId, userId)` - Get read sessions for a book
+- `addReadSession(userBookId, userId, startedDate, finishedDate)` - Add a read session
+- `updateReadSession(sessionId, userBookId, userId, updates)` - Update a read session
+- `deleteReadSession(sessionId, userBookId, userId)` - Delete a read session
 
 ### Activity Feed Services (`src/services/activityFeed.ts`)
-- `fetchFollowedActivityCards(userId, options)` - Cursor-paginated feed from RPC
+Home feed with pagination and activity tracking:
+- `fetchFollowedActivityCards(userId, options)` - Cursor-paginated feed from followed users
+- `fetchUserActivityCards(userId, options)` - Cursor-paginated activity cards for a specific user
+
+### Activity Engagement (`src/services/activityLikes.ts`, `src/services/activityComments.ts`)
+Social engagement on activity items:
+- `likeActivity(userId, activityCardId)` - Like an activity card
+- `unlikeActivity(userId, activityCardId)` - Unlike an activity card
+- `getActivityLikes(activityCardId, options)` - Get likes for an activity card
+- `addComment(userId, activityCardId, content)` - Add comment to activity
+- `getActivityComments(activityCardId, options)` - Get comments with pagination
+- `deleteComment(commentId, userId)` - Delete a comment
+- `likeComment(userId, commentId)` - Like a comment
+- `unlikeComment(userId, commentId)` - Unlike a comment
 
 ### User Profile Services (`src/services/userProfile.ts`)
+Comprehensive user profile and social features:
 - `getUserProfile(userId)` - Get user profile
 - `updateUserProfile(userId, updates)` - Update profile
+- `checkUsernameAvailability(username)` - Check if username is available
 - `uploadProfilePhoto(userId, imageUri)` - Upload profile photo
-- `searchMembers(query)` - Search for users
+- `deleteProfilePhoto(userId)` - Delete profile photo
+- `getProfilePictureUrl(profilePicturePathOrUrl)` - Get profile picture URL
+- `searchMembers(query)` - Search for users by username or name
 - `followUser(followerId, followingId)` - Follow a user
 - `unfollowUser(followerId, followingId)` - Unfollow a user
+- `checkIfFollowing(followerId, followingId)` - Check if following a user
+- `getFollowersList(userId, options)` - Get list of followers
+- `getFollowingList(userId, options)` - Get list of users being followed
+- `getFollowerCount(userId)` - Get follower count
+- `getFollowingCount(userId)` - Get following count
+- `getAccountType(userId)` - Get account type (public/private)
+- `updateAccountType(userId, accountType)` - Update account type
+- `getOutgoingFollowRequests(userId)` - Get pending outgoing follow requests
+- `getIncomingFollowRequests(userId)` - Get pending incoming follow requests
+- `acceptFollowRequest(requestId)` - Accept follow request
+- `rejectFollowRequest(requestId)` - Reject follow request
+- `cancelFollowRequest(requestId)` - Cancel outgoing follow request
+- `blockUser(blockerId, blockedId)` - Block a user
+- `unblockUser(blockerId, blockedId)` - Unblock a user
+- `getBlockedUsers(userId)` - Get list of blocked users
+- `muteUser(muterId, mutedId)` - Mute a user
+- `unmuteUser(muterId, mutedId)` - Unmute a user
+- `getMutedUsers(userId)` - Get list of muted users
+
+### Recommendations (`src/services/recommendations.ts`)
+Book recommendation engine:
+- Provides personalized book recommendations based on reading history and preferences
+
+### Onboarding Quiz (`src/services/quiz.ts`)
+Onboarding quiz for taste profile:
+- Manages quiz questions and responses to build user taste profiles
+
+### Cover Resolution (`src/services/coverResolver.ts`)
+Intelligent cover URL resolution and caching:
+- `resolveCoverUrl(book)` - Resolve best available cover URL from multiple sources
+
+### Notifications (`src/services/notifications.ts`)
+In-app notifications system:
+- Manages user notifications for social interactions
+
+### Analytics (`src/services/analytics.ts`)
+User analytics and tracking:
+- Tracks user actions and provides insights
 
 ### Ranking System (`src/utils/bookRanking.ts`)
-- Binary search algorithm for efficient book ranking
-- O(log n) comparisons instead of O(n) for inserting new books
+Efficient binary search-based ranking algorithm:
+- Binary search algorithm for O(log n) book ranking
 - Supports three rating categories: liked, fine, disliked
 - Default scores: 10.0 (liked), 6.0 (fine), 4.0 (disliked)
+- High-precision fractional scores for accurate ordering
+- Tiered ranking system for better organization
 
 ## 🎯 What Needs to Be Done
 
@@ -301,7 +483,7 @@ inkli/
 7. **UI/UX Polish**
    - Animations and transitions
    - Skeleton loaders
-   - Haptic feedback
+   - ✅ Haptic feedback (expo-haptics integrated)
    - Dark mode support
 
 8. **Accessibility**
