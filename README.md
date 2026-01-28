@@ -81,15 +81,14 @@ A social book ranking and discovery app built with Expo (React Native), Supabase
 - Loading states could be more consistent across screens
 - Error handling and user feedback messages
 - Empty states for all screens
-- Pull-to-refresh functionality
+- ✅ Pull-to-refresh functionality
 - Skeleton loaders for better perceived performance
 
 #### Ranking System
 - ✅ Notes and dates read display on activity cards
 - ✅ Auto-save functionality for notes and dates
 - ✅ Database precision fixed to support scores up to 10.0
-- Drag-to-reorder alternative to binary search (for users who prefer it)
-- Bulk ranking operations (rank multiple books at once)
+- ✅ Drag-to-reorder alternative to binary search (for users who prefer it)
 - Ranking history/undo functionality
 - Export rankings feature
 
@@ -102,10 +101,10 @@ A social book ranking and discovery app built with Expo (React Native), Supabase
 - Recently added books by followed users
 
 #### Performance Optimizations
-- Image caching and optimization
-- Pagination for large book lists
+- ✅ Image caching and optimization
+- ✅ Pagination for large book lists
 - Virtualized lists for better scroll performance
-- Optimistic UI updates
+- ✅Optimistic UI updates
 
 ## 📋 Setup Instructions
 
