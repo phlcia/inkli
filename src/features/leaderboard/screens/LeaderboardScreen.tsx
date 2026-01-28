@@ -1,5 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, ActivityIndicator } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  Image,
+  ActivityIndicator,
+  RefreshControl,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography } from '../../../config/theme';
 import { supabase } from '../../../config/supabase';
@@ -18,14 +26,17 @@ export default function LeaderboardScreen() {
   const [topUsers, setTopUsers] = useState<LeaderboardUser[]>([]);
   const [currentUserRank, setCurrentUserRank] = useState<LeaderboardUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     fetchLeaderboard();
   }, [currentUser]);
 
-  async function fetchLeaderboard() {
+  async function fetchLeaderboard(showLoading = true) {
     try {
-      setLoading(true);
+      if (showLoading) {
+        setLoading(true);
+      }
       
       // Get top 100 users
       const { data: leaders, error: leadersError } = await supabase
@@ -83,9 +94,20 @@ export default function LeaderboardScreen() {
     } catch (error) {
       console.error('Error fetching leaderboard:', error);
     } finally {
-      setLoading(false);
+      if (showLoading) {
+        setLoading(false);
+      }
     }
   }
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await fetchLeaderboard(false);
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -117,6 +139,13 @@ export default function LeaderboardScreen() {
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.primaryBlue}
+          />
+        }
       >
         <Text style={styles.headerText}>Top Readers</Text>
         
@@ -336,4 +365,3 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
-

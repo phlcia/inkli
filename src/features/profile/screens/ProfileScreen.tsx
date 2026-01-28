@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
@@ -56,6 +57,7 @@ export default function ProfileScreen() {
   });
   const [recentBooks, setRecentBooks] = useState<ActivityFeedItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<'activity' | 'profile'>('activity');
   const [viewerShelfMap, setViewerShelfMap] = useState<Record<string, { id: string; status: UserBook['status'] }>>({});
   const [userProfile, setUserProfile] = useState<{
@@ -154,14 +156,18 @@ export default function ProfileScreen() {
       .filter((item) => item.requester);
   };
 
-  const loadProfileData = async () => {
+  const loadProfileData = async (showLoading = true) => {
     if (!user) {
-      setLoading(false);
+      if (showLoading) {
+        setLoading(false);
+      }
       return;
     }
 
     try {
-      setLoading(true);
+      if (showLoading) {
+        setLoading(true);
+      }
       console.log('=== ProfileScreen: Loading profile data ===');
       const [
         counts,
@@ -227,7 +233,9 @@ export default function ProfileScreen() {
       console.error('Error loading profile data:', error);
       Alert.alert('Error', 'Failed to load profile data');
     } finally {
-      setLoading(false);
+      if (showLoading) {
+        setLoading(false);
+      }
     }
   };
 
@@ -248,6 +256,15 @@ export default function ProfileScreen() {
       (navigation as any).setParams({ refresh: undefined });
     }
   }, [route.params, navigation, user]);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await loadProfileData(false);
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const getUsername = () => {
     if (!user?.email) return 'user';
@@ -531,6 +548,13 @@ export default function ProfileScreen() {
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.primaryBlue}
+          />
+        }
       >
         {/* Profile Section */}
         <View style={styles.profileSection}>

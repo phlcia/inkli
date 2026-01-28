@@ -8,6 +8,7 @@ import {
   FlatList,
   Image,
   ActivityIndicator,
+  RefreshControl,
   KeyboardAvoidingView,
   Platform,
   Alert,
@@ -67,6 +68,7 @@ export default function ActivityCommentsScreen() {
   const [loading, setLoading] = useState(true);
   const [commentText, setCommentText] = useState('');
   const [posting, setPosting] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [replyTo, setReplyTo] = useState<ActivityComment | null>(null);
   const [likeCounts, setLikeCounts] = useState<Map<string, number>>(new Map());
   const [likedKeys, setLikedKeys] = useState<Set<string>>(new Set());
@@ -95,9 +97,11 @@ export default function ActivityCommentsScreen() {
   >(route.params.viewerStatus ?? null);
   const canMention = !!currentUser?.id;
 
-  const loadComments = useCallback(async () => {
+  const loadComments = useCallback(async (showLoading = true) => {
     try {
-      setLoading(true);
+      if (showLoading) {
+        setLoading(true);
+      }
       const data = await getActivityComments(userBookId);
       setComments(data);
 
@@ -110,7 +114,9 @@ export default function ActivityCommentsScreen() {
       setLikeCounts(mergedCounts);
       setLikedKeys(likedIds);
     } finally {
-      setLoading(false);
+      if (showLoading) {
+        setLoading(false);
+      }
     }
   }, [currentUser?.id, userBookId]);
 
@@ -233,6 +239,15 @@ export default function ActivityCommentsScreen() {
       loadHeader();
     }, [loadHeader])
   );
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([loadHeader(), loadComments(false)]);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [loadComments, loadHeader]);
 
   const rows = useMemo<CommentRow[]>(() => {
     const topLevel = comments.filter((c) => !c.parent_comment_id);
@@ -577,6 +592,13 @@ export default function ActivityCommentsScreen() {
           data={rows}
           keyExtractor={(row) => row.item.id}
           renderItem={renderItem}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={colors.primaryBlue}
+            />
+          }
           contentContainerStyle={styles.listContent}
           ListHeaderComponent={
             headerUserBook ? (
