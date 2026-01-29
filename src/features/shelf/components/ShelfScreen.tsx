@@ -12,10 +12,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import DraggableFlatList, { RenderItemParams } from 'react-native-draggable-flatlist';
 import { colors, typography } from '../../../config/theme';
 import { useAuth } from '../../../contexts/AuthContext';
-import { getUserBooks, UserBook, removeCustomLabelFromAllBooks, updateTierScoresBatch } from '../../../services/books';
+import { getUserBooks, UserBook, removeCustomLabelFromAllBooks } from '../../../services/books';
 import { getScoreColor, formatScore } from '../../../utils/rankScoreColors';
 import { supabase } from '../../../config/supabase';
 import { YourShelfStackParamList } from '../../../navigation/YourShelfStackNavigator';
@@ -26,8 +25,6 @@ import { trackFilterApplied, trackFilterCleared, trackCustomLabelDeleted, ShelfC
 import RecommendationsList from '../../recommendations/components/RecommendationsList';
 
 type ShelfTab = 'read' | 'currently_reading' | 'want_to_read' | 'recommended';
-type RatingTier = 'liked' | 'fine' | 'disliked';
-
 type ShelfScreenProps = {
   ownerUserId: string;
   headerTitle: string;
@@ -36,7 +33,7 @@ type ShelfScreenProps = {
 };
 
 type ShelfNavigationProp =
-  | NativeStackNavigationProp<YourShelfStackParamList, 'YourShelfMain'>
+  | NativeStackNavigationProp<YourShelfStackParamList>
   | NativeStackNavigationProp<SearchStackParamList, 'UserShelf'>;
 
 export default function ShelfScreen({
@@ -51,13 +48,6 @@ export default function ShelfScreen({
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<ShelfTab>(initialTab || 'read');
-  const [isReorderMode, setIsReorderMode] = useState(false);
-  const [isSavingReorder, setIsSavingReorder] = useState(false);
-  const [reorderBooks, setReorderBooks] = useState<{
-    liked: UserBook[];
-    fine: UserBook[];
-    disliked: UserBook[];
-  } | null>(null);
   
   // Filter state
   const [filterPanelVisible, setFilterPanelVisible] = useState(false);
@@ -156,27 +146,10 @@ export default function ShelfScreen({
     }
   }, [initialTab, canShowRecommendations]);
 
-  useEffect(() => {
-    if (activeTab !== 'read' && isReorderMode) {
-      setIsReorderMode(false);
-      setReorderBooks(null);
-    }
-  }, [activeTab, isReorderMode]);
-
   const shelfContextForFilters: ShelfContext =
     activeTab === 'read' || activeTab === 'currently_reading' || activeTab === 'want_to_read'
       ? activeTab
       : 'read';
-
-  const splitReadBooksByRating = useCallback((readBooks: UserBook[]) => {
-    const tiers = { liked: [] as UserBook[], fine: [] as UserBook[], disliked: [] as UserBook[] };
-    readBooks.forEach((book) => {
-      if (book.rating === 'liked') tiers.liked.push(book);
-      else if (book.rating === 'fine') tiers.fine.push(book);
-      else if (book.rating === 'disliked') tiers.disliked.push(book);
-    });
-    return tiers;
-  }, []);
 
   // Apply filters to all books (across all shelves)
   const filteredBooks = useMemo(() => {
@@ -214,7 +187,6 @@ export default function ShelfScreen({
 
   const hasActiveFilters = selectedGenres.length > 0 || selectedCustomLabels.length > 0;
   const isOwnerViewing = Boolean(currentUser?.id && currentUser.id === ownerUserId);
-  const canReorder = activeTab === 'read' && isOwnerViewing && !hasActiveFilters && !loading;
 
   const handleFiltersChange = useCallback((genres: string[], customLabels: string[]) => {
     setSelectedGenres(genres);
@@ -258,74 +230,6 @@ export default function ShelfScreen({
     }
   }, [currentUser?.id, loadBooks]);
 
-  const handleStartReorder = useCallback(() => {
-    if (!canReorder) {
-      if (hasActiveFilters) {
-        Alert.alert('Clear filters to reorder', 'Reordering is only available without filters.');
-      }
-      return;
-    }
-    setFilterPanelVisible(false);
-    const snapshot = splitReadBooksByRating(booksForCurrentTab);
-    setReorderBooks(snapshot);
-    setIsReorderMode(true);
-  }, [canReorder, hasActiveFilters, splitReadBooksByRating, booksForCurrentTab]);
-
-  const handleCancelReorder = useCallback(() => {
-    setIsReorderMode(false);
-    setReorderBooks(null);
-  }, []);
-
-  const roundScore = (score: number): number => Math.round(score * 1000) / 1000;
-
-  const computeTierScores = useCallback((tier: RatingTier, tierBooks: UserBook[]) => {
-    const TIER_BOUNDARIES = {
-      disliked: { min: 0, max: 3.5 },
-      fine: { min: 3.5, max: 6.5 },
-      liked: { min: 6.5, max: 10.0 },
-    } as const;
-
-    const { min, max } = TIER_BOUNDARIES[tier];
-    const count = tierBooks.length;
-    if (count === 0) return [];
-    const range = max - min;
-
-    return tierBooks.map((book, index) => ({
-      id: book.id,
-      score: roundScore(range * (count - index) / count + min),
-    }));
-  }, []);
-
-  const handleSaveReorder = useCallback(async () => {
-    if (!currentUser?.id || !reorderBooks) {
-      handleCancelReorder();
-      return;
-    }
-
-    setIsSavingReorder(true);
-    try {
-      const tiers: RatingTier[] = ['liked', 'fine', 'disliked'];
-      for (const tier of tiers) {
-        const updatedBooks = computeTierScores(tier, reorderBooks[tier]);
-        if (updatedBooks.length > 0) {
-          await updateTierScoresBatch(currentUser.id, tier, updatedBooks, { touchUpdatedAt: false });
-        }
-      }
-    } catch (error) {
-      console.error('Error saving reorder:', error);
-      Alert.alert('Failed to save order', 'Your changes were not saved. Please try again.');
-    } finally {
-      setIsSavingReorder(false);
-      setIsReorderMode(false);
-      setReorderBooks(null);
-      await loadBooks();
-    }
-  }, [currentUser?.id, reorderBooks, computeTierScores, loadBooks, handleCancelReorder]);
-
-  const handleTierDragEnd = useCallback((tier: RatingTier, newData: UserBook[]) => {
-    setReorderBooks((prev) => (prev ? { ...prev, [tier]: newData } : prev));
-  }, []);
-
   const handleBookPress = async (userBook: UserBook) => {
     if (!userBook.book) return;
 
@@ -360,11 +264,6 @@ export default function ShelfScreen({
       Alert.alert('Error', 'Could not load book details');
     }
   };
-
-  const handleTabPress = useCallback((tab: ShelfTab) => {
-    if (isReorderMode) return;
-    setActiveTab(tab);
-  }, [isReorderMode]);
 
   const renderBookItem = (book: UserBook, rankNumber: number) => {
     const bookData = book.book;
@@ -405,52 +304,6 @@ export default function ShelfScreen({
       </TouchableOpacity>
     );
   };
-
-  const renderReorderItem = useCallback(
-    ({ item, index, drag, isActive }: RenderItemParams<UserBook>) => {
-      const bookData = item.book;
-      if (!bookData) return null;
-
-      const score = item.rank_score || 0;
-      const scoreColor = getScoreColor(score);
-
-      return (
-        <View style={[styles.bookItem, isActive && styles.bookItemActive]}>
-          <TouchableOpacity
-            style={styles.dragHandle}
-            onLongPress={drag}
-            disabled={isSavingReorder}
-            activeOpacity={0.6}
-          >
-            <Text style={styles.dragHandleText}>≡</Text>
-          </TouchableOpacity>
-          <Text style={styles.rankNumber}>{index + 1}.</Text>
-          <View style={styles.bookInfo}>
-            <Text style={styles.bookTitle} numberOfLines={2}>
-              {bookData.title}
-            </Text>
-            {bookData.categories && bookData.categories.length > 0 && (
-              <Text style={styles.bookCategories} numberOfLines={1}>
-                {bookData.categories.slice(0, 2).join(', ')}
-              </Text>
-            )}
-            {bookData.authors && bookData.authors.length > 0 && (
-              <Text style={styles.bookAuthor} numberOfLines={1}>
-                {bookData.authors.join(', ')}
-              </Text>
-            )}
-          </View>
-
-          {item.rank_score !== null && (
-            <View style={[styles.scoreCircle, { backgroundColor: scoreColor }]}>
-              <Text style={styles.scoreText}>{formatScore(score)}</Text>
-            </View>
-          )}
-        </View>
-      );
-    },
-    [isSavingReorder]
-  );
 
   const getEmptyStateMessage = () => {
     if (hasActiveFilters) {
@@ -499,12 +352,6 @@ export default function ShelfScreen({
   };
 
   const emptyState = getEmptyStateMessage();
-  const tierTitles: Record<RatingTier, string> = {
-    liked: 'Liked',
-    fine: 'Fine',
-    disliked: 'Disliked',
-  };
-  const tieredReadBooks = reorderBooks ?? splitReadBooksByRating(booksForCurrentTab);
 
   if (loading) {
     return (
@@ -529,28 +376,21 @@ export default function ShelfScreen({
           <Text style={styles.title}>{headerTitle}</Text>
         </View>
         <View style={styles.headerRight}>
-          {activeTab === 'read' && isOwnerViewing && !isReorderMode && (
+          {activeTab === 'read' && isOwnerViewing && (
             <TouchableOpacity
               style={[styles.reorderButton, hasActiveFilters && styles.reorderButtonDisabled]}
-              onPress={handleStartReorder}
+              onPress={() => {
+                if (hasActiveFilters) {
+                  Alert.alert('Clear filters to reorder', 'Reordering is only available without filters.');
+                  return;
+                }
+                (navigation as NativeStackNavigationProp<YourShelfStackParamList>).navigate('ReorderShelf');
+              }}
             >
-              <Text style={styles.reorderButtonText}>
-                Reorder
-              </Text>
+              <Text style={styles.reorderButtonText}>Reorder</Text>
             </TouchableOpacity>
           )}
-          {activeTab === 'read' && isOwnerViewing && isReorderMode && (
-            <TouchableOpacity
-              style={[styles.reorderButton, isSavingReorder && styles.reorderButtonDisabled]}
-              onPress={handleSaveReorder}
-              disabled={isSavingReorder}
-            >
-              <Text style={styles.reorderButtonText}>
-                {isSavingReorder ? 'Saving...' : 'Done'}
-              </Text>
-            </TouchableOpacity>
-          )}
-          {activeTab === 'read' && !isReorderMode && (
+          {activeTab === 'read' && (
             <TouchableOpacity
               style={[styles.filterButton, hasActiveFilters && styles.filterButtonActive]}
               onPress={() => setFilterPanelVisible(true)}
@@ -569,23 +409,23 @@ export default function ShelfScreen({
         style={styles.tabScroll}
         contentContainerStyle={styles.tabContainer}
       >
-        <TouchableOpacity style={styles.tab} onPress={() => handleTabPress('read')}>
+        <TouchableOpacity style={styles.tab} onPress={() => setActiveTab('read')}>
           <Text style={[styles.tabText, activeTab === 'read' && styles.tabTextActive]}>
             Read
           </Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.tab} onPress={() => handleTabPress('currently_reading')}>
+        <TouchableOpacity style={styles.tab} onPress={() => setActiveTab('currently_reading')}>
           <Text style={[styles.tabText, activeTab === 'currently_reading' && styles.tabTextActive]}>
             Currently Reading
           </Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.tab} onPress={() => handleTabPress('want_to_read')}>
+        <TouchableOpacity style={styles.tab} onPress={() => setActiveTab('want_to_read')}>
           <Text style={[styles.tabText, activeTab === 'want_to_read' && styles.tabTextActive]}>
             Want to Read
           </Text>
         </TouchableOpacity>
         {canShowRecommendations && (
-          <TouchableOpacity style={styles.tab} onPress={() => handleTabPress('recommended')}>
+          <TouchableOpacity style={styles.tab} onPress={() => setActiveTab('recommended')}>
             <Text style={[styles.tabText, activeTab === 'recommended' && styles.tabTextActive]}>
               Recommended
             </Text>
@@ -597,42 +437,17 @@ export default function ShelfScreen({
 
       {activeTab === 'recommended' && canShowRecommendations ? (
         <RecommendationsList showHeader={false} />
-      ) : activeTab === 'read' && isReorderMode ? (
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-        >
-          {(Object.keys(tierTitles) as RatingTier[]).map((tier) => {
-            const tierBooks = tieredReadBooks[tier];
-            if (!tierBooks || tierBooks.length === 0) return null;
-            return (
-              <View key={tier} style={styles.tierSection}>
-                <Text style={styles.tierTitle}>{tierTitles[tier]}</Text>
-                <DraggableFlatList
-                  data={tierBooks}
-                  onDragEnd={({ data }) => handleTierDragEnd(tier, data)}
-                  keyExtractor={(item) => item.id}
-                  renderItem={renderReorderItem}
-                  scrollEnabled={false}
-                />
-              </View>
-            );
-          })}
-        </ScrollView>
       ) : sortedBooks.length === 0 ? (
         <ScrollView
           style={styles.scrollView}
           contentContainerStyle={[styles.scrollContent, styles.emptyContainer]}
           showsVerticalScrollIndicator={false}
           refreshControl={
-            !isReorderMode ? (
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={handleRefresh}
-                tintColor={colors.primaryBlue}
-              />
-            ) : undefined
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={colors.primaryBlue}
+            />
           }
         >
           <Text style={styles.emptyText}>{emptyState.title}</Text>
@@ -644,13 +459,11 @@ export default function ShelfScreen({
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           refreshControl={
-            !isReorderMode ? (
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={handleRefresh}
-                tintColor={colors.primaryBlue}
-              />
-            ) : undefined
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={colors.primaryBlue}
+            />
           }
         >
           {sortedBooks.map((book, index) => renderBookItem(book, index + 1))}
@@ -732,7 +545,7 @@ const styles = StyleSheet.create({
   },
   headerRight: {
     flexDirection: 'row',
-    gap: 16,
+    gap: 8,
     flexShrink: 0,
     alignItems: 'center',
   },
@@ -807,18 +620,6 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingTop: 8,
   },
-  tierSection: {
-    marginBottom: 20,
-  },
-  tierTitle: {
-    fontSize: 14,
-    fontFamily: typography.body,
-    color: colors.brownText,
-    fontWeight: '700',
-    marginBottom: 8,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
   bookItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -832,19 +633,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 2,
     elevation: 2,
-  },
-  bookItemActive: {
-    opacity: 0.8,
-  },
-  dragHandle: {
-    marginRight: 8,
-    paddingHorizontal: 4,
-    paddingVertical: 6,
-  },
-  dragHandleText: {
-    fontSize: 18,
-    color: '#999',
-    fontFamily: typography.body,
   },
   rankNumber: {
     fontSize: 24,

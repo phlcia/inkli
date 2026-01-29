@@ -2,6 +2,7 @@ import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { colors } from '../config/theme';
 import YourShelfScreen from '../features/shelf/screens/YourShelfScreen';
+import ReorderShelfScreen from '../features/shelf/screens/ReorderShelfScreen';
 import BookDetailScreen from '../features/books/screens/BookDetailScreen';
 import BookRankingScreen from '../features/books/screens/BookRankingScreen';
 import { BookRankingParams } from './types';
@@ -11,6 +12,7 @@ export type YourShelfStackParamList = {
     initialTab?: 'read' | 'currently_reading' | 'want_to_read' | 'recommended';
     refresh?: boolean;
   };
+  ReorderShelf: undefined;
   BookDetail: { book: any }; // Enriched book data
   BookRanking: BookRankingParams;
 };
@@ -28,6 +30,7 @@ export default function YourShelfStackNavigator() {
       }}
     >
       <Stack.Screen name="YourShelfMain" component={YourShelfScreen} />
+      <Stack.Screen name="ReorderShelf" component={ReorderShelfScreen} />
       <Stack.Screen
         name="BookDetail"
         component={BookDetailScreen}
