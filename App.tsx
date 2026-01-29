@@ -12,6 +12,7 @@ import {
   Inter_600SemiBold,
 } from '@expo-google-fonts/inter';
 import { ActivityIndicator, View, StyleSheet, Linking } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { colors } from './src/config/theme';
 import TabNavigator from './src/navigation/TabNavigator';
 import { AuthProvider, useAuth } from './src/contexts/AuthContext';
@@ -96,20 +97,22 @@ function AppContent() {
   }
 
   return (
-    <NavigationContainer key="main-navigator">
-      {hasUser ? (
-        needsOnboardingQuiz ? (
-          <AuthStackNavigator
-            initialRouteName="Quiz"
-            onQuizComplete={() => setProfileRefreshCount((count) => count + 1)}
-          />
+    <GestureHandlerRootView style={styles.appRoot}>
+      <NavigationContainer key="main-navigator">
+        {hasUser ? (
+          needsOnboardingQuiz ? (
+            <AuthStackNavigator
+              initialRouteName="Quiz"
+              onQuizComplete={() => setProfileRefreshCount((count) => count + 1)}
+            />
+          ) : (
+            <TabNavigator />
+          )
         ) : (
-          <TabNavigator />
-        )
-      ) : (
-        <AuthStackNavigator />
-      )}
-    </NavigationContainer>
+          <AuthStackNavigator />
+        )}
+      </NavigationContainer>
+    </GestureHandlerRootView>
   );
 }
 
@@ -193,6 +196,9 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
+  appRoot: {
+    flex: 1,
+  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
