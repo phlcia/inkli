@@ -23,8 +23,9 @@ import FilterPanel from '../../../components/filters/FilterPanel';
 import { filterBooks, groupBooksByShelf, getFilteredBookCounts } from '../../../utils/bookFilters';
 import { trackFilterApplied, trackFilterCleared, trackCustomLabelDeleted, ShelfContext } from '../../../services/analytics';
 import RecommendationsList from '../../recommendations/components/RecommendationsList';
+import FriendsLikedList from '../../recommendations/components/FriendsLikedList';
 
-type ShelfTab = 'read' | 'currently_reading' | 'want_to_read' | 'recommended';
+type ShelfTab = 'read' | 'currently_reading' | 'want_to_read' | 'recommended' | 'friends_liked';
 type ShelfScreenProps = {
   ownerUserId: string;
   headerTitle: string;
@@ -139,10 +140,14 @@ export default function ShelfScreen({
 
   useEffect(() => {
     if (initialTab) {
-      const validTab = ['read', 'currently_reading', 'want_to_read', 'recommended'].includes(initialTab)
+      const validTab = ['read', 'currently_reading', 'want_to_read', 'recommended', 'friends_liked'].includes(initialTab)
         ? initialTab
         : 'read';
-      setActiveTab(validTab === 'recommended' && !canShowRecommendations ? 'read' : validTab);
+      if ((validTab === 'recommended' || validTab === 'friends_liked') && !canShowRecommendations) {
+        setActiveTab('read');
+      } else {
+        setActiveTab(validTab);
+      }
     }
   }, [initialTab, canShowRecommendations]);
 
@@ -348,6 +353,11 @@ export default function ShelfScreen({
           title: 'No recommendations yet...',
           subtitle: 'Keep ranking books to improve your recommendations!',
         };
+      case 'friends_liked':
+        return {
+          title: 'No friend activity yet...',
+          subtitle: 'Follow more friends to see what they like.',
+        };
     }
   };
 
@@ -431,12 +441,21 @@ export default function ShelfScreen({
             </Text>
           </TouchableOpacity>
         )}
+        {canShowRecommendations && (
+          <TouchableOpacity style={styles.tab} onPress={() => setActiveTab('friends_liked')}>
+            <Text style={[styles.tabText, activeTab === 'friends_liked' && styles.tabTextActive]}>
+              From Your Friends
+            </Text>
+          </TouchableOpacity>
+        )}
       </ScrollView>
 
       <View style={styles.separator} />
 
       {activeTab === 'recommended' && canShowRecommendations ? (
         <RecommendationsList showHeader={false} />
+      ) : activeTab === 'friends_liked' && canShowRecommendations && currentUser?.id ? (
+        <FriendsLikedList showHeader={false} userId={currentUser.id} />
       ) : sortedBooks.length === 0 ? (
         <ScrollView
           style={styles.scrollView}

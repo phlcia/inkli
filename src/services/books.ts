@@ -132,6 +132,21 @@ export interface BookCirclesResult {
   friends: BookCircleStats;
 }
 
+export interface FriendProfile {
+  user_id: string;
+  username: string;
+  profile_photo_url: string | null;
+}
+
+export interface FriendsLikedBook {
+  book_id: string;
+  book: Book;
+  average_score: number | null;
+  friends_count: number;
+  friends: FriendProfile[];
+  most_recent_updated_at: string;
+}
+
 export interface BookShelfCounts {
   read: number;
   currently_reading: number;
@@ -1767,6 +1782,141 @@ export async function getRecentUserBooks(
     return result;
   } catch (error) {
     console.error('Error fetching recent user books:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get books recently liked by friends (status=read, rating=liked or rank_score >= 6.5)
+ * Returns book details plus friend-only average score and friend list
+ */
+export async function getFriendsRecentLiked(
+  userId: string,
+  limit: number = 25
+): Promise<FriendsLikedBook[]> {
+  try {
+    const { data: followingData, error: followingError } = await supabase
+      .from('user_follows')
+      .select('following_id')
+      .eq('follower_id', userId);
+
+    if (followingError) {
+      console.error('Error fetching following list:', followingError);
+      throw new Error('Failed to fetch following list');
+    }
+
+    const friendIds = (followingData || [])
+      .map((row) => row.following_id)
+      .filter((id): id is string => Boolean(id));
+
+    if (friendIds.length === 0) {
+      return [];
+    }
+
+    const fetchLimit = Math.max(limit * 6, 120);
+
+    const { data: userBooksData, error: userBooksError } = await supabase
+      .from('user_books')
+      .select(
+        `
+        id,
+        user_id,
+        book_id,
+        rank_score,
+        rating,
+        status,
+        updated_at,
+        book:books(*)
+        `
+      )
+      .in('user_id', friendIds)
+      .eq('status', 'read')
+      .or('rating.eq.liked,rank_score.gte.6.5')
+      .order('updated_at', { ascending: false })
+      .limit(fetchLimit);
+
+    if (userBooksError) {
+      console.error('Error fetching friends liked books:', userBooksError);
+      throw new Error('Failed to fetch friends liked books');
+    }
+
+    if (!userBooksData || userBooksData.length === 0) {
+      return [];
+    }
+
+    const userIds = Array.from(new Set(userBooksData.map((item) => item.user_id)));
+    const { data: profilesData, error: profilesError } = await supabase
+      .from('user_profiles')
+      .select('user_id, username, profile_photo_url')
+      .in('user_id', userIds);
+
+    if (profilesError) {
+      console.error('Error fetching friend profiles:', profilesError);
+    }
+
+    const profileMap = new Map(
+      (profilesData || []).map((profile) => [profile.user_id, profile as FriendProfile])
+    );
+
+    const grouped = new Map<
+      string,
+      {
+        book: Book;
+        friends: Map<string, FriendProfile>;
+        scoreTotal: number;
+        scoreCount: number;
+        mostRecentUpdatedAt: string;
+      }
+    >();
+
+    userBooksData.forEach((item) => {
+      if (!item.book_id || !item.book) return;
+      const bookId = item.book_id as string;
+      const book = item.book as Book;
+
+      const existing = grouped.get(bookId);
+      const profile = profileMap.get(item.user_id) || {
+        user_id: item.user_id,
+        username: 'Unknown',
+        profile_photo_url: null,
+      };
+
+      if (existing) {
+        existing.friends.set(item.user_id, profile);
+        if (typeof item.rank_score === 'number') {
+          existing.scoreTotal += item.rank_score;
+          existing.scoreCount += 1;
+        }
+        if (item.updated_at && item.updated_at > existing.mostRecentUpdatedAt) {
+          existing.mostRecentUpdatedAt = item.updated_at;
+        }
+      } else {
+        grouped.set(bookId, {
+          book,
+          friends: new Map([[item.user_id, profile]]),
+          scoreTotal: typeof item.rank_score === 'number' ? item.rank_score : 0,
+          scoreCount: typeof item.rank_score === 'number' ? 1 : 0,
+          mostRecentUpdatedAt: item.updated_at || '',
+        });
+      }
+    });
+
+    const results: FriendsLikedBook[] = Array.from(grouped.entries())
+      .map(([bookId, info]) => ({
+        book_id: bookId,
+        book: info.book,
+        average_score: info.scoreCount > 0 ? info.scoreTotal / info.scoreCount : null,
+        friends_count: info.friends.size,
+        friends: Array.from(info.friends.values()),
+        most_recent_updated_at: info.mostRecentUpdatedAt,
+      }))
+      .filter((item) => typeof item.average_score === 'number' && item.average_score >= 6.5)
+      .sort((a, b) => (a.most_recent_updated_at < b.most_recent_updated_at ? 1 : -1))
+      .slice(0, limit);
+
+    return results;
+  } catch (error) {
+    console.error('Error fetching friends recent liked books:', error);
     throw error;
   }
 }
