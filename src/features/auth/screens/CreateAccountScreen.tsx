@@ -20,6 +20,15 @@ export default function CreateAccountScreen({
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <StatusBar barStyle="dark-content" backgroundColor={colors.creamBackground} />
       <View style={styles.content}>
+        {/* Logo */}
+        <View style={styles.logoContainer}>
+          <Image
+            source={require('../../../../assets/icon.png')}
+            style={styles.logoImage}
+            resizeMode="contain"
+          />
+        </View>
+
         {/* Title */}
         <Text style={styles.title}>create an account</Text>
 
@@ -107,6 +116,20 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 24,
     justifyContent: 'center',
+  },
+  logoContainer: {
+    width: 120,
+    height: 120,
+    borderRadius: 16,
+    backgroundColor: colors.primaryBlue,
+    justifyContent: 'center',
+    alignItems: 'center',
+    alignSelf: 'center',
+    marginBottom: 24,
+  },
+  logoImage: {
+    width: 100,
+    height: 100,
   },
   title: {
     fontSize: 30,

@@ -46,7 +46,11 @@ export default function SignInScreen({ onSignUp }: SignInScreenProps) {
       <View style={styles.content}>
         {/* Logo */}
         <View style={styles.logoContainer}>
-          <Text style={styles.logo}>inkli</Text>
+          <Image
+            source={require('../../../../assets/icon.png')}
+            style={styles.logoImage}
+            resizeMode="contain"
+          />
         </View>
 
         {/* Tagline */}
@@ -169,12 +173,12 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: 24,
-    paddingTop: 60,
     justifyContent: 'center',
+    paddingTop: 12,
   },
   logoContainer: {
-    width: 120,
-    height: 120,
+    width: 150,
+    height: 150,
     borderRadius: 16,
     backgroundColor: colors.primaryBlue,
     justifyContent: 'center',
@@ -182,17 +186,16 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     marginBottom: 24,
   },
-  logo: {
-    fontSize: 36,
-    fontFamily: typography.logo,
-    color: colors.white,
+  logoImage: {
+    width: 120,
+    height: 120,
   },
   tagline: {
     fontSize: 30,
     fontFamily: typography.heroTitle,
     color: colors.brownText,
     textAlign: 'center',
-    marginBottom: 40,
+    marginBottom: 36,
   },
   input: {
     backgroundColor: colors.white,
@@ -211,7 +214,6 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderRadius: 12,
     alignItems: 'center',
-    marginBottom: 8,
     marginTop: 8,
   },
   buttonDisabled: {
@@ -249,7 +251,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   appleIcon: {
     width: 24,
@@ -269,7 +271,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 24,
+    marginBottom: 12,
     borderWidth: 1,
     borderColor: colors.brownText,
   },
