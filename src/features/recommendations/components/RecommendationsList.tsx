@@ -234,7 +234,7 @@ export default function RecommendationsList({ showHeader = true }: Recommendatio
     if (score <= 3.5) {
       return '#D96B6B';
     }
-    if (score <= 6.5) {
+    if (score < 6.5) {
       return '#E2B34C';
     }
     return '#2FA463';
@@ -320,7 +320,10 @@ export default function RecommendationsList({ showHeader = true }: Recommendatio
           keyExtractor={(item) => item.id}
           renderItem={({ item, index }) => renderBookItem(item, index)}
           style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[
+            styles.scrollContent,
+            recommendations.length === 0 && styles.scrollContentEmpty,
+          ]}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primaryBlue} />
           }
@@ -451,6 +454,10 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: 20,
     paddingTop: 8,
+  },
+  scrollContentEmpty: {
+    flexGrow: 1,
+    justifyContent: 'center',
   },
   loadingMoreContainer: {
     paddingVertical: 16,
