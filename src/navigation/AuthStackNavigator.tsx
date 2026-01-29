@@ -1,10 +1,9 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { colors } from '../config/theme';
 import WelcomeScreen from '../features/auth/screens/WelcomeScreen';
 import CreateAccountScreen from '../features/auth/screens/CreateAccountScreen';
 import SignUpEmailScreen from '../features/auth/screens/SignUpEmailScreen';
-import SetupProfileScreen from '../features/auth/screens/SetupProfileScreen';
 import QuizScreen from '../features/onboarding/screens/QuizScreen';
 import SignInScreen from '../features/auth/screens/SignInScreen';
 import { useAuth } from '../contexts/AuthContext';
@@ -14,10 +13,6 @@ export type AuthStackParamList = {
   SignIn: undefined;
   CreateAccount: undefined;
   SignUpEmail: undefined;
-  SetupProfile: {
-    email: string;
-    password: string;
-  };
   Quiz:
     | {
         email: string;
@@ -41,13 +36,6 @@ export default function AuthStackNavigator({
   onQuizComplete,
 }: AuthStackNavigatorProps) {
   const { signUp, signInWithApple, signInWithGoogle } = useAuth();
-  const [signUpData, setSignUpData] = useState<{
-    email?: string;
-    password?: string;
-    firstName?: string;
-    lastName?: string;
-    username?: string;
-  }>({});
 
   return (
     <Stack.Navigator
@@ -59,17 +47,26 @@ export default function AuthStackNavigator({
       }}
       initialRouteName={initialRouteName}
     >
-      <Stack.Screen name="Welcome">
+      <Stack.Screen
+        name="Welcome"
+        options={{
+          animation: 'fade',
+        }}
+      >
         {(props) => (
           <WelcomeScreen
             {...props}
-            onGetStarted={() => props.navigation.navigate('SignIn')}
-            onSignIn={() => props.navigation.navigate('SignIn')}
+            onComplete={() => props.navigation.replace('SignIn')}
           />
         )}
       </Stack.Screen>
 
-      <Stack.Screen name="SignIn">
+      <Stack.Screen
+        name="SignIn"
+        options={{
+          animation: 'fade',
+        }}
+      >
         {(props) => (
           <SignInScreen
             {...props}
@@ -107,21 +104,7 @@ export default function AuthStackNavigator({
         {(props) => (
           <SignUpEmailScreen
             {...props}
-            onNext={(email, password) => {
-              setSignUpData({ email, password });
-              props.navigation.navigate('SetupProfile', { email, password });
-            }}
-          />
-        )}
-      </Stack.Screen>
-
-      <Stack.Screen name="SetupProfile">
-        {(props) => (
-          <SetupProfileScreen
-            {...props}
-            onNext={(firstName, lastName, username) => {
-              const { email, password } = props.route.params;
-              setSignUpData((prev) => ({ ...prev, firstName, lastName, username }));
+            onNext={(email, password, firstName, lastName, username) => {
               props.navigation.navigate('Quiz', {
                 email,
                 password,
