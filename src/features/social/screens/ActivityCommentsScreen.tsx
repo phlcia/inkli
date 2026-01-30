@@ -92,6 +92,12 @@ export default function ActivityCommentsScreen() {
   const [headerAvatarFallback, setHeaderAvatarFallback] = useState<string>(
     route.params.avatarFallback || 'U'
   );
+  const [currentUserAvatarUrl, setCurrentUserAvatarUrl] = useState<string | null>(
+    currentUser?.user_metadata?.avatar_url || null
+  );
+  const [currentUserAvatarFallback, setCurrentUserAvatarFallback] = useState<string>(
+    (currentUser?.email?.charAt(0) || 'U').toUpperCase()
+  );
   const [headerViewerStatus, setHeaderViewerStatus] = useState<
     'read' | 'currently_reading' | 'want_to_read' | null
   >(route.params.viewerStatus ?? null);
@@ -234,10 +240,47 @@ export default function ActivityCommentsScreen() {
     }
   }, [route.params, userBookId]);
 
+  useEffect(() => {
+    setCurrentUserAvatarUrl(currentUser?.user_metadata?.avatar_url || null);
+    setCurrentUserAvatarFallback(
+      (currentUser?.email?.charAt(0) || 'U').toUpperCase()
+    );
+  }, [currentUser?.email, currentUser?.user_metadata?.avatar_url]);
+
+  const loadCurrentUserProfile = useCallback(async () => {
+    if (!currentUser?.id) return;
+
+    const metadataAvatar = currentUser.user_metadata?.avatar_url || null;
+    if (metadataAvatar) {
+      setCurrentUserAvatarUrl(metadataAvatar);
+      setCurrentUserAvatarFallback(
+        (currentUser.email?.charAt(0) || 'U').toUpperCase()
+      );
+      return;
+    }
+
+    try {
+      const { data: profile } = await supabase
+        .from('user_profiles')
+        .select('username, profile_photo_url')
+        .eq('user_id', currentUser.id)
+        .single();
+
+      setCurrentUserAvatarUrl(profile?.profile_photo_url || null);
+      setCurrentUserAvatarFallback(
+        profile?.username?.charAt(0)?.toUpperCase() ||
+          (currentUser.email?.charAt(0) || 'U').toUpperCase()
+      );
+    } catch (error) {
+      console.error('Error loading current user profile:', error);
+    }
+  }, [currentUser?.id, currentUser?.email, currentUser?.user_metadata?.avatar_url]);
+
   useFocusEffect(
     useCallback(() => {
       loadHeader();
-    }, [loadHeader])
+      loadCurrentUserProfile();
+    }, [loadHeader, loadCurrentUserProfile])
   );
 
   const handleRefresh = useCallback(async () => {
@@ -625,16 +668,14 @@ export default function ActivityCommentsScreen() {
         keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}
       >
         <View style={styles.inputBar}>
-          {currentUser?.user_metadata?.avatar_url ? (
+          {currentUserAvatarUrl ? (
             <Image
-              source={{ uri: currentUser.user_metadata.avatar_url }}
+              source={{ uri: currentUserAvatarUrl }}
               style={styles.inputAvatar}
             />
           ) : (
             <View style={styles.inputAvatarPlaceholder}>
-              <Text style={styles.avatarText}>
-                {(currentUser?.email?.charAt(0) || 'U').toUpperCase()}
-              </Text>
+              <Text style={styles.avatarText}>{currentUserAvatarFallback}</Text>
             </View>
           )}
           <View style={styles.inputWrapper}>
