@@ -642,7 +642,11 @@ export default function ProfileScreen() {
                   activeOpacity={0.8}
                   disabled={privacyUpdating}
                 >
-                  <Text style={styles.followMenuTriggerText}>v</Text>
+                  <Image
+                    source={require('../../../../assets/dropdown.png')}
+                    style={styles.followMenuTriggerIcon}
+                    resizeMode="contain"
+                  />
                 </TouchableOpacity>
                 {profileMenuOpen && (
                   <View style={styles.followMenu}>
@@ -1336,6 +1340,11 @@ const styles = StyleSheet.create({
     fontFamily: typography.button,
     color: colors.white,
     fontWeight: '600',
+  },
+  followMenuTriggerIcon: {
+    width: 12,
+    height: 12,
+    tintColor: colors.white,
   },
   followMenu: {
     position: 'absolute',

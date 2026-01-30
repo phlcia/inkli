@@ -596,14 +596,15 @@ export default function UserProfileScreen() {
                     onPress={() => setFollowMenuOpen(prev => !prev)}
                     activeOpacity={0.8}
                   >
-                    <Text
+                    <Image
+                      source={require('../../../../assets/dropdown.png')}
                       style={[
-                        styles.followMenuTriggerText,
-                        (isFollowing || followRequestPending) && styles.followingButtonText,
+                        styles.followMenuTriggerIcon,
+                        (isFollowing || followRequestPending) &&
+                          styles.followMenuTriggerIconFollowing,
                       ]}
-                    >
-                      v
-                    </Text>
+                      resizeMode="contain"
+                    />
                   </TouchableOpacity>
                   {followMenuOpen && (
                     <View style={styles.followMenu}>
@@ -949,6 +950,14 @@ const styles = StyleSheet.create({
     fontFamily: typography.button,
     color: colors.white,
     fontWeight: '600',
+  },
+  followMenuTriggerIcon: {
+    width: 12,
+    height: 12,
+    tintColor: colors.white,
+  },
+  followMenuTriggerIconFollowing: {
+    tintColor: colors.primaryBlue,
   },
   followMenu: {
     position: 'absolute',
