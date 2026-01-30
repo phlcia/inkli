@@ -26,4 +26,6 @@ export type BookRankingParams = {
   initialStatus: 'read' | 'currently_reading' | 'want_to_read';
   previousStatus?: 'read' | 'currently_reading' | 'want_to_read' | null;
   wasNewBook?: boolean;
+  isNewInstance?: boolean;
+  openComparisonOnLoad?: boolean;
 };

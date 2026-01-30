@@ -11,6 +11,8 @@ import {
   StatusBar,
   ActivityIndicator,
   TextInput,
+  Modal,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navigation/native';
@@ -67,6 +69,7 @@ export default function BookDetailScreen() {
   const [showDateRangePickerModal, setShowDateRangePickerModal] = useState(false);
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const notesSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const [showRankingActionSheet, setShowRankingActionSheet] = useState(false);
   
   // Tag editing state
   const [showGenreLabelPicker, setShowGenreLabelPicker] = useState(false);
@@ -465,6 +468,94 @@ export default function BookDetailScreen() {
 
       return next;
     });
+  };
+
+  const handleReadIconPress = async () => {
+    if (!user) {
+      setToastMessage('You must be logged in to add books');
+      return;
+    }
+
+    if (loading) return;
+
+    if (currentStatus !== 'read' || !userBookId) {
+      await handleIconPress('read');
+      return;
+    }
+
+    if (userRankScore === null) {
+      navigation.navigate('BookRanking', {
+        book,
+        userBookId,
+        initialStatus: 'read',
+        previousStatus: currentStatus,
+        wasNewBook: false,
+      });
+      return;
+    }
+
+    setShowRankingActionSheet(true);
+  };
+
+  const handleRankNewInstance = () => {
+    if (!userBookId) return;
+    setShowRankingActionSheet(false);
+    navigation.navigate('BookRanking', {
+      book,
+      userBookId,
+      initialStatus: 'read',
+      previousStatus: currentStatus,
+      wasNewBook: false,
+      isNewInstance: true,
+    });
+  };
+
+  const handleReorderWithinShelf = () => {
+    setShowRankingActionSheet(false);
+    const parent = navigation.getParent?.();
+    if (parent) {
+      parent.navigate('Your Shelf' as never, { screen: 'ReorderShelf' } as never);
+    } else {
+      (navigation as any).navigate('ReorderShelf');
+    }
+  };
+
+  const handleRemoveFromShelf = async () => {
+    if (!userBookId) return;
+    setShowRankingActionSheet(false);
+
+    Alert.alert(
+      'Remove from Shelf',
+      `This will remove "${book.title}" from your read shelf. Your reading history and notes will be preserved.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setLoading('read');
+              updateShelfCountsOptimistically('read', null);
+              setCurrentStatus(null);
+              setUserRankScore(null);
+              const { error } = await updateBookStatus(userBookId, null, {
+                clearRankScore: true,
+                touchUpdatedAt: true,
+              });
+              if (error) {
+                throw error;
+              }
+              void refreshShelfCounts();
+            } catch (error: any) {
+              console.error('Error removing book from shelf:', error);
+              setToastMessage(error?.message || 'Failed to remove book from shelf');
+            } finally {
+              setLoading(null);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleIconPress = async (status: 'read' | 'currently_reading' | 'want_to_read') => {
@@ -1188,7 +1279,7 @@ export default function BookDetailScreen() {
             <View style={styles.actionIconWrapper}>
               <TouchableOpacity
                 style={styles.actionIcon}
-                onPress={() => handleIconPress('read')}
+                onPress={handleReadIconPress}
                 disabled={Boolean(loading)}
               >
                 <Image
@@ -1625,6 +1716,62 @@ export default function BookDetailScreen() {
         loading={savingTags}
         autoSelectSuggestions={false}
       />
+
+      <Modal
+        visible={showRankingActionSheet}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowRankingActionSheet(false)}
+      >
+        <View style={styles.actionSheetOverlay}>
+          <TouchableOpacity
+            style={styles.actionSheetBackdrop}
+            activeOpacity={1}
+            onPress={() => setShowRankingActionSheet(false)}
+          />
+          <View style={styles.actionSheet}>
+            <SafeAreaView edges={['bottom']}>
+              <View style={styles.actionSheetContent}>
+                <Text style={styles.actionSheetTitle}>Ranked Shelf Options</Text>
+
+                <TouchableOpacity
+                  style={styles.actionSheetButton}
+                  onPress={handleRankNewInstance}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.actionSheetButtonText}>Rank new reading instance</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.actionSheetButton}
+                  onPress={handleReorderWithinShelf}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.actionSheetButtonText}>Reorder within shelf</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.actionSheetButton}
+                  onPress={handleRemoveFromShelf}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.actionSheetButtonText, styles.actionSheetDestructiveText]}>
+                    Remove from shelf
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.actionSheetButton, styles.actionSheetCancelButton]}
+                  onPress={() => setShowRankingActionSheet(false)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.actionSheetButtonText}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+            </SafeAreaView>
+          </View>
+        </View>
+      </Modal>
 
     </View>
   );
@@ -2204,5 +2351,46 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontWeight: 'bold',
     lineHeight: 14,
+  },
+  actionSheetOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  actionSheetBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  actionSheet: {
+    backgroundColor: colors.creamBackground,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingTop: 20,
+    maxHeight: '80%',
+  },
+  actionSheetContent: {
+    paddingHorizontal: 24,
+    paddingBottom: 32,
+  },
+  actionSheetTitle: {
+    fontSize: 20,
+    fontFamily: typography.heroTitle,
+    color: colors.brownText,
+    fontWeight: '600',
+    marginBottom: 16,
+  },
+  actionSheetButton: {
+    paddingVertical: 14,
+  },
+  actionSheetButtonText: {
+    fontSize: 16,
+    fontFamily: typography.body,
+    color: colors.brownText,
+    fontWeight: '600',
+  },
+  actionSheetDestructiveText: {
+    color: '#D24B4B',
+  },
+  actionSheetCancelButton: {
+    marginTop: 8,
   },
 });

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -16,7 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, useFocusEffect, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, typography } from '../../../config/theme';
-import { updateUserBookDetails, removeBookFromShelf, updateBookStatus, getReadSessions, addReadSession, updateReadSession, ReadSession, getUserBooks } from '../../../services/books';
+import { updateUserBookDetails, removeBookFromShelf, updateBookStatus, getReadSessions, addReadSession, updateReadSession, deleteReadSession, ReadSession, getUserBooks } from '../../../services/books';
 import { useAuth } from '../../../contexts/AuthContext';
 import BookComparisonModal from '../components/BookComparisonModal';
 import DateRangePickerModal from '../../../components/ui/DateRangePickerModal';
@@ -31,13 +31,27 @@ export default function BookRankingScreen() {
   const { user } = useAuth();
   const navigation = useNavigation<BookRankingScreenNavigationProp>();
   const route = useRoute<BookRankingScreenRouteProp>();
-  const { book, userBookId, initialStatus, previousStatus, wasNewBook = false } = route.params;
+  const {
+    book,
+    userBookId,
+    initialStatus,
+    previousStatus,
+    wasNewBook = false,
+    isNewInstance = false,
+    openComparisonOnLoad = false,
+  } = route.params;
 
   const [rating, setRating] = useState<'liked' | 'fine' | 'disliked' | null>(null);
   const [notes, setNotes] = useState('');
   const [startedDate, setStartedDate] = useState<string | null>(null);
   const [finishedDate, setFinishedDate] = useState<string | null>(null);
   const [currentReadSession, setCurrentReadSession] = useState<ReadSession | null>(null);
+  const [readSessions, setReadSessions] = useState<ReadSession[]>([]);
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+  const [existingRankScore, setExistingRankScore] = useState<number | null>(null);
+  const [rankingCompleted, setRankingCompleted] = useState(false);
+  const initialSessionIdsRef = useRef<Set<string>>(new Set());
+  const comparisonOpenedRef = useRef(false);
   
   // Store initial state for reverting
   const [initialState, setInitialState] = useState<{
@@ -77,7 +91,7 @@ export default function BookRankingScreen() {
             // Fetch user_book data including book_id and user_genres
             const { data, error } = await supabase
               .from('user_books')
-              .select('rating, notes, custom_labels, user_genres, book_id')
+              .select('rating, notes, custom_labels, user_genres, book_id, rank_score')
               .eq('id', userBookId)
               .single();
 
@@ -110,6 +124,8 @@ export default function BookRankingScreen() {
             // Fetch read sessions
             const sessions = await getReadSessions(userBookId);
             const latestSession = sessions.length > 0 ? sessions[0] : null;
+            setReadSessions(sessions);
+            initialSessionIdsRef.current = new Set(sessions.map((session) => session.id));
 
             if (data) {
               const state = {
@@ -122,9 +138,16 @@ export default function BookRankingScreen() {
               // Set current state to initial state
               setRating(state.rating);
               setNotes(state.notes);
-              setStartedDate(state.startedDate);
-              setFinishedDate(state.finishedDate);
-              setCurrentReadSession(latestSession || null);
+              setExistingRankScore(data.rank_score ?? null);
+              if (isNewInstance) {
+                setStartedDate(null);
+                setFinishedDate(null);
+                setCurrentReadSession(null);
+              } else {
+                setStartedDate(state.startedDate);
+                setFinishedDate(state.finishedDate);
+                setCurrentReadSession(latestSession || null);
+              }
               
               // Populate custom labels if they exist
               if (data.custom_labels && data.custom_labels.length > 0) {
@@ -138,6 +161,9 @@ export default function BookRankingScreen() {
                 startedDate: null,
                 finishedDate: null,
               });
+              setReadSessions([]);
+              initialSessionIdsRef.current = new Set();
+              setExistingRankScore(null);
             }
           } catch (error) {
             console.error('Error fetching initial book state:', error);
@@ -168,6 +194,14 @@ export default function BookRankingScreen() {
     };
     fetchCustomLabelSuggestions();
   }, [user]);
+
+  useEffect(() => {
+    if (!openComparisonOnLoad || comparisonOpenedRef.current) return;
+    if (initialStatus === 'read' && rating) {
+      setShowComparison(true);
+      comparisonOpenedRef.current = true;
+    }
+  }, [openComparisonOnLoad, initialStatus, rating]);
 
   const saveBookDetails = async (selectedRating?: 'liked' | 'fine' | 'disliked') => {
     if (!user || !userBookId) return false;
@@ -227,6 +261,18 @@ export default function BookRankingScreen() {
             setSaving(false);
             return false;
           }
+          setReadSessions((previous) =>
+            previous.map((session) =>
+              session.id === currentReadSession.id
+                ? {
+                    ...session,
+                    started_date: startedDate,
+                    finished_date: finishedDate,
+                    updated_at: new Date().toISOString(),
+                  }
+                : session
+            )
+          );
         } else {
           // Create new session
           const { data: newSession, error: sessionError } = await addReadSession(userBookId, {
@@ -241,6 +287,7 @@ export default function BookRankingScreen() {
           // Update current session state
           if (newSession) {
             setCurrentReadSession(newSession);
+            setReadSessions((previous) => [newSession, ...previous]);
           }
         }
       }
@@ -306,12 +353,62 @@ export default function BookRankingScreen() {
     }
 
     try {
+      if (isNewInstance) {
+        if (initialState && (rating !== initialState.rating || notes !== initialState.notes)) {
+          await updateUserBookDetails(userBookId, user.id, {
+            rating: initialState.rating,
+            notes: initialState.notes || null,
+          }, { touchUpdatedAt: false });
+        }
+        if (currentReadSession && !initialSessionIdsRef.current.has(currentReadSession.id)) {
+          await deleteReadSession(currentReadSession.id);
+          setReadSessions((previous) => previous.filter((session) => session.id !== currentReadSession.id));
+          setCurrentReadSession(null);
+          setStartedDate(null);
+          setFinishedDate(null);
+        }
+        return;
+      }
+
       // If it was a new book, remove it from shelf
       if (wasNewBook) {
         const { error } = await removeBookFromShelf(userBookId);
         if (error) {
           console.error('Error removing book from shelf:', error);
           Alert.alert('Error', 'Failed to revert changes');
+        }
+      } else if (previousStatus === null && initialStatus === 'read') {
+        // Book existed without a shelf status - revert back to null status
+        await updateBookStatus(userBookId, null, {
+          clearRankScore: true,
+          touchUpdatedAt: false,
+        });
+        // Clear any rating, notes that were added
+        if (initialState && (
+          rating !== initialState.rating ||
+          notes !== initialState.notes
+        )) {
+          await updateUserBookDetails(userBookId, user.id, {
+            rating: initialState.rating,
+            notes: initialState.notes || null,
+          }, { touchUpdatedAt: false });
+        }
+        // Restore dates via read sessions
+        if (initialState && (
+          startedDate !== initialState.startedDate ||
+          finishedDate !== initialState.finishedDate
+        )) {
+          if (currentReadSession && (initialState.startedDate || initialState.finishedDate)) {
+            await updateReadSession(currentReadSession.id, {
+              started_date: initialState.startedDate,
+              finished_date: initialState.finishedDate,
+            });
+          } else if (!currentReadSession && (initialState.startedDate || initialState.finishedDate)) {
+            await addReadSession(userBookId, {
+              started_date: initialState.startedDate,
+              finished_date: initialState.finishedDate,
+            });
+          }
         }
       } else if (previousStatus && previousStatus !== initialStatus) {
         // Book was moved from another shelf - restore previous status and clear changes
@@ -401,6 +498,12 @@ export default function BookRankingScreen() {
       // Prevent default behavior
       e.preventDefault();
 
+      if (isNewInstance && !rankingCompleted) {
+        await handleRevert();
+        navigation.dispatch(e.data.action);
+        return;
+      }
+
       // Check if ranking has been completed (rank_score is set)
       // If so, don't revert - the user has completed the ranking process
       try {
@@ -427,13 +530,14 @@ export default function BookRankingScreen() {
     });
 
     return unsubscribe;
-  }, [navigation, userBookId, user, wasNewBook, previousStatus, initialStatus, initialState, rating, notes, startedDate, finishedDate]);
+  }, [navigation, userBookId, user, wasNewBook, previousStatus, initialStatus, initialState, rating, notes, startedDate, finishedDate, isNewInstance, rankingCompleted]);
 
   const handleComparisonComplete = async () => {
     console.log('=== RANKING DEBUG: handleComparisonComplete ===');
     console.log('Comparison modal completed');
     
     setShowComparison(false);
+    setRankingCompleted(true);
     
     // Ensure dates and notes are saved after ranking completes
     // This is important because saveFinalRank only updates rank_score
@@ -513,7 +617,17 @@ export default function BookRankingScreen() {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
+  const formatSessionRange = (session: ReadSession): string => {
+    const start = session.started_date ? formatDateForDisplay(session.started_date) : null;
+    const end = session.finished_date ? formatDateForDisplay(session.finished_date) : null;
+    if (start && end) return `${start} - ${end}`;
+    if (start) return start;
+    if (end) return end;
+    return 'No dates';
+  };
+
   const handleDateRangePicker = () => {
+    setEditingSessionId(null);
     setShowDateRangePickerModal(true);
   };
 
@@ -530,13 +644,42 @@ export default function BookRankingScreen() {
     }
     
     try {
-      setStartedDate(newStartDate);
-      setFinishedDate(newEndDate);
-      // Auto-save when dates are set (regardless of rating)
-      const saved = await saveBookDetails();
-      if (!saved) {
-        console.warn('Failed to save dates, but continuing...');
-        // Don't show alert here - saveBookDetails already handles errors
+      if (editingSessionId) {
+        const { error } = await updateReadSession(editingSessionId, {
+          started_date: newStartDate,
+          finished_date: newEndDate,
+        });
+        if (error) {
+          console.error('Error updating read session:', error);
+          Alert.alert('Error', 'Failed to update read session');
+          return;
+        }
+        setReadSessions((previous) =>
+          previous.map((session) =>
+            session.id === editingSessionId
+              ? {
+                  ...session,
+                  started_date: newStartDate,
+                  finished_date: newEndDate,
+                  updated_at: new Date().toISOString(),
+                }
+              : session
+          )
+        );
+        if (currentReadSession?.id === editingSessionId) {
+          setStartedDate(newStartDate);
+          setFinishedDate(newEndDate);
+        }
+        setEditingSessionId(null);
+      } else {
+        setStartedDate(newStartDate);
+        setFinishedDate(newEndDate);
+        // Auto-save when dates are set (regardless of rating)
+        const saved = await saveBookDetails();
+        if (!saved) {
+          console.warn('Failed to save dates, but continuing...');
+          // Don't show alert here - saveBookDetails already handles errors
+        }
       }
     } catch (error) {
       console.error('Error in handleDateRangeSelected:', error);
@@ -544,6 +687,42 @@ export default function BookRankingScreen() {
     } finally {
       setShowDateRangePickerModal(false);
     }
+  };
+
+  const handleEditSession = (session: ReadSession) => {
+    setEditingSessionId(session.id);
+    setShowDateRangePickerModal(true);
+  };
+
+  const handleDeleteSession = (sessionId: string) => {
+    Alert.alert(
+      'Delete Reading Dates',
+      'This will remove these reading dates from your history.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { error } = await deleteReadSession(sessionId);
+              if (error) {
+                throw error;
+              }
+              setReadSessions((previous) => previous.filter((session) => session.id !== sessionId));
+              if (currentReadSession?.id === sessionId) {
+                setCurrentReadSession(null);
+                setStartedDate(null);
+                setFinishedDate(null);
+              }
+            } catch (error) {
+              console.error('Error deleting read session:', error);
+              Alert.alert('Error', 'Failed to delete read session');
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleSaveTags = async (genres: string[], customLabels: string[]) => {
@@ -626,6 +805,15 @@ export default function BookRankingScreen() {
             </View>
           )}
 
+          {isNewInstance && existingRankScore !== null && (
+            <View style={styles.infoBanner}>
+              <Text style={styles.infoBannerText}>
+                This will create a new reading instance and update your ranking. Your previous rank (
+                {existingRankScore.toFixed(1)}) will be replaced.
+              </Text>
+            </View>
+          )}
+
           {/* What did you think? Section */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>What did you think?</Text>
@@ -683,13 +871,46 @@ export default function BookRankingScreen() {
             </View>
           </View>
 
+          {readSessions.length > 0 && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>
+                Reading history ({readSessions.length})
+              </Text>
+              <View style={styles.sessionList}>
+                {readSessions.map((session) => (
+                  <View key={session.id} style={styles.sessionRow}>
+                    <Text style={styles.sessionText}>{formatSessionRange(session)}</Text>
+                    <View style={styles.sessionActions}>
+                      <TouchableOpacity
+                        style={styles.sessionActionButton}
+                        onPress={() => handleEditSession(session)}
+                      >
+                        <Text style={styles.sessionActionText}>Edit</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.sessionActionButton}
+                        onPress={() => handleDeleteSession(session.id)}
+                      >
+                        <Text style={[styles.sessionActionText, styles.sessionActionDeleteText]}>
+                          Delete
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
+
           {/* Read Dates */}
           <View style={styles.section}>
             <TouchableOpacity
               style={styles.dateButton}
               onPress={handleDateRangePicker}
             >
-              <Text style={styles.dateButtonLabel}>Read dates</Text>
+              <Text style={styles.dateButtonLabel}>
+                {isNewInstance ? 'New reading dates' : 'Read dates'}
+              </Text>
               {startedDate || finishedDate ? (
                 <Text style={styles.dateButtonValue}>
                   {startedDate ? formatDateForDisplay(startedDate) : '...'} - {finishedDate ? formatDateForDisplay(finishedDate) : '...'}
@@ -757,7 +978,9 @@ export default function BookRankingScreen() {
             onPress={handleShelveBook}
             disabled={saving}
           >
-            <Text style={styles.shelveButtonText}>Let's shelve your book!</Text>
+            <Text style={styles.shelveButtonText}>
+              {isNewInstance ? 'Rank New Instance' : "Let's shelve your book!"}
+            </Text>
           </TouchableOpacity>
         )}
 
@@ -793,11 +1016,20 @@ export default function BookRankingScreen() {
         visible={showDateRangePickerModal}
         onClose={() => {
           setShowDateRangePickerModal(false);
+          setEditingSessionId(null);
         }}
         onDateRangeSelected={handleDateRangeSelected}
-        initialStartDate={startedDate}
-        initialEndDate={finishedDate}
-        title="Select Read Dates"
+        initialStartDate={
+          editingSessionId
+            ? readSessions.find((session) => session.id === editingSessionId)?.started_date || null
+            : startedDate
+        }
+        initialEndDate={
+          editingSessionId
+            ? readSessions.find((session) => session.id === editingSessionId)?.finished_date || null
+            : finishedDate
+        }
+        title={editingSessionId ? 'Edit Read Dates' : 'Select Read Dates'}
       />
 
       {/* Genre/Label Picker Modal */}
@@ -864,6 +1096,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 24,
     gap: 8,
+  },
+  infoBanner: {
+    backgroundColor: `${colors.primaryBlue}1A`,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+  },
+  infoBannerText: {
+    fontSize: 13,
+    fontFamily: typography.body,
+    color: colors.brownText,
+    lineHeight: 18,
   },
   categoryChip: {
     backgroundColor: colors.primaryBlue,
@@ -951,6 +1195,39 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: typography.body,
     color: colors.brownText,
+  },
+  sessionList: {
+    gap: 10,
+  },
+  sessionRow: {
+    backgroundColor: colors.white,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: `${colors.brownText}22`,
+  },
+  sessionText: {
+    fontSize: 15,
+    fontFamily: typography.body,
+    color: colors.brownText,
+    marginBottom: 8,
+  },
+  sessionActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  sessionActionButton: {
+    paddingVertical: 4,
+  },
+  sessionActionText: {
+    fontSize: 13,
+    fontFamily: typography.body,
+    color: colors.primaryBlue,
+    fontWeight: '600',
+  },
+  sessionActionDeleteText: {
+    color: '#D24B4B',
   },
   notesContainer: {
     backgroundColor: colors.white,
