@@ -50,7 +50,6 @@ export default function RecentActivityCard({
   hideBookInfo = false,
 }: RecentActivityCardProps) {
   const book = userBook.book;
-  if (!book) return null;
   const isRead = viewerStatus === 'read';
   const isCurrentlyReading = viewerStatus === 'currently_reading';
   const isWantToRead = viewerStatus === 'want_to_read';
@@ -190,6 +189,8 @@ export default function RecentActivityCard({
       onPressUser();
     }
   }, [isOtherUser, userBook.user_id, userDisplayName, navigation, onPressUser]);
+
+  if (!book) return null;
 
   return (
     <View style={styles.activityCard}>

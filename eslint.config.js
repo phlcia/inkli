@@ -1,4 +1,5 @@
 import js from '@eslint/js';
+import reactHooks from 'eslint-plugin-react-hooks';
 import typescript from '@typescript-eslint/eslint-plugin';
 import typescriptParser from '@typescript-eslint/parser';
 import unusedImports from 'eslint-plugin-unused-imports';
@@ -19,6 +20,17 @@ export default [
         document: 'readonly',
         navigator: 'readonly',
         console: 'readonly',
+        setTimeout: 'readonly',
+        clearTimeout: 'readonly',
+        fetch: 'readonly',
+        URL: 'readonly',
+        URLSearchParams: 'readonly',
+        AbortController: 'readonly',
+        Request: 'readonly',
+        Response: 'readonly',
+        RequestInit: 'readonly',
+        atob: 'readonly',
+        btoa: 'readonly',
         // Node globals
         process: 'readonly',
         __dirname: 'readonly',
@@ -28,14 +40,19 @@ export default [
         exports: 'readonly',
         global: 'readonly',
         Buffer: 'readonly',
+        NodeJS: 'readonly',
       },
     },
     plugins: {
       '@typescript-eslint': typescript,
+      'react-hooks': reactHooks,
       'unused-imports': unusedImports,
     },
     rules: {
       ...typescript.configs.recommended.rules,
+      ...reactHooks.configs.recommended.rules,
+      'react-hooks/refs': 'off',
+      'react-hooks/set-state-in-effect': 'off',
       'no-unused-vars': 'off',
       '@typescript-eslint/no-unused-vars': 'off',
       'unused-imports/no-unused-imports': 'error',

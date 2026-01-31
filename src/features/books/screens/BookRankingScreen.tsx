@@ -69,18 +69,15 @@ export default function BookRankingScreen() {
   // Labels/genres state
   const [showGenreLabelPicker, setShowGenreLabelPicker] = useState(false);
   const [savingTags, setSavingTags] = useState(false);
-  const [bookGenres, setBookGenres] = useState<string[]>(book.genres || []); // Default genres from books table
+  const [bookGenres, setBookGenres] = useState<string[]>(book?.genres ?? []); // Default genres from books table
   const [userGenres, setUserGenres] = useState<string[] | null>(null); // User's genre overrides
   const [selectedCustomLabels, setSelectedCustomLabels] = useState<string[]>([]);
   const [customLabelSuggestions, setCustomLabelSuggestions] = useState<string[]>([]);
-  const [resolvedBookId, setResolvedBookId] = useState<string | null>(book.id || null);
+  const [resolvedBookId, setResolvedBookId] = useState<string | null>(book?.id ?? null);
   
   // Effective genres: user's overrides if set, otherwise book defaults
   const effectiveGenres = userGenres !== null ? userGenres : bookGenres;
-
-  if (!book) return null;
-
-  const coverUrl = book.cover_url;
+  const coverUrl = book?.cover_url;
 
   // Fetch initial book state when screen focuses
   useFocusEffect(
@@ -765,6 +762,8 @@ export default function BookRankingScreen() {
       setSavingTags(false);
     }
   };
+
+  if (!book) return null;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>

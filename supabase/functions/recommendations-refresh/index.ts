@@ -16,6 +16,9 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+type GenreJoinRow = { genres?: { name?: string | null } | null };
+type ThemeJoinRow = { themes?: { name?: string | null } | null };
+
 Deno.serve(async (req: Request) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -288,8 +291,9 @@ Deno.serve(async (req: Request) => {
     const themePreferences = new Map<string, number>()
 
     if (winnerGenres) {
-      for (const bg of winnerGenres) {
-        const genreName = (bg.genres as any)?.name
+      const winnerGenreRows = winnerGenres as GenreJoinRow[]
+      for (const bg of winnerGenreRows) {
+        const genreName = bg.genres?.name
         if (genreName) {
           genrePreferences.set(genreName, (genrePreferences.get(genreName) || 0) + 1)
         }
@@ -297,8 +301,9 @@ Deno.serve(async (req: Request) => {
     }
 
     if (winnerThemes) {
-      for (const bt of winnerThemes) {
-        const themeName = (bt.themes as any)?.name
+      const winnerThemeRows = winnerThemes as ThemeJoinRow[]
+      for (const bt of winnerThemeRows) {
+        const themeName = bt.themes?.name
         if (themeName) {
           themePreferences.set(themeName, (themePreferences.get(themeName) || 0) + 1)
         }
@@ -306,8 +311,9 @@ Deno.serve(async (req: Request) => {
     }
 
     if (loserGenres) {
-      for (const bg of loserGenres) {
-        const genreName = (bg.genres as any)?.name
+      const loserGenreRows = loserGenres as GenreJoinRow[]
+      for (const bg of loserGenreRows) {
+        const genreName = bg.genres?.name
         if (genreName) {
           genrePreferences.set(genreName, (genrePreferences.get(genreName) || 0) - 1)
         }
@@ -315,8 +321,9 @@ Deno.serve(async (req: Request) => {
     }
 
     if (loserThemes) {
-      for (const bt of loserThemes) {
-        const themeName = (bt.themes as any)?.name
+      const loserThemeRows = loserThemes as ThemeJoinRow[]
+      for (const bt of loserThemeRows) {
+        const themeName = bt.themes?.name
         if (themeName) {
           themePreferences.set(themeName, (themePreferences.get(themeName) || 0) - 1)
         }
@@ -358,8 +365,9 @@ Deno.serve(async (req: Request) => {
 
       let genreScore = 0
       if (bookGenres) {
-        for (const bg of bookGenres) {
-          const genreName = (bg.genres as any)?.name
+        const bookGenreRows = bookGenres as GenreJoinRow[]
+        for (const bg of bookGenreRows) {
+          const genreName = bg.genres?.name
           if (genreName) {
             genreScore += genrePreferences.get(genreName) || 0
           }
@@ -368,8 +376,9 @@ Deno.serve(async (req: Request) => {
 
       let themeScore = 0
       if (bookThemes) {
-        for (const bt of bookThemes) {
-          const themeName = (bt.themes as any)?.name
+        const bookThemeRows = bookThemes as ThemeJoinRow[]
+        for (const bt of bookThemeRows) {
+          const themeName = bt.themes?.name
           if (themeName) {
             themeScore += themePreferences.get(themeName) || 0
           }
@@ -384,7 +393,7 @@ Deno.serve(async (req: Request) => {
 
       let reasoning = 'Recommended for you'
       if (genreScore > 0 && bookGenres && bookGenres.length > 0) {
-        const topGenre = (bookGenres[0].genres as any)?.name
+        const topGenre = (bookGenres[0] as GenreJoinRow).genres?.name
         reasoning = `Popular in ${topGenre}`
       } else if (totalScore > 0) {
         reasoning = 'Based on your preferences'

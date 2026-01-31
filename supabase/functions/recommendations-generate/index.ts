@@ -16,6 +16,11 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+type SupabaseClient = ReturnType<typeof createClient>;
+type GenreJoinRow = { genres?: { name?: string | null } | null };
+type ThemeJoinRow = { themes?: { name?: string | null } | null };
+type BookIdRow = { id: string };
+
 interface BookScore {
   book_id: string;
   score: number;
@@ -32,7 +37,7 @@ interface OpenLibraryWorkData {
 
 async function fetchAndInsertBookFromOpenLibrary(
   workId: string,
-  supabaseDb: any
+  supabaseDb: SupabaseClient
 ): Promise<boolean> {
   try {
     const response = await fetch(`https://openlibrary.org/works/${workId}.json`);
@@ -107,7 +112,7 @@ async function fetchAndInsertBookFromOpenLibrary(
 
 async function ensureBooksExist(
   bookIds: string[],
-  supabaseDb: any
+  supabaseDb: SupabaseClient
 ): Promise<void> {
   if (bookIds.length === 0) return;
 
@@ -116,7 +121,7 @@ async function ensureBooksExist(
     .select('id')
     .in('id', bookIds);
 
-  const existingIds = new Set((existingBooks || []).map((b: any) => b.id));
+  const existingIds = new Set((existingBooks as BookIdRow[] | null || []).map((b) => b.id));
   const missingIds = bookIds.filter((id) => !existingIds.has(id));
 
   if (missingIds.length === 0) {
@@ -405,8 +410,9 @@ Deno.serve(async (req: Request) => {
 
     // Count winner genres/themes
     if (winnerGenres) {
-      for (const bg of winnerGenres) {
-        const genreName = (bg.genres as any)?.name
+      const winnerGenreRows = winnerGenres as GenreJoinRow[]
+      for (const bg of winnerGenreRows) {
+        const genreName = bg.genres?.name
         if (genreName) {
           genrePreferences.set(genreName, (genrePreferences.get(genreName) || 0) + 1)
         }
@@ -414,8 +420,9 @@ Deno.serve(async (req: Request) => {
     }
 
     if (winnerThemes) {
-      for (const bt of winnerThemes) {
-        const themeName = (bt.themes as any)?.name
+      const winnerThemeRows = winnerThemes as ThemeJoinRow[]
+      for (const bt of winnerThemeRows) {
+        const themeName = bt.themes?.name
         if (themeName) {
           themePreferences.set(themeName, (themePreferences.get(themeName) || 0) + 1)
         }
@@ -424,8 +431,9 @@ Deno.serve(async (req: Request) => {
 
     // Subtract loser genres/themes
     if (loserGenres) {
-      for (const bg of loserGenres) {
-        const genreName = (bg.genres as any)?.name
+      const loserGenreRows = loserGenres as GenreJoinRow[]
+      for (const bg of loserGenreRows) {
+        const genreName = bg.genres?.name
         if (genreName) {
           genrePreferences.set(genreName, (genrePreferences.get(genreName) || 0) - 1)
         }
@@ -433,8 +441,9 @@ Deno.serve(async (req: Request) => {
     }
 
     if (loserThemes) {
-      for (const bt of loserThemes) {
-        const themeName = (bt.themes as any)?.name
+      const loserThemeRows = loserThemes as ThemeJoinRow[]
+      for (const bt of loserThemeRows) {
+        const themeName = bt.themes?.name
         if (themeName) {
           themePreferences.set(themeName, (themePreferences.get(themeName) || 0) - 1)
         }
@@ -483,8 +492,9 @@ Deno.serve(async (req: Request) => {
       // Calculate genre score
       let genreScore = 0
       if (bookGenres) {
-        for (const bg of bookGenres) {
-          const genreName = (bg.genres as any)?.name
+        const bookGenreRows = bookGenres as GenreJoinRow[]
+        for (const bg of bookGenreRows) {
+          const genreName = bg.genres?.name
           if (genreName) {
             genreScore += genrePreferences.get(genreName) || 0
           }
@@ -494,8 +504,9 @@ Deno.serve(async (req: Request) => {
       // Calculate theme score
       let themeScore = 0
       if (bookThemes) {
-        for (const bt of bookThemes) {
-          const themeName = (bt.themes as any)?.name
+        const bookThemeRows = bookThemes as ThemeJoinRow[]
+        for (const bt of bookThemeRows) {
+          const themeName = bt.themes?.name
           if (themeName) {
             themeScore += themePreferences.get(themeName) || 0
           }
@@ -513,7 +524,7 @@ Deno.serve(async (req: Request) => {
       // Generate reasoning
       let reasoning = 'Recommended for you'
       if (genreScore > 0 && bookGenres && bookGenres.length > 0) {
-        const topGenre = (bookGenres[0].genres as any)?.name
+        const topGenre = (bookGenres[0] as GenreJoinRow).genres?.name
         reasoning = `Popular in ${topGenre}`
       } else if (totalScore > 0) {
         reasoning = 'Based on your preferences'

@@ -2,7 +2,7 @@
 // This function can be called periodically to ensure data integrity
 // Usage: Call via Supabase Dashboard or schedule with cron
 
-// @ts-ignore - Deno types are available at runtime
+// @ts-expect-error - Deno types are available at runtime
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 // Declare Deno global for TypeScript (available at runtime in Supabase Edge Functions)
@@ -18,7 +18,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// @ts-ignore - Deno.serve is available in Supabase Edge Functions runtime
+// @ts-expect-error - Deno.serve is available in Supabase Edge Functions runtime
 Deno.serve(async (req: Request) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -27,9 +27,9 @@ Deno.serve(async (req: Request) => {
 
   try {
     // Create Supabase client with service role key (bypasses RLS)
-    // @ts-ignore - Deno.env is available in Supabase Edge Functions runtime
+    // @ts-expect-error - Deno.env is available in Supabase Edge Functions runtime
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
-    // @ts-ignore - Deno.env is available in Supabase Edge Functions runtime
+    // @ts-expect-error - Deno.env is available in Supabase Edge Functions runtime
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 
     if (!supabaseUrl || !supabaseServiceKey) {
