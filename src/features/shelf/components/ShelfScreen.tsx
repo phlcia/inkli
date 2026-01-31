@@ -181,6 +181,14 @@ export default function ShelfScreen({
     const tabBooks = booksForCurrentTab;
     if (activeTab === 'read') {
       return [...tabBooks].sort((a, b) => (b.rank_score || 0) - (a.rank_score || 0));
+    } else if (activeTab === 'currently_reading') {
+      return [...tabBooks].sort((a, b) => {
+        const aValue = a.last_progress_update || a.updated_at || '';
+        const bValue = b.last_progress_update || b.updated_at || '';
+        const aTime = aValue ? new Date(aValue).getTime() : 0;
+        const bTime = bValue ? new Date(bValue).getTime() : 0;
+        return bTime - aTime;
+      });
     } else {
       return [...tabBooks].sort((a, b) => {
         const titleA = a.book?.title || '';
@@ -276,6 +284,7 @@ export default function ShelfScreen({
 
     const score = book.rank_score || 0;
     const scoreColor = getScoreColor(score);
+    const progressPercent = book.progress_percent ?? 0;
 
     return (
       <TouchableOpacity
@@ -298,6 +307,16 @@ export default function ShelfScreen({
             <Text style={styles.bookAuthor} numberOfLines={1}>
               {bookData.authors.join(', ')}
             </Text>
+          )}
+          {activeTab === 'currently_reading' && (
+            <View style={styles.progressRow}>
+              <Text style={styles.progressPercent}>{progressPercent}%</Text>
+              <View style={styles.progressTrack}>
+                <View
+                  style={[styles.progressFill, { width: `${progressPercent}%` }]}
+                />
+              </View>
+            </View>
           )}
         </View>
 
@@ -684,6 +703,31 @@ const styles = StyleSheet.create({
     fontFamily: typography.body,
     color: colors.brownText,
     opacity: 0.7,
+  },
+  progressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 6,
+  },
+  progressPercent: {
+    fontSize: 12,
+    fontFamily: typography.body,
+    color: colors.brownText,
+    fontWeight: '600',
+    marginRight: 8,
+    minWidth: 32,
+  },
+  progressTrack: {
+    flex: 1,
+    height: 6,
+    borderRadius: 6,
+    backgroundColor: '#E2E2E2',
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: 6,
+    borderRadius: 6,
+    backgroundColor: colors.primaryBlue,
   },
   scoreCircle: {
     width: 56,

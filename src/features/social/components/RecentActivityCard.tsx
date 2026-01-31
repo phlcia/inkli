@@ -76,6 +76,10 @@ export default function RecentActivityCard({
   const actionSuffix = userDisplayName && actionText.startsWith(`${userDisplayName} `)
     ? actionText.slice(userDisplayName.length + 1)
     : actionText;
+  const normalizedAction = actionSuffix.trim().toLowerCase();
+  const isProgressActivity =
+    normalizedAction.includes('% through') ||
+    normalizedAction.startsWith('finished reading');
 
   useEffect(() => {
     setLikesCount(userBook.likes_count ?? 0);
@@ -226,26 +230,28 @@ export default function RecentActivityCard({
               ) : null
             ) : (
               // Show full action text when not hidden
-              <Text style={styles.cardActionText}>
-                {userDisplayName ? (
-                  <Text 
-                    style={[styles.cardUserText, isOtherUser && styles.cardUserTextClickable]} 
-                    onPress={isOtherUser ? handlePressUserProfile : onPressUser}
-                  >
-                    {userDisplayName}
+              <View style={styles.actionRow}>
+                <Text style={styles.cardActionText}>
+                  {userDisplayName ? (
+                    <Text 
+                      style={[styles.cardUserText, isOtherUser && styles.cardUserTextClickable]} 
+                      onPress={isOtherUser ? handlePressUserProfile : onPressUser}
+                    >
+                      {userDisplayName}
+                    </Text>
+                  ) : null}
+                  {userDisplayName ? ' ' : ''}
+                  {actionSuffix}{' '}
+                  <Text style={styles.cardBookTitle} onPress={onPressBookTitle || (() => onPressBook(userBook))}>
+                    {book.title}
                   </Text>
-                ) : null}
-                {userDisplayName ? ' ' : ''}
-                {actionSuffix}{' '}
-                <Text style={styles.cardBookTitle} onPress={onPressBookTitle || (() => onPressBook(userBook))}>
-                  {book.title}
+                  {(userBook as any).read_count > 1 && (
+                    <Text style={styles.readCountBadge}>
+                      {' '}({(userBook as any).read_count}x)
+                    </Text>
+                  )}
                 </Text>
-                {(userBook as any).read_count > 1 && (
-                  <Text style={styles.readCountBadge}>
-                    {' '}({(userBook as any).read_count}x)
-                  </Text>
-                )}
-              </Text>
+              </View>
             )}
           </View>
         </View>
@@ -461,6 +467,16 @@ const styles = StyleSheet.create({
   },
   cardHeaderText: {
     flex: 1,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  progressIcon: {
+    width: 16,
+    height: 16,
+    marginRight: 6,
+    tintColor: colors.primaryBlue,
   },
   cardActionText: {
     fontSize: 16,

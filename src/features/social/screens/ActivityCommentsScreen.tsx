@@ -132,8 +132,12 @@ export default function ActivityCommentsScreen() {
     }, [loadComments])
   );
 
-  const getActionText = (status: string | null) => {
-    switch (status) {
+  const getActionText = (userBook: UserBook | null) => {
+    if (userBook?.status === 'currently_reading' && userBook.last_progress_update) {
+      const progress = userBook.progress_percent ?? 0;
+      return `You are ${progress}% through`;
+    }
+    switch (userBook?.status) {
       case 'read':
         return 'You finished';
       case 'currently_reading':
@@ -196,7 +200,7 @@ export default function ActivityCommentsScreen() {
   const loadHeader = useCallback(async () => {
     if (route.params.userBook) {
       setHeaderUserBook(route.params.userBook);
-      setHeaderActionText(route.params.actionText || getActionText(route.params.userBook.status));
+      setHeaderActionText(route.params.actionText || getActionText(route.params.userBook));
       setHeaderAvatarUrl(route.params.avatarUrl || null);
       setHeaderAvatarFallback(route.params.avatarFallback || 'U');
       setHeaderViewerStatus(route.params.viewerStatus ?? null);
@@ -223,7 +227,7 @@ export default function ActivityCommentsScreen() {
       } as UserBook;
 
       setHeaderUserBook(userBook);
-      setHeaderActionText(getActionText(userBook.status));
+      setHeaderActionText(getActionText(userBook));
 
       const { data: profile } = await supabase
         .from('user_profiles')

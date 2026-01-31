@@ -53,6 +53,8 @@ const mapRowsToItems = (rows: ActivityCardRow[]): ActivityFeedItem[] =>
       finished_date: row.user_book_finished_date ?? undefined,
       likes_count: row.user_book_likes_count ?? undefined,
       comments_count: row.user_book_comments_count ?? undefined,
+      progress_percent: 0,
+      last_progress_update: null,
       created_at: row.user_book_created_at,
       updated_at: row.user_book_updated_at,
       book,

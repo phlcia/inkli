@@ -117,6 +117,8 @@ export interface UserBook {
   read_sessions?: ReadSession[]; // NEW: Multiple date ranges
   likes_count?: number | null;
   comments_count?: number | null;
+  progress_percent: number;
+  last_progress_update?: string | null;
   created_at: string;
   updated_at: string;
   book?: Book;
@@ -1072,8 +1074,6 @@ export async function addBookToShelf(
   options?: {
     rating?: 'liked' | 'fine' | 'disliked';
     notes?: string;
-    started_date?: string;
-    finished_date?: string;
     genres?: string[]; // User-selected genres (from GenreLabelPicker) - saved to user_books
     custom_labels?: string[]; // User-selected custom labels
   }
@@ -1113,12 +1113,6 @@ export async function addBookToShelf(
       if (options?.notes !== undefined) {
         updateData.notes = options.notes;
       }
-      if (options?.started_date !== undefined) {
-        updateData.started_date = options.started_date;
-      }
-      if (options?.finished_date !== undefined) {
-        updateData.finished_date = options.finished_date;
-      }
       if (options?.custom_labels !== undefined) {
         updateData.custom_labels = options.custom_labels;
       }
@@ -1157,12 +1151,6 @@ export async function addBookToShelf(
     if (options?.notes) {
       userBookData.notes = options.notes;
     }
-    if (options?.started_date) {
-      userBookData.started_date = options.started_date;
-    }
-    if (options?.finished_date) {
-      userBookData.finished_date = options.finished_date;
-    }
     if (options?.custom_labels) {
       userBookData.custom_labels = options.custom_labels;
     }
@@ -1190,8 +1178,6 @@ export async function addBookToShelf(
           };
           if (options?.rating !== undefined) updateData.rating = options.rating;
           if (options?.notes !== undefined) updateData.notes = options.notes;
-          if (options?.started_date !== undefined) updateData.started_date = options.started_date;
-          if (options?.finished_date !== undefined) updateData.finished_date = options.finished_date;
           if (options?.custom_labels !== undefined) updateData.custom_labels = options.custom_labels;
           if (userGenres !== null) updateData.user_genres = userGenres;
 
@@ -1210,12 +1196,149 @@ export async function addBookToShelf(
       throw userBookError;
     }
 
+    if (status === 'currently_reading') {
+      await initializeReadingProgress(userId, bookId);
+    }
+
     return {
       userBookId: newUserBook.id,
       isUpdate: false,
     };
   } catch (error) {
     console.error('Error adding book to shelf:', error);
+    throw error;
+  }
+}
+
+function normalizeProgressPercent(progressPercent: number): number {
+  const rounded = Math.round(progressPercent);
+  return Math.max(0, Math.min(100, rounded));
+}
+
+function isProgressActivityContent(content?: string | null): boolean {
+  if (!content) return false;
+  const normalized = content.trim().toLowerCase();
+  return (
+    (normalized.startsWith('is ') &&
+      (normalized.includes('% through'))) ||
+    normalized.startsWith('finished reading')
+  );
+}
+
+export async function updateReadingProgress(
+  userId: string,
+  bookId: string,
+  progressPercent: number,
+  createActivity: boolean = true
+): Promise<UserBook | null> {
+  const normalized = normalizeProgressPercent(progressPercent);
+
+  try {
+    const { data: existing, error: existingError } = await supabase
+      .from('user_books')
+      .select('id, status, progress_percent, book:books(title, cover_url)')
+      .eq('user_id', userId)
+      .eq('book_id', bookId)
+      .single();
+
+    if (existingError) {
+      console.error('Error fetching existing progress:', existingError);
+      return null;
+    }
+
+    if (!existing || existing.status !== 'currently_reading') {
+      return null;
+    }
+
+    const { data: updated, error: updateError } = await supabase
+      .from('user_books')
+      .update({ progress_percent: normalized })
+      .eq('id', existing.id)
+      .eq('status', 'currently_reading')
+      .select('*, book:books(*)')
+      .single();
+
+    if (updateError) {
+      console.error('Error updating reading progress:', updateError);
+      throw updateError;
+    }
+
+    if (createActivity) {
+      const previous = normalizeProgressPercent(existing.progress_percent ?? 0);
+      const hasChanged = previous !== normalized;
+
+      if (hasChanged) {
+        const content =
+          normalized === 100 ? 'finished reading' : `is ${normalized}% through`;
+
+        if (isProgressActivityContent(content)) {
+          const { data: activityData, error: activityError } = await supabase
+            .from('activity_cards')
+            .insert({
+            user_id: userId,
+            user_book_id: existing.id,
+            content,
+            image_url: updated?.book?.cover_url ?? null,
+          })
+          .select('id');
+          if (activityError) {
+            console.error('Error creating progress activity card:', activityError);
+          } else {
+            console.log('Created progress activity card:', activityData?.[0]?.id);
+          }
+        }
+      }
+    }
+
+    return updated as UserBook;
+  } catch (error) {
+    console.error('Error updating reading progress:', error);
+    throw error;
+  }
+}
+
+export async function getReadingProgress(
+  userId: string,
+  bookId: string
+): Promise<number> {
+  try {
+    const { data, error } = await supabase
+      .from('user_books')
+      .select('progress_percent')
+      .eq('user_id', userId)
+      .eq('book_id', bookId)
+      .single();
+
+    if (error) {
+      console.error('Error fetching reading progress:', error);
+      return 0;
+    }
+
+    return normalizeProgressPercent(data?.progress_percent ?? 0);
+  } catch (error) {
+    console.error('Error fetching reading progress:', error);
+    return 0;
+  }
+}
+
+export async function initializeReadingProgress(
+  userId: string,
+  bookId: string
+): Promise<void> {
+  try {
+    const { error } = await supabase
+      .from('user_books')
+      .update({ progress_percent: 0 })
+      .eq('user_id', userId)
+      .eq('book_id', bookId)
+      .eq('status', 'currently_reading');
+
+    if (error) {
+      console.error('Error initializing reading progress:', error);
+      throw error;
+    }
+  } catch (error) {
+    console.error('Error initializing reading progress:', error);
     throw error;
   }
 }
@@ -1431,8 +1554,7 @@ function getDefaultScoreForRating(rating: 'liked' | 'fine' | 'disliked'): number
  * If rating is set and rank_score is null, check if this is the first book in category
  * If so, set default score; otherwise leave null for ranking process
  * 
- * NOTE: started_date and finished_date are DEPRECATED. Use read_sessions (addReadSession, updateReadSession, deleteReadSession) instead.
- * These parameters are kept for backward compatibility during migration period.
+ * NOTE: Use read_sessions (addReadSession, updateReadSession, deleteReadSession) for dates.
  */
 export async function updateUserBookDetails(
   userBookId: string,
@@ -1443,10 +1565,6 @@ export async function updateUserBookDetails(
     notes?: string | null;
     custom_labels?: string[] | null;
     user_genres?: string[] | null; // Per-user genre overrides
-    /** @deprecated Use read_sessions (addReadSession) instead */
-    started_date?: string | null;
-    /** @deprecated Use read_sessions (addReadSession) instead */
-    finished_date?: string | null;
   },
   options?: {
     touchUpdatedAt?: boolean;
@@ -1458,7 +1576,6 @@ export async function updateUserBookDetails(
         userBookId,
         updates,
       });
-      // Note: started_date and finished_date are deprecated - use read_sessions instead
       // Only pass rating and notes to the RPC (dates are handled separately via read_sessions)
       const { data, error } = await supabase.rpc('update_user_book_details_no_touch', {
         p_user_book_id: userBookId,
@@ -1549,8 +1666,7 @@ export async function updateUserBookDetails(
     if (updates.notes !== undefined) updateData.notes = updates.notes;
     if (updates.custom_labels !== undefined) updateData.custom_labels = updates.custom_labels;
     if (updates.user_genres !== undefined) updateData.user_genres = updates.user_genres;
-    // Note: started_date and finished_date are deprecated - use read_sessions instead
-    // Removed to prevent errors since columns no longer exist
+    // Dates are handled via read_sessions; user_books no longer stores them.
 
     console.log('=== updateUserBookDetails: final updateData ===', updateData);
     console.log('userBookId:', userBookId);

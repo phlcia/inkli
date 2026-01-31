@@ -406,6 +406,8 @@ CREATE TABLE IF NOT EXISTS user_books (
   -- finished_date DATE,
   likes_count INTEGER DEFAULT 0,
   comments_count INTEGER DEFAULT 0,
+  progress_percent INTEGER NOT NULL DEFAULT 0 CHECK (progress_percent >= 0 AND progress_percent <= 100),
+  last_progress_update TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(user_id, book_id)
@@ -421,6 +423,9 @@ CREATE INDEX IF NOT EXISTS idx_user_books_comments_count ON user_books(comments_
 CREATE INDEX IF NOT EXISTS idx_user_books_user_updated_at ON user_books(user_id, updated_at DESC, id DESC);
 CREATE INDEX IF NOT EXISTS idx_user_books_created_at ON user_books(user_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_user_books_updated_at ON user_books(user_id, updated_at);
+CREATE INDEX IF NOT EXISTS idx_user_books_progress
+  ON user_books(user_id, status, progress_percent)
+  WHERE status = 'currently_reading';
 
 ALTER TABLE user_books ENABLE ROW LEVEL SECURITY;
 
@@ -712,6 +717,23 @@ CREATE TRIGGER update_user_books_updated_at
   BEFORE UPDATE ON user_books
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
+
+-- Update last_progress_update whenever progress_percent changes
+CREATE OR REPLACE FUNCTION set_user_books_last_progress_update()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.progress_percent IS DISTINCT FROM OLD.progress_percent THEN
+    NEW.last_progress_update = NOW();
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS user_books_progress_update_trigger ON user_books;
+CREATE TRIGGER user_books_progress_update_trigger
+  BEFORE UPDATE OF progress_percent ON user_books
+  FOR EACH ROW
+  EXECUTE FUNCTION set_user_books_last_progress_update();
 
 -- Updated_at helper for user_profiles
 CREATE OR REPLACE FUNCTION update_user_profiles_updated_at()

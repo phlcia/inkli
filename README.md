@@ -60,7 +60,7 @@ A social book ranking and discovery app built with Expo (React Native), Supabase
 - **Block & mute**: Block or mute users for content moderation
 
 #### Recommendations & Discovery
-- **Onboarding quiz**: Taste profile quiz with book comparisons to build initial recommendations
+- **Onboarding quiz**: Quiz with book comparisons to build initial recommendations
 - **Personalized recommendations**: Book recommendations based on reading history and preferences
 - **Book circles**: See which users in your network have read specific books
 - **Friends' rankings**: View friends' rankings and ratings for books
@@ -319,7 +319,7 @@ This structure promotes:
 - **books/** - Book detail, ranking, and comparison interfaces
 - **home/** - Home activity feed
 - **leaderboard/** - Global user leaderboard
-- **onboarding/** - Onboarding quiz and taste profile setup
+- **onboarding/** - Onboarding quiz
 - **profile/** - User profile management and viewing
 - **recommendations/** - Book recommendations
 - **search/** - Book search functionality
@@ -416,8 +416,8 @@ Book recommendation engine:
 - Provides personalized book recommendations based on reading history and preferences
 
 ### Onboarding Quiz (`src/services/quiz.ts`)
-Onboarding quiz for taste profile:
-- Manages quiz questions and responses to build user taste profiles
+Onboarding quiz for recommendations:
+- Manages quiz questions and responses to build user recommendations
 
 ### Cover Resolution (`src/services/coverResolver.ts`)
 Intelligent cover URL resolution and caching:
