@@ -335,9 +335,13 @@ export default function UserProfileScreen() {
     </View>
   );
 
-  const getActionText = (status: string | null) => {
+  const getActionText = (userBook: UserBook) => {
     const firstName = userProfile?.first_name || 'User';
-    switch (status) {
+    if (userBook.status === 'currently_reading' && userBook.last_progress_update) {
+      const progress = userBook.progress_percent ?? 0;
+      return `${firstName} is ${progress}% through`;
+    }
+    switch (userBook.status) {
       case 'read':
         return `${firstName} finished`;
       case 'currently_reading':
@@ -412,7 +416,7 @@ export default function UserProfileScreen() {
     <RecentActivityCard
       key={userBook.id}
       userBook={userBook}
-      actionText={getActionText(userBook.status)}
+      actionText={getActionText(userBook)}
       avatarUrl={userProfile?.profile_photo_url}
       avatarFallback={userProfile?.username?.charAt(0).toUpperCase() || 'U'}
       onPressBook={handleBookPress}
@@ -720,19 +724,6 @@ export default function UserProfileScreen() {
                   Recent Activity
                 </Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.tab, activeTab === 'profile' && styles.tabActive]}
-                onPress={() => setActiveTab('profile')}
-              >
-                <Text
-                  style={[
-                    styles.tabText,
-                    activeTab === 'profile' && styles.tabTextActive,
-                  ]}
-                >
-                  Taste Profile
-                </Text>
-              </TouchableOpacity>
             </View>
 
             {/* Tab Content */}
@@ -744,11 +735,6 @@ export default function UserProfileScreen() {
                   ) : (
                     <Text style={styles.emptyText}>No recent activity</Text>
                   )}
-                </View>
-              )}
-              {activeTab === 'profile' && (
-                <View style={styles.profileContent}>
-                  <Text style={styles.emptyText}>Taste profile coming soon</Text>
                 </View>
               )}
             </View>

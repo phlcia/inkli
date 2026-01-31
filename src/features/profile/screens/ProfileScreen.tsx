@@ -410,7 +410,22 @@ export default function ProfileScreen() {
     </View>
   );
 
-  const getActionText = (status: string | null) => {
+  const getActionText = (status: string | null, activityContent?: string | null) => {
+    const normalized = activityContent?.trim().toLowerCase() || '';
+    const isProgressActivity =
+      (normalized.startsWith('is ') && normalized.includes('% through')) ||
+      normalized.startsWith('finished reading');
+
+    if (isProgressActivity && activityContent) {
+      if (normalized.startsWith('finished reading')) {
+        return 'You finished reading';
+      }
+      if (normalized.startsWith('is ')) {
+        return `You are ${activityContent.slice(3)}`;
+      }
+      return `You ${activityContent}`;
+    }
+
     switch (status) {
       case 'read':
         return 'You finished';
@@ -491,7 +506,7 @@ export default function ProfileScreen() {
     <RecentActivityCard
       key={item.id}
       userBook={item.userBook}
-      actionText={getActionText(item.userBook.status)}
+      actionText={getActionText(item.userBook.status, item.content)}
       avatarUrl={userProfile?.profile_photo_url}
       avatarFallback={getUsername()?.charAt(0)?.toUpperCase() || 'U'}
       onPressBook={handleBookPress}
@@ -722,19 +737,6 @@ export default function ProfileScreen() {
               Recent Activity
             </Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'profile' && styles.tabActive]}
-            onPress={() => setActiveTab('profile')}
-          >
-            <Text
-              style={[
-                styles.tabText,
-                activeTab === 'profile' && styles.tabTextActive,
-              ]}
-            >
-              Taste Profile
-            </Text>
-      </TouchableOpacity>
         </View>
 
         {/* Tab Content */}

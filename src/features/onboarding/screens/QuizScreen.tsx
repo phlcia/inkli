@@ -216,7 +216,7 @@ export default function QuizScreen({ signupParams, onSignupComplete, onQuizCompl
 
     setLoading(true);
     try {
-      // Get user's quiz comparisons to build taste profile
+      // Get user's quiz comparisons
       const { data: comparisons, error: compError } = await supabase
         .from('comparisons')
         .select('winner_book_id')

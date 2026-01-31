@@ -137,8 +137,17 @@ export default function HomeScreen() {
     }
   }, [user, hasMore, paginating, refreshing, initialLoading, cursor]);
 
-  const getActionText = useCallback((status: string | null, username: string) => {
+  const getActionText = useCallback((status: string | null, username: string, activityContent?: string | null) => {
     const displayName = username || 'User';
+    const normalized = activityContent?.trim().toLowerCase() || '';
+    const isProgressActivity =
+      (normalized.startsWith('is ') && normalized.includes('% through')) ||
+      normalized.startsWith('finished reading');
+
+    if (isProgressActivity && activityContent) {
+      return `${displayName} ${activityContent}`;
+    }
+
     switch (status) {
       case 'read':
         return `${displayName} finished`;
@@ -218,7 +227,7 @@ export default function HomeScreen() {
     ({ item }: { item: ActivityFeedItem }) => (
       <RecentActivityCard
         userBook={item.userBook}
-        actionText={getActionText(item.userBook.status, item.user.username)}
+        actionText={getActionText(item.userBook.status, item.user.username, item.content)}
         userDisplayName={item.user.username}
         avatarUrl={item.user.profile_photo_url}
         avatarFallback={item.user.username?.charAt(0).toUpperCase() || 'U'}

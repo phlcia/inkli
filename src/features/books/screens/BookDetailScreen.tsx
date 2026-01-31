@@ -26,6 +26,7 @@ import { SearchStackParamList } from '../../../navigation/SearchStackNavigator';
 import RecentActivityCard from '../../social/components/RecentActivityCard';
 import DateRangePickerModal from '../../../components/ui/DateRangePickerModal';
 import GenreLabelPicker from '../../../components/books/GenreLabelPicker';
+import ReadingProgressSlider from '../components/ReadingProgressSlider';
 
 type BookDetailScreenRouteProp = RouteProp<SearchStackParamList, 'BookDetail'>;
 type BookDetailScreenNavigationProp = NativeStackNavigationProp<SearchStackParamList, 'BookDetail'>;
@@ -63,6 +64,7 @@ export default function BookDetailScreen() {
   const [userNotes, setUserNotes] = useState<string>('');
   const [userCustomLabels, setUserCustomLabels] = useState<string[]>([]);
   const [readSessions, setReadSessions] = useState<ReadSession[]>([]);
+  const [readingProgress, setReadingProgress] = useState<number>(0);
   const [savingNotes, setSavingNotes] = useState(false);
   const [savingDates, setSavingDates] = useState(false);
   const [notesSaved, setNotesSaved] = useState(false);
@@ -171,7 +173,7 @@ export default function BookDetailScreen() {
 
         const { data } = await supabase
           .from('user_books')
-          .select('id, status, rank_score, notes, custom_labels, user_genres')
+          .select('id, status, rank_score, notes, custom_labels, user_genres, progress_percent')
           .eq('user_id', user.id)
           .eq('book_id', existingBook.id)
           .single();
@@ -188,6 +190,7 @@ export default function BookDetailScreen() {
           setUserNotes(data.notes || '');
           setUserCustomLabels(data.custom_labels || []);
           setUserGenres(data.user_genres || []); // User's saved genres (empty if not set)
+          setReadingProgress(data.progress_percent ?? 0);
           
           // Fetch read sessions
           try {
@@ -205,6 +208,7 @@ export default function BookDetailScreen() {
           setUserCustomLabels([]);
           setUserGenres([]);
           setReadSessions([]);
+          setReadingProgress(0);
         }
       } else {
         setCurrentStatus(null);
@@ -214,6 +218,7 @@ export default function BookDetailScreen() {
         setUserCustomLabels([]);
         setUserGenres([]);
         setReadSessions([]);
+        setReadingProgress(0);
       }
     } catch (error) {
       // Book doesn't exist yet, that's fine
@@ -695,18 +700,7 @@ export default function BookDetailScreen() {
         setCurrentStatus(status);
         setUserRankScore(null);
         // Add or move the book
-        // If status is 'currently_reading', set started_date to today
-        const today = new Date();
-        const year = today.getFullYear();
-        const month = String(today.getMonth() + 1).padStart(2, '0');
-        const day = String(today.getDate()).padStart(2, '0');
-        const todayString = `${year}-${month}-${day}`;
-        
-        const options = status === 'currently_reading' 
-          ? { started_date: todayString }
-          : undefined;
-        
-        const result = await addBookToShelf(book, status, user.id, options);
+        const result = await addBookToShelf(book, status, user.id);
         
         console.log('=== BookDetailScreen: addBookToShelf result ===');
         console.log('Result:', result);
@@ -1337,6 +1331,21 @@ export default function BookDetailScreen() {
           </View>
         </View>
 
+        {currentStatus === 'currently_reading' && user?.id && (resolvedBookId || book.id) && (
+          <View style={styles.progressSection}>
+            <ReadingProgressSlider
+              userId={user.id}
+              bookId={(resolvedBookId || book.id) as string}
+              initialProgress={readingProgress}
+              onProgressChange={(progress) => {
+                setReadingProgress(progress);
+                void refreshBookStatus();
+              }}
+              disabled={Boolean(loading)}
+            />
+          </View>
+        )}
+
         {/* Categories */}
         {book.categories && book.categories.length > 0 && (
           <View style={styles.categoriesContainer}>
@@ -1900,6 +1909,15 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
     marginBottom: 10,
     marginRight: -8,
+  },
+  progressSection: {
+    marginBottom: 16,
+  },
+  progressLabel: {
+    fontSize: 14,
+    fontFamily: typography.body,
+    color: colors.brownText,
+    fontWeight: '600',
   },
   circlesSection: {
     marginBottom: 10,
