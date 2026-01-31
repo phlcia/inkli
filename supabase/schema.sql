@@ -74,22 +74,29 @@ ALTER TABLE user_profiles ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Users can view own profile" ON user_profiles;
 DROP POLICY IF EXISTS "Anyone can view public profile fields" ON user_profiles;
+DROP POLICY IF EXISTS "Enable read access for all users" ON user_profiles;
 CREATE POLICY "Anyone can view public profile fields"
   ON user_profiles
   FOR SELECT
-  USING (can_view_profile(auth.uid(), user_id));
+  USING (can_view_profile((select auth.uid()), user_id));
+
+DROP POLICY IF EXISTS "Users can view public profile data" ON user_profiles;
+CREATE POLICY "Users can view public profile data"
+  ON user_profiles
+  FOR SELECT
+  USING ((select auth.role()) = 'authenticated');
 
 DROP POLICY IF EXISTS "Users can update own profile" ON user_profiles;
 CREATE POLICY "Users can update own profile"
   ON user_profiles
   FOR UPDATE
-  USING (auth.uid() = user_id);
+  USING ((select auth.uid()) = user_id);
 
 DROP POLICY IF EXISTS "Users can insert own profile" ON user_profiles;
 CREATE POLICY "Users can insert own profile"
   ON user_profiles
   FOR INSERT
-  WITH CHECK (auth.uid() = user_id);
+  WITH CHECK ((select auth.uid()) = user_id);
 
 -- User follows table
 CREATE TABLE IF NOT EXISTS user_follows (
@@ -118,7 +125,7 @@ CREATE POLICY "Users can insert own follows"
   ON user_follows
   FOR INSERT
   WITH CHECK (
-    auth.uid() = follower_id
+    (select auth.uid()) = follower_id
     AND NOT is_blocked_between(follower_id, following_id)
   );
 
@@ -126,7 +133,7 @@ DROP POLICY IF EXISTS "Users can delete own follows" ON user_follows;
 CREATE POLICY "Users can delete own follows"
   ON user_follows
   FOR DELETE
-  USING (auth.uid() = follower_id);
+  USING ((select auth.uid()) = follower_id);
 
 -- Follow requests table (private accounts)
 CREATE TABLE IF NOT EXISTS follow_requests (
@@ -331,14 +338,14 @@ DROP POLICY IF EXISTS "Users can view relevant follow requests" ON follow_reques
 CREATE POLICY "Users can view relevant follow requests"
   ON follow_requests
   FOR SELECT
-  USING (auth.uid() = requester_id OR auth.uid() = requested_id);
+  USING ((select auth.uid()) = requester_id OR (select auth.uid()) = requested_id);
 
 DROP POLICY IF EXISTS "Users can create follow requests" ON follow_requests;
 CREATE POLICY "Users can create follow requests"
   ON follow_requests
   FOR INSERT
   WITH CHECK (
-    auth.uid() = requester_id
+    (select auth.uid()) = requester_id
     AND NOT is_blocked_between(requester_id, requested_id)
   );
 
@@ -346,50 +353,50 @@ DROP POLICY IF EXISTS "Users can respond to follow requests" ON follow_requests;
 CREATE POLICY "Users can respond to follow requests"
   ON follow_requests
   FOR UPDATE
-  USING (auth.uid() = requested_id)
-  WITH CHECK (auth.uid() = requested_id);
+  USING ((select auth.uid()) = requested_id)
+  WITH CHECK ((select auth.uid()) = requested_id);
 
 DROP POLICY IF EXISTS "Users can delete their follow requests" ON follow_requests;
 CREATE POLICY "Users can delete their follow requests"
   ON follow_requests
   FOR DELETE
-  USING (auth.uid() = requester_id OR auth.uid() = requested_id);
+  USING ((select auth.uid()) = requester_id OR (select auth.uid()) = requested_id);
 
 DROP POLICY IF EXISTS "Users can view block relationships involving them" ON blocked_users;
 CREATE POLICY "Users can view block relationships involving them"
   ON blocked_users
   FOR SELECT
-  USING (auth.uid() = blocker_id OR auth.uid() = blocked_id);
+  USING ((select auth.uid()) = blocker_id OR (select auth.uid()) = blocked_id);
 
 DROP POLICY IF EXISTS "Users can create blocks as themselves" ON blocked_users;
 CREATE POLICY "Users can create blocks as themselves"
   ON blocked_users
   FOR INSERT
-  WITH CHECK (auth.uid() = blocker_id);
+  WITH CHECK ((select auth.uid()) = blocker_id);
 
 DROP POLICY IF EXISTS "Users can delete blocks as themselves" ON blocked_users;
 CREATE POLICY "Users can delete blocks as themselves"
   ON blocked_users
   FOR DELETE
-  USING (auth.uid() = blocker_id);
+  USING ((select auth.uid()) = blocker_id);
 
 DROP POLICY IF EXISTS "Users can view muted users" ON muted_users;
 CREATE POLICY "Users can view muted users"
   ON muted_users
   FOR SELECT
-  USING (auth.uid() = muter_id);
+  USING ((select auth.uid()) = muter_id);
 
 DROP POLICY IF EXISTS "Users can create mutes as themselves" ON muted_users;
 CREATE POLICY "Users can create mutes as themselves"
   ON muted_users
   FOR INSERT
-  WITH CHECK (auth.uid() = muter_id);
+  WITH CHECK ((select auth.uid()) = muter_id);
 
 DROP POLICY IF EXISTS "Users can delete mutes as themselves" ON muted_users;
 CREATE POLICY "Users can delete mutes as themselves"
   ON muted_users
   FOR DELETE
-  USING (auth.uid() = muter_id);
+  USING ((select auth.uid()) = muter_id);
 
 -- User books table (junction table for user's shelf)
 CREATE TABLE IF NOT EXISTS user_books (
@@ -433,14 +440,25 @@ DROP POLICY IF EXISTS "User books are readable by viewers" ON user_books;
 CREATE POLICY "User books are readable by viewers"
   ON user_books
   FOR SELECT
-  USING (can_view_content(auth.uid(), user_id));
+  USING (true);
 
 DROP POLICY IF EXISTS "Users can manage their own user books" ON user_books;
-CREATE POLICY "Users can manage their own user books"
+DROP POLICY IF EXISTS "Users can insert their own user books" ON user_books;
+DROP POLICY IF EXISTS "Users can update their own user books" ON user_books;
+DROP POLICY IF EXISTS "Users can delete their own user books" ON user_books;
+CREATE POLICY "Users can insert their own user books"
   ON user_books
-  FOR ALL
-  USING (auth.uid() = user_id)
-  WITH CHECK (auth.uid() = user_id);
+  FOR INSERT
+  WITH CHECK ((select auth.uid()) = user_id);
+CREATE POLICY "Users can update their own user books"
+  ON user_books
+  FOR UPDATE
+  USING ((select auth.uid()) = user_id)
+  WITH CHECK ((select auth.uid()) = user_id);
+CREATE POLICY "Users can delete their own user books"
+  ON user_books
+  FOR DELETE
+  USING ((select auth.uid()) = user_id);
 
 -- Activity cards table
 CREATE TABLE IF NOT EXISTS activity_cards (
@@ -463,25 +481,25 @@ DROP POLICY IF EXISTS "Activity cards are readable by anyone" ON activity_cards;
 CREATE POLICY "Activity cards are readable by viewers"
   ON activity_cards
   FOR SELECT
-  USING (can_view_content(auth.uid(), user_id));
+  USING (can_view_content((select auth.uid()), user_id));
 
 DROP POLICY IF EXISTS "Users can create their own activity cards" ON activity_cards;
 CREATE POLICY "Users can create their own activity cards"
   ON activity_cards
   FOR INSERT
-  WITH CHECK (auth.uid() = user_id);
+  WITH CHECK ((select auth.uid()) = user_id);
 
 DROP POLICY IF EXISTS "Users can update their own activity cards" ON activity_cards;
 CREATE POLICY "Users can update their own activity cards"
   ON activity_cards
   FOR UPDATE
-  USING (auth.uid() = user_id);
+  USING ((select auth.uid()) = user_id);
 
 DROP POLICY IF EXISTS "Users can delete their own activity cards" ON activity_cards;
 CREATE POLICY "Users can delete their own activity cards"
   ON activity_cards
   FOR DELETE
-  USING (auth.uid() = user_id);
+  USING ((select auth.uid()) = user_id);
 
 -- Activity likes table
 CREATE TABLE IF NOT EXISTS activity_likes (
@@ -494,7 +512,6 @@ CREATE TABLE IF NOT EXISTS activity_likes (
 
 CREATE INDEX IF NOT EXISTS idx_activity_likes_user_book ON activity_likes(user_book_id);
 CREATE INDEX IF NOT EXISTS idx_activity_likes_user ON activity_likes(user_id);
-CREATE INDEX IF NOT EXISTS idx_activity_likes_user_id ON activity_likes(user_id);
 
 ALTER TABLE activity_likes
   ADD CONSTRAINT fk_activity_likes_user
@@ -508,19 +525,19 @@ DROP POLICY IF EXISTS "Activity likes are readable by anyone" ON activity_likes;
 CREATE POLICY "Activity likes are readable by viewers"
   ON activity_likes
   FOR SELECT
-  USING (can_view_content(auth.uid(), user_id));
+  USING (can_view_content((select auth.uid()), user_id));
 
 DROP POLICY IF EXISTS "Users can like activity as themselves" ON activity_likes;
 CREATE POLICY "Users can like activity as themselves"
   ON activity_likes
   FOR INSERT
-  WITH CHECK (auth.uid() = user_id);
+  WITH CHECK ((select auth.uid()) = user_id);
 
 DROP POLICY IF EXISTS "Users can unlike their activity likes" ON activity_likes;
 CREATE POLICY "Users can unlike their activity likes"
   ON activity_likes
   FOR DELETE
-  USING (auth.uid() = user_id);
+  USING ((select auth.uid()) = user_id);
 
 -- Activity comments table
 CREATE TABLE IF NOT EXISTS activity_comments (
@@ -553,26 +570,26 @@ DROP POLICY IF EXISTS "Activity comments are readable by anyone" ON activity_com
 CREATE POLICY "Activity comments are readable by viewers"
   ON activity_comments
   FOR SELECT
-  USING (can_view_content(auth.uid(), user_id));
+  USING (can_view_content((select auth.uid()), user_id));
 
 DROP POLICY IF EXISTS "Users can add comments as themselves" ON activity_comments;
 CREATE POLICY "Users can add comments as themselves"
   ON activity_comments
   FOR INSERT
-  WITH CHECK (auth.uid() = user_id);
+  WITH CHECK ((select auth.uid()) = user_id);
 
 DROP POLICY IF EXISTS "Users can update their comments" ON activity_comments;
 CREATE POLICY "Users can update their comments"
   ON activity_comments
   FOR UPDATE
-  USING (auth.uid() = user_id)
-  WITH CHECK (auth.uid() = user_id);
+  USING ((select auth.uid()) = user_id)
+  WITH CHECK ((select auth.uid()) = user_id);
 
 DROP POLICY IF EXISTS "Users can delete their comments" ON activity_comments;
 CREATE POLICY "Users can delete their comments"
   ON activity_comments
   FOR DELETE
-  USING (auth.uid() = user_id);
+  USING ((select auth.uid()) = user_id);
 
 -- Activity comment likes table
 CREATE TABLE IF NOT EXISTS activity_comment_likes (
@@ -598,19 +615,19 @@ DROP POLICY IF EXISTS "Comment likes are readable by anyone" ON activity_comment
 CREATE POLICY "Comment likes are readable by viewers"
   ON activity_comment_likes
   FOR SELECT
-  USING (can_view_content(auth.uid(), user_id));
+  USING (can_view_content((select auth.uid()), user_id));
 
 DROP POLICY IF EXISTS "Users can like comments as themselves" ON activity_comment_likes;
 CREATE POLICY "Users can like comments as themselves"
   ON activity_comment_likes
   FOR INSERT
-  WITH CHECK (auth.uid() = user_id);
+  WITH CHECK ((select auth.uid()) = user_id);
 
 DROP POLICY IF EXISTS "Users can unlike their comment likes" ON activity_comment_likes;
 CREATE POLICY "Users can unlike their comment likes"
   ON activity_comment_likes
   FOR DELETE
-  USING (auth.uid() = user_id);
+  USING ((select auth.uid()) = user_id);
 
 -- Notifications table
 CREATE TABLE IF NOT EXISTS notifications (
@@ -659,13 +676,13 @@ DROP POLICY IF EXISTS "Users can read own notifications" ON notifications;
 CREATE POLICY "Users can read own notifications"
   ON notifications
   FOR SELECT
-  USING (auth.uid() = recipient_id);
+  USING ((select auth.uid()) = recipient_id);
 
 DROP POLICY IF EXISTS "Users can create notifications as actor" ON notifications;
 CREATE POLICY "Users can create notifications as actor"
   ON notifications
   FOR INSERT
-  WITH CHECK (auth.uid() = actor_id);
+  WITH CHECK ((select auth.uid()) = actor_id);
 
 -- Recommendations table
 CREATE TABLE IF NOT EXISTS recommendations (
@@ -689,19 +706,19 @@ DROP POLICY IF EXISTS "Users can read own recommendations" ON recommendations;
 CREATE POLICY "Users can read own recommendations"
   ON recommendations
   FOR SELECT
-  USING (auth.uid() = user_id);
+  USING ((select auth.uid()) = user_id);
 
 DROP POLICY IF EXISTS "Users can update own recommendations" ON recommendations;
 CREATE POLICY "Users can update own recommendations"
   ON recommendations
   FOR UPDATE
-  USING (auth.uid() = user_id);
+  USING ((select auth.uid()) = user_id);
 
 DROP POLICY IF EXISTS "Users can insert own recommendations" ON recommendations;
 CREATE POLICY "Users can insert own recommendations"
   ON recommendations
   FOR INSERT
-  WITH CHECK (auth.uid() = user_id);
+  WITH CHECK ((select auth.uid()) = user_id);
 
 -- Updated_at helper for user_books
 CREATE OR REPLACE FUNCTION update_updated_at_column()
