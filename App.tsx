@@ -29,6 +29,8 @@ function AppContent() {
   const [profileFlags, setProfileFlags] = useState<{
     completed_onboarding_quiz: boolean;
     skipped_onboarding_quiz: boolean;
+    member_since: string | null;
+    created_at: string | null;
   } | null>(null);
   const [profileRefreshCount, setProfileRefreshCount] = useState(0);
 
@@ -44,7 +46,7 @@ function AppContent() {
       try {
         const { data, error } = await supabase
           .from('user_profiles')
-          .select('completed_onboarding_quiz, skipped_onboarding_quiz')
+          .select('completed_onboarding_quiz, skipped_onboarding_quiz, member_since, created_at')
           .eq('user_id', user.id)
           .single();
 
@@ -53,6 +55,8 @@ function AppContent() {
           setProfileFlags({
             completed_onboarding_quiz: false,
             skipped_onboarding_quiz: false,
+            member_since: null,
+            created_at: null,
           });
           return;
         }
@@ -60,12 +64,16 @@ function AppContent() {
         setProfileFlags({
           completed_onboarding_quiz: Boolean(data.completed_onboarding_quiz),
           skipped_onboarding_quiz: Boolean(data.skipped_onboarding_quiz),
+          member_since: data.member_since ?? null,
+          created_at: data.created_at ?? null,
         });
       } catch (error) {
         console.error('Exception loading onboarding flags:', error);
         setProfileFlags({
           completed_onboarding_quiz: false,
           skipped_onboarding_quiz: false,
+          member_since: null,
+          created_at: null,
         });
       } finally {
         setProfileLoading(false);
@@ -79,11 +87,14 @@ function AppContent() {
     hasUser &&
     profileFlags !== null &&
     (() => {
-      if (!user?.created_at) return false;
-      const createdAt = new Date(user.created_at).getTime();
+      const createdAt =
+        user?.created_at ||
+        profileFlags.member_since ||
+        profileFlags.created_at;
+      if (!createdAt) return false;
+      const createdAtMs = new Date(createdAt).getTime();
       const now = Date.now();
-      const createdRecently = now - createdAt < 10 * 60 * 1000;
-      return createdRecently;
+      return now - createdAtMs < 10 * 60 * 1000;
     })() &&
     !profileFlags.completed_onboarding_quiz &&
     !profileFlags.skipped_onboarding_quiz;

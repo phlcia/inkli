@@ -86,7 +86,7 @@ export async function fetchNotifications(
 
   if (notificationsResult.error) throw notificationsResult.error;
 
-  const notifications: NotificationItem[] = (notificationsResult.data || []).map(
+  let notifications: NotificationItem[] = (notificationsResult.data || []).map(
     (item: any) => ({
       id: item.id,
       type: item.type,
@@ -99,6 +99,32 @@ export async function fetchNotifications(
       commentText: item.comment?.comment_text ?? undefined,
     })
   );
+
+  const followRequestNotifications = notifications.filter(
+    (item) => item.type === 'follow_request'
+  );
+  if (followRequestNotifications.length > 0) {
+    const requesterIds = Array.from(
+      new Set(followRequestNotifications.map((item) => item.actorId))
+    );
+    const { data: pendingRequests, error: pendingError } = await supabase
+      .from('follow_requests')
+      .select('requester_id')
+      .eq('requested_id', userId)
+      .eq('status', 'pending')
+      .in('requester_id', requesterIds);
+
+    if (pendingError) throw pendingError;
+
+    const pendingRequesterIds = new Set(
+      (pendingRequests || []).map((row: any) => row.requester_id)
+    );
+    notifications = notifications.filter(
+      (item) =>
+        item.type !== 'follow_request' ||
+        pendingRequesterIds.has(item.actorId)
+    );
+  }
 
   return { notifications, lastSeenAt };
 }
