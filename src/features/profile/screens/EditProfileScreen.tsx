@@ -498,7 +498,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   inputContainer: {
-    marginBottom: 24,
+    marginBottom: 12,
   },
   label: {
     fontSize: 14,
@@ -514,7 +514,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.brownText,
-    paddingHorizontal: 16,
+    paddingHorizontal: 18,
   },
   input: {
     flex: 1,

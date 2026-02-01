@@ -382,7 +382,7 @@ export default function QuizScreen({ signupParams, onSignupComplete, onQuizCompl
           <Text style={styles.skipButtonText}>Skip Quiz</Text>
         </TouchableOpacity>
         <Text style={styles.progressText}>
-          {comparisonCount} of {QUIZ_COMPARISON_COUNT}
+          {comparisonCount}/{QUIZ_COMPARISON_COUNT}
         </Text>
       </View>
 
@@ -417,6 +417,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.creamBackground,
+    justifyContent: 'center',
   },
   loadingContainer: {
     flex: 1,
@@ -438,13 +439,21 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
   },
   skipButton: {
-    padding: 8,
+    backgroundColor: colors.primaryBlue,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    shadowColor: colors.primaryBlue,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    elevation: 4,
   },
   skipButtonText: {
     fontSize: 16,
     fontFamily: typography.body,
-    color: colors.brownText,
-    opacity: 0.7,
+    color: colors.white,
+    opacity: 1,
   },
   progressText: {
     fontSize: 16,
@@ -457,6 +466,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 20,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   questionText: {
     fontSize: 24,
@@ -477,20 +487,30 @@ const styles = StyleSheet.create({
     color: colors.brownText,
     fontWeight: '600',
     marginHorizontal: 8,
+    alignSelf: 'center',
   },
   skipComparisonButton: {
-    alignItems: 'center',
-    padding: 12,
+    backgroundColor: colors.primaryBlue,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    shadowColor: colors.primaryBlue,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    elevation: 4,
   },
   skipComparisonText: {
     fontSize: 16,
     fontFamily: typography.body,
-    color: colors.brownText,
-    opacity: 0.7,
+    color: colors.white,
+    opacity: 1,
   },
   completeContainer: {
     flex: 1,
     paddingTop: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   completeTitle: {
     fontSize: 32,

@@ -22,7 +22,13 @@ import {
   NotificationItem,
   updateNotificationsLastSeen,
 } from '../../../services/notifications';
-import { acceptFollowRequest, rejectFollowRequest } from '../../../services/userProfile';
+import {
+  acceptFollowRequest,
+  rejectFollowRequest,
+  followUser,
+  unfollowUser,
+  cancelFollowRequest,
+} from '../../../services/userProfile';
 import { formatActivityTimestamp } from '../../../utils/dateUtils';
 
 export default function NotificationsScreen() {
@@ -35,6 +41,70 @@ export default function NotificationsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [singleLineIds, setSingleLineIds] = useState<Set<string>>(new Set());
+  const [followStates, setFollowStates] = useState<Record<string, {
+    isFollowing: boolean;
+    isRequested: boolean;
+    accountType: 'public' | 'private';
+    loading: boolean;
+  }>>({});
+
+  const refreshFollowStates = useCallback(async (items: NotificationItem[]) => {
+    if (!user) return;
+    const actorIds = Array.from(
+      new Set(
+        items
+          .filter((item) => item.type !== 'follow_request')
+          .map((item) => item.actorId)
+      )
+    );
+    if (actorIds.length === 0) {
+      setFollowStates({});
+      return;
+    }
+
+    const [profilesResult, followingResult, pendingResult] = await Promise.all([
+      supabase
+        .from('user_profiles')
+        .select('user_id, account_type')
+        .in('user_id', actorIds),
+      supabase
+        .from('user_follows')
+        .select('following_id')
+        .eq('follower_id', user.id)
+        .in('following_id', actorIds),
+      supabase
+        .from('follow_requests')
+        .select('requested_id')
+        .eq('requester_id', user.id)
+        .eq('status', 'pending')
+        .in('requested_id', actorIds),
+    ]);
+
+    const accountTypeById = new Map<string, 'public' | 'private'>();
+    (profilesResult.data || []).forEach((row: any) => {
+      accountTypeById.set(row.user_id, row.account_type || 'public');
+    });
+
+    const followingIds = new Set(
+      (followingResult.data || []).map((row: any) => row.following_id)
+    );
+    const requestedIds = new Set(
+      (pendingResult.data || []).map((row: any) => row.requested_id)
+    );
+
+    setFollowStates((prev) => {
+      const next: typeof prev = { ...prev };
+      actorIds.forEach((actorId) => {
+        next[actorId] = {
+          isFollowing: followingIds.has(actorId),
+          isRequested: requestedIds.has(actorId),
+          accountType: accountTypeById.get(actorId) || 'public',
+          loading: false,
+        };
+      });
+      return next;
+    });
+  }, [user]);
 
   const loadNotifications = useCallback(
     async (markSeen: boolean) => {
@@ -45,6 +115,7 @@ export default function NotificationsScreen() {
         const result = await fetchNotifications(user.id);
         setNotifications(result.notifications);
         setLastSeenAt(result.lastSeenAt);
+        await refreshFollowStates(result.notifications);
         if (markSeen) {
           await updateNotificationsLastSeen(user.id);
         }
@@ -224,6 +295,11 @@ export default function NotificationsScreen() {
           new Date(lastSeenAt).getTime()
         : false);
     const isSingleLine = singleLineIds.has(item.id);
+    const followState = followStates[item.actorId];
+    const showFollowAction =
+      item.type !== 'follow_request' &&
+      item.type !== 'like' &&
+      item.type !== 'comment';
     const handleAccept = async () => {
       if (!user) return;
       try {
@@ -239,6 +315,7 @@ export default function NotificationsScreen() {
         await acceptFollowRequest(data.id);
         await supabase.from('notifications').delete().eq('id', item.id);
         setNotifications((prev) => prev.filter((n) => n.id !== item.id));
+        await loadNotifications(false);
       } catch (error) {
         console.error('Error accepting follow request:', error);
       }
@@ -262,6 +339,121 @@ export default function NotificationsScreen() {
       } catch (error) {
         console.error('Error rejecting follow request:', error);
       }
+    };
+
+    const handleFollowAction = async () => {
+      if (!user) return;
+      setFollowStates((prev) => ({
+        ...prev,
+        [item.actorId]: {
+          ...(prev[item.actorId] || {
+            isFollowing: false,
+            isRequested: false,
+            accountType: 'public',
+            loading: false,
+          }),
+          loading: true,
+        },
+      }));
+      try {
+        const current = followStates[item.actorId];
+        if (current?.isFollowing) {
+          const { error } = await unfollowUser(user.id, item.actorId);
+          if (!error) {
+            setFollowStates((prev) => ({
+              ...prev,
+              [item.actorId]: {
+                ...(prev[item.actorId] || {
+                  isFollowing: false,
+                  isRequested: false,
+                  accountType: 'public',
+                  loading: false,
+                }),
+                isFollowing: false,
+                loading: false,
+              },
+            }));
+          }
+          return;
+        }
+
+        if (current?.isRequested) {
+          const { error } = await cancelFollowRequest(user.id, item.actorId);
+          if (!error) {
+            setFollowStates((prev) => ({
+              ...prev,
+              [item.actorId]: {
+                ...(prev[item.actorId] || {
+                  isFollowing: false,
+                  isRequested: false,
+                  accountType: 'public',
+                  loading: false,
+                }),
+                isRequested: false,
+                loading: false,
+              },
+            }));
+          }
+          return;
+        }
+
+        const { action, error } = await followUser(user.id, item.actorId);
+        if (!error) {
+          if (action === 'following') {
+            setFollowStates((prev) => ({
+              ...prev,
+              [item.actorId]: {
+                ...(prev[item.actorId] || {
+                  isFollowing: false,
+                  isRequested: false,
+                  accountType: 'public',
+                  loading: false,
+                }),
+                isFollowing: true,
+                isRequested: false,
+                loading: false,
+              },
+            }));
+          } else {
+            setFollowStates((prev) => ({
+              ...prev,
+              [item.actorId]: {
+                ...(prev[item.actorId] || {
+                  isFollowing: false,
+                  isRequested: false,
+                  accountType: 'public',
+                  loading: false,
+                }),
+                isRequested: true,
+                loading: false,
+              },
+            }));
+          }
+        }
+      } catch (error) {
+        console.error('Error updating follow status:', error);
+      } finally {
+        setFollowStates((prev) => ({
+          ...prev,
+          [item.actorId]: {
+            ...(prev[item.actorId] || {
+              isFollowing: false,
+              isRequested: false,
+              accountType: 'public',
+              loading: false,
+            }),
+            loading: false,
+          },
+        }));
+      }
+    };
+
+    const getFollowActionLabel = () => {
+      if (!followState) return 'Follow';
+      if (followState.isFollowing) return 'Following';
+      if (followState.isRequested) return 'Requested';
+      if (item.type === 'follow') return 'Follow back';
+      return followState.accountType === 'private' ? 'Request' : 'Follow';
     };
 
     return (
@@ -315,6 +507,36 @@ export default function NotificationsScreen() {
               }}
             >
               <Text style={styles.requestIconText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        {showFollowAction && (
+          <View style={styles.followAction}>
+            <TouchableOpacity
+              style={[
+                styles.followActionButton,
+                followState?.isFollowing && styles.followActionButtonActive,
+                followState?.isRequested && styles.followActionButtonRequested,
+              ]}
+              onPress={(e) => {
+                e.stopPropagation();
+                handleFollowAction();
+              }}
+              disabled={followState?.loading}
+            >
+              {followState?.loading ? (
+                <ActivityIndicator size="small" color={colors.white} />
+              ) : (
+                <Text
+                  style={[
+                    styles.followActionText,
+                    (followState?.isFollowing || followState?.isRequested) &&
+                      styles.followActionTextActive,
+                  ]}
+                >
+                  {getFollowActionLabel()}
+                </Text>
+              )}
             </TouchableOpacity>
           </View>
         )}
@@ -483,6 +705,38 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  followAction: {
+    justifyContent: 'center',
+  },
+  followActionButton: {
+    backgroundColor: colors.primaryBlue,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+    minWidth: 90,
+    borderWidth: 1,
+    borderColor: colors.white,
+  },
+  followActionButtonActive: {
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.primaryBlue,
+  },
+  followActionButtonRequested: {
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.primaryBlue,
+  },
+  followActionText: {
+    fontSize: 12,
+    fontFamily: typography.body,
+    color: colors.white,
+    fontWeight: '600',
+  },
+  followActionTextActive: {
+    color: colors.primaryBlue,
   },
   requestIconButton: {
     width: 32,

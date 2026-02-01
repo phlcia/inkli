@@ -794,6 +794,17 @@ export async function unfollowUser(
       return { success: false, error };
     }
 
+    const { error: notificationError } = await supabase
+      .from('notifications')
+      .delete()
+      .eq('type', 'follow')
+      .eq('actor_id', followerId)
+      .eq('recipient_id', followingId);
+
+    if (notificationError) {
+      console.error('Error removing follow notification:', notificationError);
+    }
+
     return { success: true, error: null };
   } catch (error) {
     console.error('Exception unfollowing user:', error);

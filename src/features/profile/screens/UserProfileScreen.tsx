@@ -252,12 +252,14 @@ export default function UserProfileScreen() {
   const followLabel = isFollowing
     ? 'Following'
     : followRequestPending
-      ? 'Requested (Private)'
+      ? 'Requested'
       : blockedByViewer
         ? 'Unblock'
-        : accountType === 'private'
-          ? 'Follow'
-          : 'Follow';
+        : isFollowedByTarget
+          ? 'Follow back'
+          : accountType === 'private'
+            ? 'Follow'
+            : 'Follow';
 
   const handleMutePress = () => {
     setFollowMenuOpen(false);
