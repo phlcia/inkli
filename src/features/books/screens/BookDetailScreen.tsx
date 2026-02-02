@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,8 +9,6 @@ import {
   Animated,
   Platform,
   StatusBar,
-  ActivityIndicator,
-  TextInput,
   Modal,
   Alert,
 } from 'react-native';
@@ -19,14 +17,19 @@ import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navig
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, typography } from '../../../config/theme';
 import { BookCoverPlaceholder } from '../components/BookCoverPlaceholder';
-import { addBookToShelf, checkUserHasBook, getBookCircles, getBookShelfCounts, removeBookFromShelf, getFriendsRankingsForBook, updateBookStatus, redistributeRanksForRating, BookCirclesResult, BookShelfCounts, formatCount, UserBook, updateUserBookDetails, getReadSessions, addReadSession, updateReadSession, deleteReadSession, ReadSession, getUserBooks } from '../../../services/books';
+import { addBookToShelf, checkUserHasBook, removeBookFromShelf, updateBookStatus, redistributeRanksForRating, formatCount, UserBook, getReadSessions, BookShelfCounts } from '../../../services/books';
 import { useAuth } from '../../../contexts/AuthContext';
 import { supabase } from '../../../config/supabase';
 import { SearchStackParamList } from '../../../navigation/SearchStackNavigator';
-import RecentActivityCard from '../../social/components/RecentActivityCard';
-import DateRangePickerModal from '../../../components/ui/DateRangePickerModal';
-import GenreLabelPicker from '../../../components/books/GenreLabelPicker';
 import ReadingProgressSlider from '../components/ReadingProgressSlider';
+import FriendsRankingsSection from '../components/FriendsRankingsSection';
+import BookThoughtsSection from '../components/BookThoughtsSection';
+import { useBookStats } from '../hooks/useBookStats';
+import { useFriendsRankings } from '../hooks/useFriendsRankings';
+import { useBookThoughts } from '../hooks/useBookThoughts';
+import addIcon from '../../../../assets/add.png';
+import readingIcon from '../../../../assets/reading.png';
+import bookmarkIcon from '../../../../assets/bookmark.png';
 
 type BookDetailScreenRouteProp = RouteProp<SearchStackParamList, 'BookDetail'>;
 type BookDetailScreenNavigationProp = NativeStackNavigationProp<SearchStackParamList, 'BookDetail'>;
@@ -43,45 +46,16 @@ export default function BookDetailScreen() {
   const [loading, setLoading] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [animatedIcon, setAnimatedIcon] = useState<string | null>(null);
-  const [circleStats, setCircleStats] = useState<BookCirclesResult | null>(null);
-  const [circleLoading, setCircleLoading] = useState(false);
-  const [circleError, setCircleError] = useState(false);
   const [userRankScore, setUserRankScore] = useState<number | null>(null);
-  const [shelfCounts, setShelfCounts] = useState<BookShelfCounts | null>(null);
-  const [friendsRankings, setFriendsRankings] = useState<Array<UserBook & { user_profile?: { user_id: string; username: string; profile_photo_url: string | null } }>>([]);
-  const [friendsRankingsLoading, setFriendsRankingsLoading] = useState(false);
-  const [friendsRankingsError, setFriendsRankingsError] = useState<string | null>(null);
-  const [friendsRankingsTotalCount, setFriendsRankingsTotalCount] = useState(0);
-  const [friendsRankingsOffset, setFriendsRankingsOffset] = useState(0);
-  const friendsRankingsCacheRef = useRef<Map<string, { rankings: Array<UserBook & { user_profile?: { user_id: string; username: string; profile_photo_url: string | null } }>; totalCount: number; timestamp: number }>>(new Map());
   const friendsRankingsSectionRef = useRef<View>(null);
-  const friendsRankingsHasLoadedRef = useRef(false);
-  const friendsRankingsLoadingRef = useRef(false);
   const fadeAnim = React.useRef(new Animated.Value(0)).current;
+  const refreshBookStatusRef = useRef<() => void>(() => {});
 
   // "What you think" section state
   const [userBookId, setUserBookId] = useState<string | null>(null);
-  const [userNotes, setUserNotes] = useState<string>('');
-  const [userCustomLabels, setUserCustomLabels] = useState<string[]>([]);
-  const [readSessions, setReadSessions] = useState<ReadSession[]>([]);
   const [readingProgress, setReadingProgress] = useState<number>(0);
-  const [savingNotes, setSavingNotes] = useState(false);
-  const [savingDates, setSavingDates] = useState(false);
-  const [notesSaved, setNotesSaved] = useState(false);
-  const [showDateRangePickerModal, setShowDateRangePickerModal] = useState(false);
-  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
-  const notesSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [showRankingActionSheet, setShowRankingActionSheet] = useState(false);
-  
-  // Tag editing state
-  const [showGenreLabelPicker, setShowGenreLabelPicker] = useState(false);
-  const [savingTags, setSavingTags] = useState(false);
-  const [customLabelSuggestions, setCustomLabelSuggestions] = useState<string[]>([]);
-  const [userGenres, setUserGenres] = useState<string[]>([]); // User's saved genres (empty until user sets them)
   const [resolvedBookId, setResolvedBookId] = useState<string | null>(book.id || null);
-  
-  // Only show genres that the user has explicitly saved (no auto-population on BookDetailScreen)
-  const effectiveGenres = userGenres;
 
   const coverUrl = book.cover_url;
   const hasCover =
@@ -117,30 +91,72 @@ export default function BookDetailScreen() {
     return null;
   }, [book.id, book.open_library_id, book.google_books_id]);
 
-  const refreshShelfCounts = React.useCallback(async () => {
-    const resolvedBookId = await resolveBookIdForStats();
-    if (!resolvedBookId) {
-      setShelfCounts({
-        read: 0,
-        currently_reading: 0,
-        want_to_read: 0,
-      });
-      return;
-    }
+  const {
+    circleStats,
+    circleLoading,
+    circleError,
+    shelfCounts,
+    setShelfCounts,
+    refreshShelfCounts,
+  } = useBookStats({
+    resolveBookIdForStats,
+    userId: user?.id,
+  });
 
-    try {
-      const counts = await getBookShelfCounts(resolvedBookId);
-      setShelfCounts(counts);
-    } catch (error) {
-      console.error('Failed to refresh shelf counts:', error);
-    }
-  }, [resolveBookIdForStats]);
+  const {
+    friendsRankings,
+    friendsRankingsLoading,
+    friendsRankingsError,
+    friendsRankingsTotalCount,
+    handleRetryFriendsRankings,
+    handleShowMoreFriendsRankings,
+  } = useFriendsRankings({
+    resolveBookIdForStats,
+    userId: user?.id,
+    bookCacheKey: `${book.id || ''}-${book.open_library_id || ''}-${book.google_books_id || ''}`,
+  });
+
+  const {
+    userNotes,
+    userCustomLabels,
+    readSessions,
+    savingNotes,
+    savingDates,
+    notesSaved,
+    showDateRangePickerModal,
+    editingSessionId,
+    showGenreLabelPicker,
+    savingTags,
+    customLabelSuggestions,
+    effectiveGenres,
+    sortedSessions,
+    setReadSessions,
+    hydrateThoughtsFromUserBook,
+    resetThoughts,
+    handleNotesChange,
+    handleNotesBlur,
+    openDateRangePicker,
+    openDateRangePickerForEdit,
+    handleDateRangeSelected,
+    handleDeleteReadSession,
+    handleRemoveGenre,
+    handleRemoveCustomLabel,
+    handleSaveTags,
+    setShowDateRangePickerModal,
+    setShowGenreLabelPicker,
+    setEditingSessionId,
+  } = useBookThoughts({
+    user,
+    book,
+    userBookId,
+    setUserBookId,
+    refreshBookStatusRef,
+    setToastMessage,
+  });
 
   // Check if book already exists in user's shelf and fetch notes/dates
   const refreshBookStatus = React.useCallback(async () => {
-    console.log('=== refreshBookStatus CALLED ===');
     if (!user || (!book.open_library_id && !book.google_books_id)) {
-      console.log('Early return - no user or no book IDs');
       return;
     }
 
@@ -154,7 +170,6 @@ export default function BookDetailScreen() {
           .eq('open_library_id', book.open_library_id)
           .single();
         existingBook = data;
-        console.log('Fetched by open_library_id:', { id: data?.id, genres: data?.genres });
       }
       
       if (!existingBook && book.google_books_id) {
@@ -164,7 +179,6 @@ export default function BookDetailScreen() {
           .eq('google_books_id', book.google_books_id)
           .single();
         existingBook = data;
-        console.log('Fetched by google_books_id:', { id: data?.id, genres: data?.genres });
       }
 
       if (existingBook) {
@@ -187,128 +201,52 @@ export default function BookDetailScreen() {
           setUserRankScore(data.rank_score ?? null);
           // Set "What you think" section data
           setUserBookId(data.id);
-          setUserNotes(data.notes || '');
-          setUserCustomLabels(data.custom_labels || []);
-          setUserGenres(data.user_genres || []); // User's saved genres (empty if not set)
+          hydrateThoughtsFromUserBook(data);
           setReadingProgress(data.progress_percent ?? 0);
           
           // Fetch read sessions
           try {
             const sessions = await getReadSessions(data.id);
             setReadSessions(sessions);
-          } catch (error) {
-            console.error('Error fetching read sessions:', error);
+          } catch (_error) {
+            console.error('Error fetching read sessions:', _error);
             setReadSessions([]);
           }
         } else {
           setCurrentStatus(null);
           setUserRankScore(null);
           setUserBookId(null);
-          setUserNotes('');
-          setUserCustomLabels([]);
-          setUserGenres([]);
-          setReadSessions([]);
+          resetThoughts();
           setReadingProgress(0);
         }
       } else {
         setCurrentStatus(null);
         setUserRankScore(null);
         setUserBookId(null);
-        setUserNotes('');
-        setUserCustomLabels([]);
-        setUserGenres([]);
-        setReadSessions([]);
+        resetThoughts();
         setReadingProgress(0);
       }
-    } catch (error) {
+    } catch (_error) {
       // Book doesn't exist yet, that's fine
-      console.log('Book not in shelf yet');
       setCurrentStatus(null);
       setUserRankScore(null);
       setUserBookId(null);
-      setUserNotes('');
-      setUserGenres([]);
-      setReadSessions([]);
+      resetThoughts();
     }
-  }, [user, book.open_library_id, book.google_books_id]);
+  }, [
+    user,
+    book.open_library_id,
+    book.google_books_id,
+    hydrateThoughtsFromUserBook,
+    resetThoughts,
+    setReadSessions,
+  ]);
+
+  refreshBookStatusRef.current = refreshBookStatus;
 
   useEffect(() => {
     refreshBookStatus();
   }, [refreshBookStatus]);
-
-  // Load custom label suggestions from user's other books
-  useEffect(() => {
-    const loadCustomLabelSuggestions = async () => {
-      if (!user?.id) return;
-      try {
-        const userBooks = await getUserBooks(user.id);
-        const allLabels = new Set<string>();
-        userBooks.forEach((userBook) => {
-          if (userBook.custom_labels && userBook.custom_labels.length > 0) {
-            userBook.custom_labels.forEach((label) => allLabels.add(label));
-          }
-        });
-        setCustomLabelSuggestions(Array.from(allLabels).sort());
-      } catch (error) {
-        console.error('Error loading custom label suggestions:', error);
-      }
-    };
-    loadCustomLabelSuggestions();
-  }, [user?.id]);
-
-  useEffect(() => {
-    let isActive = true;
-
-    const loadCircles = async () => {
-      setCircleLoading(true);
-      setCircleError(false);
-
-      try {
-        const resolvedBookId = await resolveBookIdForStats();
-        if (!resolvedBookId) {
-          if (isActive) {
-            setCircleStats(null);
-            setShelfCounts({
-              read: 0,
-              currently_reading: 0,
-              want_to_read: 0,
-            });
-          }
-          return;
-        }
-
-        const [stats, counts] = await Promise.all([
-          getBookCircles(resolvedBookId, user?.id),
-          getBookShelfCounts(resolvedBookId),
-        ]);
-        if (isActive) {
-          setCircleStats(stats);
-          setShelfCounts(counts);
-        }
-      } catch (error) {
-        console.error('Error loading book circles:', error);
-        if (isActive) {
-          setCircleError(true);
-          setCircleStats(null);
-          setShelfCounts({
-            read: 0,
-            currently_reading: 0,
-            want_to_read: 0,
-          });
-        }
-      } finally {
-        if (isActive) {
-          setCircleLoading(false);
-        }
-      }
-    };
-
-    loadCircles();
-
-    return () => {
-      isActive = false;
-    };
-  }, [resolveBookIdForStats, user?.id]);
 
   // Refresh status when returning from BookRanking screen
   useFocusEffect(
@@ -316,104 +254,6 @@ export default function BookDetailScreen() {
       refreshBookStatus();
     }, [refreshBookStatus])
   );
-
-  // Load friends' rankings for this book (with caching and pagination)
-  const loadFriendsRankings = useCallback(async (offset: number = 0, append: boolean = false) => {
-    if (!user?.id || friendsRankingsLoadingRef.current) {
-      return;
-    }
-
-    try {
-      const resolvedBookId = await resolveBookIdForStats();
-      if (!resolvedBookId) {
-        setFriendsRankings([]);
-        setFriendsRankingsTotalCount(0);
-        setFriendsRankingsOffset(0);
-        return;
-      }
-
-      // Check cache (cache expires after 5 minutes)
-      const cacheKey = `${resolvedBookId}_${user.id}`;
-      const cached = friendsRankingsCacheRef.current.get(cacheKey);
-      const now = Date.now();
-      const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-
-      if (cached && (now - cached.timestamp) < CACHE_TTL && offset === 0 && !append) {
-        setFriendsRankings(cached.rankings);
-        setFriendsRankingsTotalCount(cached.totalCount);
-        setFriendsRankingsOffset(cached.rankings.length);
-        setFriendsRankingsError(null);
-        friendsRankingsHasLoadedRef.current = true;
-        return;
-      }
-
-      friendsRankingsLoadingRef.current = true;
-      setFriendsRankingsLoading(true);
-      setFriendsRankingsError(null);
-
-      const result = await getFriendsRankingsForBook(resolvedBookId, user.id, {
-        offset,
-        limit: 20,
-      });
-
-      if (append) {
-        setFriendsRankings((prev) => [...prev, ...result.rankings]);
-        setFriendsRankingsOffset((prev) => prev + result.rankings.length);
-      } else {
-        setFriendsRankings(result.rankings);
-        setFriendsRankingsOffset(result.rankings.length);
-        // Update cache
-        friendsRankingsCacheRef.current.set(cacheKey, {
-          rankings: result.rankings,
-          totalCount: result.totalCount,
-          timestamp: now,
-        });
-      }
-      setFriendsRankingsTotalCount(result.totalCount);
-      friendsRankingsHasLoadedRef.current = true;
-    } catch (error) {
-      console.error('Error loading friends rankings:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Failed to load friends rankings';
-      setFriendsRankingsError(errorMessage);
-      if (!append) {
-        setFriendsRankings([]);
-        setFriendsRankingsTotalCount(0);
-        setFriendsRankingsOffset(0);
-      }
-    } finally {
-      friendsRankingsLoadingRef.current = false;
-      setFriendsRankingsLoading(false);
-    }
-  }, [resolveBookIdForStats, user?.id]);
-
-  // Reset cache and loading state when book changes
-  useEffect(() => {
-    friendsRankingsHasLoadedRef.current = false;
-    setFriendsRankings([]);
-    setFriendsRankingsTotalCount(0);
-    setFriendsRankingsOffset(0);
-    setFriendsRankingsError(null);
-  }, [book.id, book.open_library_id, book.google_books_id]);
-
-  // Initial load - only when component mounts and book ID is resolved
-  useEffect(() => {
-    if (friendsRankingsHasLoadedRef.current) {
-      return;
-    }
-    loadFriendsRankings(0, false);
-  }, [loadFriendsRankings]);
-
-  // Handle retry
-  const handleRetryFriendsRankings = useCallback(() => {
-    setFriendsRankingsError(null);
-    friendsRankingsHasLoadedRef.current = false;
-    loadFriendsRankings(0, false);
-  }, [loadFriendsRankings]);
-
-  // Handle "Show More"
-  const handleShowMoreFriendsRankings = useCallback(() => {
-    loadFriendsRankings(friendsRankingsOffset, true);
-  }, [loadFriendsRankings, friendsRankingsOffset]);
 
   // Toast animation
   useEffect(() => {
@@ -437,16 +277,6 @@ export default function BookDetailScreen() {
       });
     }
   }, [toastMessage, fadeAnim]);
-
-  const getStatusLabel = (status: string | null) => {
-    if (!status) return status;
-    const labels: Record<string, string> = {
-      'want_to_read': 'Want to Read',
-      'currently_reading': 'Currently Reading',
-      'read': 'Read',
-    };
-    return labels[status] || status;
-  };
 
   const getEmptyShelfCounts = (): BookShelfCounts => ({
     read: 0,
@@ -702,9 +532,6 @@ export default function BookDetailScreen() {
         // Add or move the book
         const result = await addBookToShelf(book, status, user.id);
         
-        console.log('=== BookDetailScreen: addBookToShelf result ===');
-        console.log('Result:', result);
-        console.log('userBookId:', result.userBookId);
         
         if (!result.userBookId || result.userBookId === '') {
           console.error('=== BookDetailScreen: ERROR - Empty userBookId from addBookToShelf ===');
@@ -715,7 +542,6 @@ export default function BookDetailScreen() {
         }
         
         const isUpdate = result.isUpdate && currentStatus !== null;
-        const isMoving = isUpdate && result.previousStatus !== status;
         
         setCurrentStatus(status);
         setUserRankScore(null);
@@ -723,7 +549,6 @@ export default function BookDetailScreen() {
         // Only open ranking screen if status is 'read'
         if (status === 'read') {
           // Navigate to BookRankingScreen after adding the book
-          console.log('Navigating to BookRankingScreen with userBookId:', result.userBookId);
           setLoading(null);
           navigation.navigate('BookRanking', {
             book,
@@ -741,10 +566,11 @@ export default function BookDetailScreen() {
         
         // Removed toast messages - no feedback needed for adding to shelf
       }
-    } catch (error: any) {
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to update book';
       console.error('Error managing book:', error);
       rollbackOptimisticUpdate();
-      setToastMessage(error.message || 'Failed to update book');
+      setToastMessage(message);
       setLoading(null);
     } finally {
       // Keep animated icon for visual feedback
@@ -754,10 +580,6 @@ export default function BookDetailScreen() {
 
   const isIconActive = (status: 'read' | 'currently_reading' | 'want_to_read') => {
     return currentStatus === status;
-  };
-
-  const isIconAnimating = (status: 'read' | 'currently_reading' | 'want_to_read') => {
-    return animatedIcon === status;
   };
 
   const metadata = book.page_count ? `${book.page_count}p` : null;
@@ -784,380 +606,6 @@ export default function BookDetailScreen() {
       return '#E2B34C';
     }
     return '#2FA463';
-  };
-
-  const formatDateForDisplay = (dateString: string): string => {
-    const date = new Date(dateString + 'T00:00:00');
-    return date.toLocaleDateString('en-US', {
-      month: 'long',
-      day: 'numeric',
-      year: 'numeric',
-    });
-  };
-
-  const formatDateRange = (
-    startDate: string | null,
-    endDate: string | null
-  ): string | null => {
-    if (!startDate && !endDate) return null;
-    if (startDate && endDate) {
-      return `${formatDateForDisplay(startDate)} - ${formatDateForDisplay(endDate)}`;
-    }
-    if (startDate) {
-      return formatDateForDisplay(startDate);
-    }
-    if (endDate) {
-      return formatDateForDisplay(endDate);
-    }
-    return null;
-  };
-
-  // Save notes with debouncing
-  const saveNotes = React.useCallback(async (notesText: string) => {
-    if (!user || !userBookId) {
-      // If book not on shelf yet, we'll need to add it first
-      // For now, just return - user needs to add book to shelf first
-      return;
-    }
-
-    try {
-      setSavingNotes(true);
-      setNotesSaved(false);
-      
-      const { error } = await updateUserBookDetails(userBookId, user.id, {
-        notes: notesText.trim() || null,
-      });
-
-      if (error) {
-        console.error('Error saving notes:', error);
-        setToastMessage('Couldn\'t save your notes. Please try again.');
-        setSavingNotes(false);
-        return;
-      }
-
-      setSavingNotes(false);
-      setNotesSaved(true);
-      
-      // Fade out "Saved ✓" after 2 seconds
-      setTimeout(() => {
-        setNotesSaved(false);
-      }, 2000);
-
-      // Refresh book status to ensure sync
-      void refreshBookStatus();
-    } catch (error) {
-      console.error('Error saving notes:', error);
-      setToastMessage('Couldn\'t save your notes. Please try again.');
-      setSavingNotes(false);
-    }
-  }, [user, userBookId, refreshBookStatus]);
-
-  // Handle notes change with debouncing
-  const handleNotesChange = React.useCallback((text: string) => {
-    setUserNotes(text);
-    setNotesSaved(false);
-
-    // Clear existing timer
-    if (notesSaveTimerRef.current) {
-      clearTimeout(notesSaveTimerRef.current);
-    }
-
-    // Set new timer for debounced save
-    notesSaveTimerRef.current = setTimeout(() => {
-      void saveNotes(text);
-    }, 800);
-  }, [saveNotes]);
-
-  // Handle notes blur - save immediately
-  const handleNotesBlur = React.useCallback(() => {
-    if (notesSaveTimerRef.current) {
-      clearTimeout(notesSaveTimerRef.current);
-    }
-    void saveNotes(userNotes);
-  }, [userNotes, saveNotes]);
-
-  // Add a new read session
-  const handleAddReadSession = React.useCallback(async (newStartDate: string | null, newEndDate: string | null) => {
-    if (!user || !userBookId) {
-      setToastMessage('Please add this book to your shelf first');
-      return;
-    }
-
-    try {
-      setSavingDates(true);
-      
-      const { data, error } = await addReadSession(userBookId, {
-        started_date: newStartDate,
-        finished_date: newEndDate,
-      });
-
-      if (error) {
-        console.error('Error adding read session:', error);
-        setToastMessage(error.message || 'Couldn\'t save dates. Please try again.');
-        setSavingDates(false);
-        return;
-      }
-
-      if (data) {
-        setReadSessions((prev) => [data, ...prev]);
-      }
-      setSavingDates(false);
-
-      // Refresh book status to ensure sync
-      void refreshBookStatus();
-    } catch (error) {
-      console.error('Error adding read session:', error);
-      setToastMessage('Couldn\'t save dates. Please try again.');
-      setSavingDates(false);
-    }
-  }, [user, userBookId, refreshBookStatus]);
-
-  // Update an existing read session
-  const handleUpdateReadSession = React.useCallback(async (sessionId: string, newStartDate: string | null, newEndDate: string | null) => {
-    if (!user) return;
-
-    try {
-      setSavingDates(true);
-      
-      const { data, error } = await updateReadSession(sessionId, {
-        started_date: newStartDate,
-        finished_date: newEndDate,
-      });
-
-      if (error) {
-        console.error('Error updating read session:', error);
-        setToastMessage(error.message || 'Couldn\'t update dates. Please try again.');
-        setSavingDates(false);
-        return;
-      }
-
-      if (data) {
-        setReadSessions((prev) => 
-          prev.map((session) => session.id === sessionId ? data : session)
-        );
-      }
-      setSavingDates(false);
-
-      // Refresh book status to ensure sync
-      void refreshBookStatus();
-    } catch (error) {
-      console.error('Error updating read session:', error);
-      setToastMessage('Couldn\'t update dates. Please try again.');
-      setSavingDates(false);
-    }
-  }, [user, refreshBookStatus]);
-
-  // Delete a read session
-  const handleDeleteReadSession = React.useCallback(async (sessionId: string) => {
-    if (!user) return;
-
-    try {
-      setSavingDates(true);
-      
-      const { error } = await deleteReadSession(sessionId);
-
-      if (error) {
-        console.error('Error deleting read session:', error);
-        setToastMessage('Couldn\'t delete dates. Please try again.');
-        setSavingDates(false);
-        return;
-      }
-
-      setReadSessions((prev) => prev.filter((session) => session.id !== sessionId));
-      setSavingDates(false);
-
-      // Refresh book status to ensure sync
-      void refreshBookStatus();
-    } catch (error) {
-      console.error('Error deleting read session:', error);
-      setToastMessage('Couldn\'t delete dates. Please try again.');
-      setSavingDates(false);
-    }
-  }, [user, refreshBookStatus]);
-
-  // Handle date range picker selection
-  const handleDateRangeSelected = React.useCallback((newStartDate: string | null, newEndDate: string | null) => {
-    if (editingSessionId) {
-      void handleUpdateReadSession(editingSessionId, newStartDate, newEndDate);
-    } else {
-      void handleAddReadSession(newStartDate, newEndDate);
-    }
-    setShowDateRangePickerModal(false);
-    setEditingSessionId(null);
-  }, [editingSessionId, handleAddReadSession, handleUpdateReadSession]);
-
-  // Open date range picker (for adding new session)
-  const openDateRangePicker = React.useCallback(() => {
-    setEditingSessionId(null);
-    setShowDateRangePickerModal(true);
-  }, []);
-
-  // Open date range picker (for editing existing session)
-  const openDateRangePickerForEdit = React.useCallback((sessionId: string) => {
-    setEditingSessionId(sessionId);
-    setShowDateRangePickerModal(true);
-  }, []);
-
-  // Sort sessions: unfinished first, then by most recent finished date
-  const sortedSessions = React.useMemo(() => {
-    return [...readSessions].sort((a, b) => {
-      // Unfinished sessions (currently reading) come first
-      if (!a.finished_date && b.finished_date) return -1;
-      if (a.finished_date && !b.finished_date) return 1;
-      
-      // Both unfinished or both finished - sort by most recent date
-      const dateA = a.finished_date || a.started_date || a.created_at;
-      const dateB = b.finished_date || b.started_date || b.created_at;
-      return new Date(dateB).getTime() - new Date(dateA).getTime();
-    });
-  }, [readSessions]);
-
-  // Cleanup notes save timer on unmount
-  useEffect(() => {
-    return () => {
-      if (notesSaveTimerRef.current) {
-        clearTimeout(notesSaveTimerRef.current);
-      }
-    };
-  }, []);
-
-  // Handle removing a single genre (saves to user_books.user_genres)
-  const handleRemoveGenre = React.useCallback(async (genreToRemove: string) => {
-    if (!user || !userBookId) return;
-
-    const updatedGenres = userGenres.filter((g) => g !== genreToRemove);
-    const previousUserGenres = userGenres;
-
-    try {
-      setSavingTags(true);
-      setUserGenres(updatedGenres); // Optimistic update
-
-      const { error } = await updateUserBookDetails(userBookId, user.id, {
-        user_genres: updatedGenres,
-      });
-      if (error) {
-        // Rollback on error
-        setUserGenres(previousUserGenres);
-        throw error;
-      }
-
-      setSavingTags(false);
-    } catch (error) {
-      console.error('Error removing genre:', error);
-      setToastMessage('Couldn\'t remove genre. Please try again.');
-      setSavingTags(false);
-    }
-  }, [user, userBookId, userGenres]);
-
-  // Handle removing a single custom label
-  const handleRemoveCustomLabel = React.useCallback(async (labelToRemove: string) => {
-    if (!user || !userBookId) return;
-
-    const updatedLabels = userCustomLabels.filter((l) => l !== labelToRemove);
-
-    try {
-      setSavingTags(true);
-      setUserCustomLabels(updatedLabels); // Optimistic update
-
-      const { error } = await updateUserBookDetails(userBookId, user.id, {
-        custom_labels: updatedLabels,
-      });
-      if (error) {
-        // Rollback on error
-        setUserCustomLabels(userCustomLabels);
-        throw error;
-      }
-
-      setSavingTags(false);
-    } catch (error) {
-      console.error('Error removing custom label:', error);
-      setToastMessage('Couldn\'t remove label. Please try again.');
-      setSavingTags(false);
-    }
-  }, [user, userBookId, userCustomLabels]);
-
-  // Handle tag editing (saves genres to user_books.user_genres, not books.genres)
-  // If book is not on shelf yet, adds it first with null status (no shelf)
-  const handleSaveTags = React.useCallback(async (genres: string[], customLabels: string[]) => {
-    console.log('=== BookDetailScreen handleSaveTags START ===');
-    console.log('Genres to save:', genres);
-    console.log('Custom Labels to save:', customLabels);
-    console.log('userBookId:', userBookId);
-    
-    if (!user) {
-      console.log('=== EARLY RETURN - no user ===');
-      setToastMessage('Please log in to save tags');
-      return;
-    }
-
-    const previousUserGenres = userGenres;
-    const previousCustomLabels = userCustomLabels;
-
-    try {
-      setSavingTags(true);
-      
-      // Optimistic update - set local state immediately
-      setUserGenres(genres); // Save to user_genres (per-user)
-      setUserCustomLabels(customLabels);
-
-      let currentUserBookId = userBookId;
-
-      // If book is not on shelf yet, add it first with genres and custom labels
-      if (!currentUserBookId) {
-        console.log('Book not on shelf - adding with tags...');
-        const result = await addBookToShelf(book, null, user.id, {
-          genres: genres,
-          custom_labels: customLabels,
-        });
-        currentUserBookId = result.userBookId;
-        setUserBookId(currentUserBookId);
-        console.log('Book added to shelf with userBookId:', currentUserBookId);
-      } else {
-        // Update both user_genres and custom_labels in user_books table
-        console.log('Calling updateUserBookDetails with userBookId:', currentUserBookId);
-        const { error } = await updateUserBookDetails(currentUserBookId, user.id, {
-          user_genres: genres,
-          custom_labels: customLabels,
-        });
-        
-        if (error) {
-          console.error('=== updateUserBookDetails FAILED ===', error);
-          // Rollback optimistic update
-          setUserGenres(previousUserGenres);
-          setUserCustomLabels(previousCustomLabels);
-          throw error;
-        }
-        console.log('=== updateUserBookDetails SUCCESS ===');
-      }
-
-      // Refresh book status to ensure sync
-      console.log('Calling refreshBookStatus to verify...');
-      await refreshBookStatus();
-      setSavingTags(false);
-      setToastMessage('Tags updated!');
-      console.log('=== handleSaveTags COMPLETE ===');
-    } catch (error) {
-      console.error('Error saving tags:', error);
-      // Rollback optimistic update
-      setUserGenres(previousUserGenres);
-      setUserCustomLabels(previousCustomLabels);
-      setToastMessage('Couldn\'t save tags. Please try again.');
-      setSavingTags(false);
-    }
-  }, [user, userBookId, userGenres, userCustomLabels, refreshBookStatus, book]);
-
-  const getActionText = (status: string | null, username: string) => {
-    const displayName = username || 'User';
-    switch (status) {
-      case 'read':
-        return `${displayName} finished`;
-      case 'currently_reading':
-        return `${displayName} started reading`;
-      case 'want_to_read':
-        return `${displayName} bookmarked`;
-      default:
-        return `${displayName} added`;
-    }
   };
 
   const handleFriendBookPress = async (userBook: UserBook) => {
@@ -1223,8 +671,6 @@ export default function BookDetailScreen() {
     </View>
   );
 
-  const hasUserCircle = userRankScore !== null;
-
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor={colors.creamBackground} />
@@ -1277,7 +723,7 @@ export default function BookDetailScreen() {
                 disabled={Boolean(loading)}
               >
                 <Image
-                  source={require('../../../../assets/add.png')}
+                  source={addIcon}
                   style={[
                     styles.actionIconImage,
                     isIconActive('read') && styles.actionIconImageActiveBlue,
@@ -1295,7 +741,7 @@ export default function BookDetailScreen() {
                 disabled={Boolean(loading)}
               >
                 <Image
-                  source={require('../../../../assets/reading.png')}
+                  source={readingIcon}
                   style={[
                     styles.actionIconImage,
                     isIconActive('currently_reading') && styles.actionIconImageActiveBlue,
@@ -1316,7 +762,7 @@ export default function BookDetailScreen() {
                 disabled={Boolean(loading)}
               >
                 <Image
-                  source={require('../../../../assets/bookmark.png')}
+                  source={bookmarkIcon}
                   style={[
                     styles.actionIconImage,
                     isIconActive('want_to_read') && styles.actionIconImageActiveBlue,
@@ -1469,219 +915,59 @@ export default function BookDetailScreen() {
           </View>
         </View>
 
-        {/* What You Think */}
-        {user && (
-          <View style={styles.descriptionSection}>
-            <Text style={styles.descriptionLabel}>What you think</Text>
-            
-            {/* Edit Tags - always show, even if book not on shelf */}
-            <View style={styles.whatYouThinkSlot}>
-              <Text style={styles.whatYouThinkSlotLabel}>Shelves</Text>
+        <BookThoughtsSection
+          user={user}
+          book={book}
+          userBookId={userBookId}
+          resolvedBookId={resolvedBookId}
+          effectiveGenres={effectiveGenres}
+          userCustomLabels={userCustomLabels}
+          sortedSessions={sortedSessions}
+          readSessions={readSessions}
+          savingTags={savingTags}
+          savingDates={savingDates}
+          savingNotes={savingNotes}
+          notesSaved={notesSaved}
+          customLabelSuggestions={customLabelSuggestions}
+          showDateRangePickerModal={showDateRangePickerModal}
+          showGenreLabelPicker={showGenreLabelPicker}
+          editingSessionId={editingSessionId}
+          userNotes={userNotes}
+          styles={styles}
+          onShowGenreLabelPicker={() => setShowGenreLabelPicker(true)}
+          onHideGenreLabelPicker={() => setShowGenreLabelPicker(false)}
+          onShowDateRangePicker={openDateRangePicker}
+          onHideDateRangePicker={() => setShowDateRangePickerModal(false)}
+          onDateRangeSelected={handleDateRangeSelected}
+          onOpenDateRangePickerForEdit={openDateRangePickerForEdit}
+          onDeleteReadSession={handleDeleteReadSession}
+          onNotesChange={handleNotesChange}
+          onNotesBlur={handleNotesBlur}
+          onRemoveGenre={handleRemoveGenre}
+          onRemoveCustomLabel={handleRemoveCustomLabel}
+          onSaveTags={handleSaveTags}
+          onClearEditingSession={() => setEditingSessionId(null)}
+        />
 
-              {/* Genre and label chips - all inline with same styling */}
-              {((effectiveGenres && effectiveGenres.length > 0) || userCustomLabels.length > 0) && (
-                <View style={styles.shelfChipsContainer}>
-                  {/* Preset genres first (using effective genres - user's or book defaults) */}
-                  {effectiveGenres && effectiveGenres.map((genre: string) => (
-                    <View key={`genre-${genre}`} style={styles.shelfChip}>
-                      <Text style={styles.shelfChipText}>{genre}</Text>
-                      {userBookId && (
-                        <TouchableOpacity
-                          onPress={() => handleRemoveGenre(genre)}
-                          style={styles.shelfChipClose}
-                          disabled={savingTags}
-                        >
-                          <Text style={styles.shelfChipCloseText}>×</Text>
-                        </TouchableOpacity>
-                      )}
-                    </View>
-                  ))}
-                  {/* Custom labels after */}
-                  {userCustomLabels.map((label: string) => (
-                    <View key={`label-${label}`} style={styles.shelfChip}>
-                      <Text style={styles.shelfChipText}>{label}</Text>
-                      {userBookId && (
-                        <TouchableOpacity
-                          onPress={() => handleRemoveCustomLabel(label)}
-                          style={styles.shelfChipClose}
-                          disabled={savingTags}
-                        >
-                          <Text style={styles.shelfChipCloseText}>×</Text>
-                        </TouchableOpacity>
-                      )}
-                    </View>
-                  ))}
-                </View>
-              )}
-
-              <TouchableOpacity
-                style={[styles.dateRangeButton, ((effectiveGenres && effectiveGenres.length > 0) || userCustomLabels.length > 0) && styles.dateRangeButtonActive]}
-                onPress={() => setShowGenreLabelPicker(true)}
-                disabled={savingTags}
-              >
-                <Text style={[styles.dateRangeButtonText, ((effectiveGenres && effectiveGenres.length > 0) || userCustomLabels.length > 0) && styles.dateRangeButtonTextActive]}>
-                  {(effectiveGenres && effectiveGenres.length > 0) || userCustomLabels.length > 0 ? 'Edit shelves' : 'Add shelves'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Add read dates */}
-            <View style={styles.whatYouThinkSlot}>
-              <Text style={styles.whatYouThinkSlotLabel}>Read dates</Text>
-
-              {/* Date range chips */}
-              {sortedSessions.length > 0 ? (
-                <View style={styles.dateChipsContainer}>
-                  {sortedSessions.map((session) => (
-                    <View key={session.id} style={styles.dateChip}>
-                      <TouchableOpacity
-                        onPress={() => openDateRangePickerForEdit(session.id)}
-                        style={styles.dateChipContent}
-                      >
-                        <Text style={styles.dateChipText}>
-                          {session.started_date ? formatDateForDisplay(session.started_date) : '...'} - {session.finished_date ? formatDateForDisplay(session.finished_date) : '...'}
-                        </Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        onPress={() => handleDeleteReadSession(session.id)}
-                        style={styles.dateChipClose}
-                        disabled={savingDates}
-                      >
-                        <Text style={styles.dateChipCloseText}>×</Text>
-                      </TouchableOpacity>
-                    </View>
-                  ))}
-                </View>
-              ) : (
-                <Text style={styles.whatYouThinkSlotPlaceholder}>
-                  Add when you started/finished reading
-                </Text>
-              )}
-
-              <TouchableOpacity
-                style={[styles.dateRangeButton, readSessions.length > 0 && styles.dateRangeButtonActive]}
-                onPress={openDateRangePicker}
-                disabled={savingDates}
-              >
-                <Text style={[styles.dateRangeButtonText, readSessions.length > 0 && styles.dateRangeButtonTextActive]}>
-                  Add read dates
-                </Text>
-              </TouchableOpacity>
-              {savingDates && (
-                <View style={styles.savingContainer}>
-                  <ActivityIndicator size="small" color={colors.primaryBlue} />
-                  <Text style={styles.savingText}>Saving...</Text>
-                </View>
-              )}
-            </View>
-
-            {/* Notes */}
-            <View style={styles.whatYouThinkSlot}>
-              <View style={styles.notesHeader}>
-                <Text style={styles.whatYouThinkSlotLabel}>Notes</Text>
-              </View>
-              <View style={styles.notesContainer}>
-                <TextInput
-                  style={styles.notesInput}
-                  placeholder="Tap to add your thoughts about this book..."
-                  placeholderTextColor={colors.brownText}
-                  multiline
-                  value={userNotes}
-                  onChangeText={handleNotesChange}
-                  onBlur={handleNotesBlur}
-                  editable={!savingNotes}
-                />
-                <View style={styles.notesFooter}>
-                  {savingNotes && (
-                    <Text style={styles.savingText}>Saving...</Text>
-                  )}
-                  {notesSaved && !savingNotes && (
-                    <Text style={styles.savedText}>Saved ✓</Text>
-                  )}
-                </View>
-              </View>
-            </View>
-          </View>
-        )}
-
-        {/* What Your Friends Think */}
-        {(friendsRankings.length > 0 || friendsRankingsLoading || friendsRankingsError) && (
-          <View 
-            style={styles.descriptionSection}
-            ref={friendsRankingsSectionRef}
-          >
-            <Text style={styles.descriptionLabel}>What your friends think</Text>
-            
-            {friendsRankingsError && (
-              <View style={styles.errorContainer}>
-                <Text style={styles.errorText}>{friendsRankingsError}</Text>
-                <TouchableOpacity
-                  style={styles.retryButton}
-                  onPress={handleRetryFriendsRankings}
-                >
-                  <Text style={styles.retryButtonText}>Retry</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-
-            {friendsRankingsLoading && friendsRankings.length === 0 && (
-              <>
-                <FriendsRankingSkeletonCard />
-                <FriendsRankingSkeletonCard />
-                <FriendsRankingSkeletonCard />
-              </>
-            )}
-
-            {friendsRankings.map((friendRanking) => {
-              const userProfile = friendRanking.user_profile;
-              if (!userProfile || !friendRanking.book) return null;
-
-              return (
-                <RecentActivityCard
-                  key={friendRanking.id}
-                  userBook={friendRanking}
-                  actionText={getActionText(friendRanking.status, userProfile.username)}
-                  userDisplayName={userProfile.username}
-                  avatarUrl={userProfile.profile_photo_url}
-                  avatarFallback={userProfile.username?.charAt(0).toUpperCase() || 'U'}
-                  onPressBook={handleFriendBookPress}
-                  onPressUser={() =>
-                    navigation.navigate('UserProfile', {
-                      userId: userProfile.user_id,
-                      username: userProfile.username,
-                    })
-                  }
-                  formatDateRange={formatDateRange}
-                  viewerStatus={null}
-                  showCommentsLink={true}
-                  showCommentIcon={true}
-                  hideActionText={true}
-                  hideBookInfo={true}
-                />
-              );
-            })}
-
-            {friendsRankingsLoading && friendsRankings.length > 0 && (
-              <FriendsRankingSkeletonCard />
-            )}
-
-            {!friendsRankingsError && friendsRankings.length > 0 && friendsRankings.length < friendsRankingsTotalCount && (
-              <TouchableOpacity
-                style={styles.showMoreButton}
-                onPress={handleShowMoreFriendsRankings}
-                disabled={friendsRankingsLoading}
-              >
-                {friendsRankingsLoading ? (
-                  <ActivityIndicator size="small" color={colors.white} />
-                ) : (
-                  <Text style={styles.showMoreButtonText}>
-                    Show More ({friendsRankingsTotalCount - friendsRankings.length} remaining)
-                  </Text>
-                )}
-              </TouchableOpacity>
-            )}
-          </View>
-        )}
+        <FriendsRankingsSection
+          friendsRankings={friendsRankings}
+          friendsRankingsLoading={friendsRankingsLoading}
+          friendsRankingsError={friendsRankingsError}
+          friendsRankingsTotalCount={friendsRankingsTotalCount}
+          onRetry={handleRetryFriendsRankings}
+          onShowMore={handleShowMoreFriendsRankings}
+          onPressUser={(userId, username) =>
+            navigation.navigate('UserProfile', {
+              userId,
+              username,
+            })
+          }
+          onPressBook={handleFriendBookPress}
+          sectionRef={friendsRankingsSectionRef}
+          styles={styles}
+          FriendsRankingSkeletonCard={FriendsRankingSkeletonCard}
+          loadingIndicatorColor={colors.white}
+        />
       </ScrollView>
 
       {/* Toast Message */}
@@ -1697,34 +983,6 @@ export default function BookDetailScreen() {
           <Text style={styles.toastText}>{toastMessage}</Text>
         </Animated.View>
       )}
-
-      {/* Date Range Picker Modal */}
-      <DateRangePickerModal
-        visible={showDateRangePickerModal}
-        onClose={() => {
-          setShowDateRangePickerModal(false);
-          setEditingSessionId(null);
-        }}
-        onDateRangeSelected={handleDateRangeSelected}
-        initialStartDate={editingSessionId ? readSessions.find(s => s.id === editingSessionId)?.started_date || null : null}
-        initialEndDate={editingSessionId ? readSessions.find(s => s.id === editingSessionId)?.finished_date || null : null}
-        title={editingSessionId ? "Edit Read Dates" : "Select Read Dates"}
-      />
-
-      {/* Genre Label Picker Modal - show even if book not on shelf */}
-      {/* autoSelectSuggestions=false: Don't auto-populate genres on BookDetailScreen */}
-      <GenreLabelPicker
-        visible={showGenreLabelPicker}
-        onClose={() => setShowGenreLabelPicker(false)}
-        onSave={handleSaveTags}
-        apiCategories={book.categories}
-        initialGenres={effectiveGenres}
-        initialCustomLabels={userCustomLabels}
-        customLabelSuggestions={customLabelSuggestions}
-        bookId={resolvedBookId || book.id}
-        loading={savingTags}
-        autoSelectSuggestions={false}
-      />
 
       <Modal
         visible={showRankingActionSheet}

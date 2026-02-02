@@ -17,6 +17,17 @@ export interface RankedBook {
   score: number;
 }
 
+export interface ComparisonState {
+  bookA: RankedBook | null;
+  bookB: RankedBook | null;
+  left: number;
+  right: number;
+  middle: number;
+  isComplete: boolean;
+  finalPosition: number | null;
+  needsRedistribution: boolean;
+}
+
 export interface RankingState {
   books: RankedBook[];
   comparisonState: ComparisonState | null;

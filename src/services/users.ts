@@ -87,7 +87,24 @@ export async function searchUsersForMention(
       results.push(...followerResults);
     }
 
-    return results.slice(0, limit);
+    if (results.length > 0) {
+      return results.slice(0, limit);
+    }
+
+    const { data: fallbackData, error: fallbackError } = await supabase
+      .from('user_profiles')
+      .select('user_id, username, avatar_url:profile_photo_url')
+      .neq('user_id', currentUserId)
+      .ilike('username', `%${query.trim()}%`)
+      .order('username', { ascending: true })
+      .limit(limit);
+
+    if (fallbackError) {
+      console.error('Error searching mention users fallback:', fallbackError);
+      return [];
+    }
+
+    return (fallbackData || []) as UserMention[];
   } catch (error) {
     console.error('Exception searching mention users:', error);
     return [];

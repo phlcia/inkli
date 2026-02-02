@@ -34,6 +34,7 @@ import {
   cancelFollowRequest,
   UserSummary,
 } from '../../../services/userProfile';
+import searchIcon from '../../../../assets/search.png';
 type FollowersFollowingRoute = RouteProp<
   { FollowersFollowing: FollowersFollowingParams },
   'FollowersFollowing'
@@ -252,7 +253,7 @@ export default function FollowersFollowingScreen() {
       </View>
 
       <View style={styles.searchContainer}>
-        <Image source={require('../../../../assets/search.png')} style={styles.searchIcon} />
+        <Image source={searchIcon} style={styles.searchIcon} />
         <TextInput
           style={styles.searchInput}
           placeholder={`Search ${activeTab}`}

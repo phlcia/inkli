@@ -16,9 +16,13 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { fetchFollowedActivityCards } from '../../../services/activityFeed';
 import { fetchUnreadNotificationsCount } from '../../../services/notifications';
 import { ActivityFeedCursor, ActivityFeedItem } from '../../../types/activityCards';
-import { supabase } from '../../../config/supabase';
 import RecentActivityCard from '../../social/components/RecentActivityCard';
 import { HomeStackParamList } from '../../../navigation/HomeStackNavigator';
+import { formatDateRange as formatDateRangeUtil } from '../../../utils/dateRanges';
+import { getActionText } from '../../../utils/activityText';
+import { fetchBookWithUserStatus } from '../../../services/bookDetails';
+import heartIcon from '../../../../assets/heart.png';
+import searchIcon from '../../../../assets/search.png';
 
 export default function HomeScreen() {
   const { user } = useAuth();
@@ -137,53 +141,16 @@ export default function HomeScreen() {
     }
   }, [user, hasMore, paginating, refreshing, initialLoading, cursor]);
 
-  const getActionText = useCallback((status: string | null, username: string, activityContent?: string | null) => {
-    const displayName = username || 'User';
-    const normalized = activityContent?.trim().toLowerCase() || '';
-    const isProgressActivity =
-      (normalized.startsWith('is ') && normalized.includes('% through')) ||
-      normalized.startsWith('finished reading');
-
-    if (isProgressActivity && activityContent) {
-      return `${displayName} ${activityContent}`;
-    }
-
-    switch (status) {
-      case 'read':
-        return `${displayName} finished`;
-      case 'currently_reading':
-        return `${displayName} started reading`;
-      case 'want_to_read':
-        return `${displayName} bookmarked`;
-      default:
-        return `${displayName} added`;
-    }
-  }, []);
-
-  const formatDateForDisplay = useCallback((dateString: string): string => {
-    const date = new Date(dateString + 'T00:00:00');
-    return date.toLocaleDateString('en-US', {
-      month: 'long',
-      day: 'numeric',
-      year: 'numeric',
-    });
-  }, []);
-
   const formatDateRange = useCallback(
-    (startDate: string | null, endDate: string | null): string | null => {
-      if (!startDate && !endDate) return null;
-      if (startDate && endDate) {
-        return `${formatDateForDisplay(startDate)} - ${formatDateForDisplay(endDate)}`;
-      }
-      if (startDate) {
-        return formatDateForDisplay(startDate);
-      }
-      if (endDate) {
-        return formatDateForDisplay(endDate);
-      }
-      return null;
-    },
-    [formatDateForDisplay]
+    (startDate: string | null, endDate: string | null): string | null =>
+      formatDateRangeUtil(startDate, endDate),
+    []
+  );
+
+  const getActionTextForItem = useCallback(
+    (status: string | null, username: string, activityContent?: string | null) =>
+      getActionText({ status, displayName: username, activityContent }),
+    []
   );
 
   const handleBookPress = useCallback(
@@ -191,28 +158,14 @@ export default function HomeScreen() {
       if (!userBook.book) return;
 
       try {
-        const { data: fullBook, error } = await supabase
-          .from('books')
-          .select('*')
-          .eq('id', userBook.book_id)
-          .single();
-
-        if (error) throw error;
-
-        let userBookData = null;
-        if (user?.id) {
-          const { data } = await supabase
-            .from('user_books')
-            .select('*')
-            .eq('user_id', user.id)
-            .eq('book_id', fullBook.id)
-            .single();
-          userBookData = data;
-        }
+        const { book, userBook: userBookData } = await fetchBookWithUserStatus(
+          userBook.book_id,
+          user?.id
+        );
 
         navigation.navigate('BookDetail', {
           book: {
-            ...fullBook,
+            ...book,
             userBook: userBookData || null,
           },
         });
@@ -227,7 +180,11 @@ export default function HomeScreen() {
     ({ item }: { item: ActivityFeedItem }) => (
       <RecentActivityCard
         userBook={item.userBook}
-        actionText={getActionText(item.userBook.status, item.user.username, item.content)}
+        actionText={getActionTextForItem(
+          item.userBook.status,
+          item.user.username,
+          item.content
+        )}
         userDisplayName={item.user.username}
         avatarUrl={item.user.profile_photo_url}
         avatarFallback={item.user.username?.charAt(0).toUpperCase() || 'U'}
@@ -242,7 +199,7 @@ export default function HomeScreen() {
         viewerStatus={null}
       />
     ),
-    [formatDateRange, getActionText, handleBookPress, navigation]
+    [formatDateRange, getActionTextForItem, handleBookPress, navigation]
   );
 
   const listEmptyComponent = useMemo(() => {
@@ -311,7 +268,7 @@ export default function HomeScreen() {
             android_ripple={{ color: 'rgba(0, 0, 0, 0.06)' }}
           >
             <Image
-              source={require('../../../../assets/heart.png')}
+              source={heartIcon}
               style={styles.headerIconImage}
               resizeMode="contain"
             />
@@ -336,7 +293,7 @@ export default function HomeScreen() {
         android_ripple={{ color: 'rgba(0, 0, 0, 0.06)' }}
       >
         <Image
-          source={require('../../../../assets/search.png')}
+          source={searchIcon}
           style={styles.searchIcon}
           resizeMode="contain"
         />

@@ -9,6 +9,10 @@ import YourShelfStackNavigator from './YourShelfStackNavigator';
 import SearchStackNavigator from './SearchStackNavigator';
 import LeaderboardScreen from '../features/leaderboard/screens/LeaderboardScreen';
 import ProfileStackNavigator from './ProfileStackNavigator';
+import homeIcon from '../../assets/home.png';
+import yourShelfIcon from '../../assets/your shelf.png';
+import searchIcon from '../../assets/search.png';
+import leaderboardIcon from '../../assets/leaderboard.png';
 
 const Tab = createBottomTabNavigator();
 
@@ -70,47 +74,6 @@ function ProfileTabIcon({ focused }: { focused: boolean }) {
 }
 
 export default function TabNavigator() {
-  const { user } = useAuth();
-  const [pendingRequestsCount, setPendingRequestsCount] = useState<number>(0);
-
-  useEffect(() => {
-    if (!user?.id) return;
-
-    const loadPendingRequests = async () => {
-      const { count, error } = await supabase
-        .from('follow_requests')
-        .select('id', { count: 'exact', head: true })
-        .eq('requested_id', user.id)
-        .eq('status', 'pending');
-
-      if (!error) {
-        setPendingRequestsCount(count ?? 0);
-      }
-    };
-
-    loadPendingRequests();
-
-    const channel = supabase
-      .channel(`follow_requests_incoming:${user.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'follow_requests',
-          filter: `requested_id=eq.${user.id}`,
-        },
-        () => {
-          loadPendingRequests();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [user?.id]);
-
   return (
     <Tab.Navigator
       screenOptions={{
@@ -132,7 +95,7 @@ export default function TabNavigator() {
           headerShown: false,
           tabBarIcon: ({ focused }) => (
             <Image
-              source={require('../../assets/home.png')}
+              source={homeIcon}
               style={{
                 width: 40,
                 height: 40,
@@ -150,7 +113,7 @@ export default function TabNavigator() {
           headerShown: false,
           tabBarIcon: ({ focused }) => (
             <Image
-              source={require('../../assets/your shelf.png')}
+              source={yourShelfIcon}
               style={{
                 width: 40,
                 height: 40,
@@ -168,7 +131,7 @@ export default function TabNavigator() {
           headerShown: false,
           tabBarIcon: ({ focused }) => (
             <Image
-              source={require('../../assets/search.png')}
+              source={searchIcon}
               style={{
                 width: 40,
                 height: 40,
@@ -186,7 +149,7 @@ export default function TabNavigator() {
           headerShown: false,
           tabBarIcon: ({ focused }) => (
             <Image
-              source={require('../../assets/leaderboard.png')}
+              source={leaderboardIcon}
               style={{
                 width: 40,
                 height: 40,

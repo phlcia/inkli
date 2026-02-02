@@ -18,6 +18,9 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
+const getErrorMessage = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
+
 async function checkRankingSetup() {
   console.log('🔍 Checking ranking system setup...\n');
 
@@ -36,7 +39,7 @@ async function checkRankingSetup() {
     
     if (error) {
       // Try alternative method - direct query
-      const { data: testData, error: testError } = await supabase
+      const { error: testError } = await supabase
         .from('user_profiles')
         .select('books_read_count, global_rank, member_since, profile_photo_url')
         .limit(1);
@@ -49,7 +52,7 @@ async function checkRankingSetup() {
       }
     } else {
       const requiredColumns = ['books_read_count', 'global_rank', 'member_since', 'profile_photo_url'];
-      const foundColumns = columns?.map((c: any) => c.column_name) || [];
+      const foundColumns = columns?.map((c: { column_name: string }) => c.column_name) || [];
       const missing = requiredColumns.filter(col => !foundColumns.includes(col));
       
       if (missing.length > 0) {
@@ -59,7 +62,7 @@ async function checkRankingSetup() {
         console.log('   ✅ All required columns exist');
       }
     }
-  } catch (error: any) {
+  } catch (error) {
     console.log('   ⚠️  Could not verify columns (this is okay if migration not run yet)');
   }
 
@@ -96,7 +99,7 @@ async function checkRankingSetup() {
         }
       }
     }
-  } catch (error: any) {
+  } catch (error) {
     console.log('   ⚠️  Could not verify trigger');
   }
 
@@ -134,8 +137,8 @@ async function checkRankingSetup() {
         console.log('   ✅ Ranking system appears to be working');
       }
     }
-  } catch (error: any) {
-    console.error('   ❌ Error:', error.message);
+  } catch (error) {
+    console.error('   ❌ Error:', getErrorMessage(error));
   }
 
   // Check 4: Verify functions exist (if we can)
@@ -148,7 +151,6 @@ async function checkRankingSetup() {
 }
 
 checkRankingSetup().catch(console.error);
-
 
 
 

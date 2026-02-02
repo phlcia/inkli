@@ -66,7 +66,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     readingInterests?: string[]
   ) => {
     try {
-      console.log('Starting signup...');
       
       // Sign up with username and other data in metadata (trigger will use it)
       const { data, error } = await supabase.auth.signUp({
@@ -91,7 +90,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new Error('No user returned from signup');
       }
 
-      console.log('User created with profile:', data.user.id);
 
       // Wait a moment for trigger to create profile
       await new Promise(resolve => setTimeout(resolve, 500));
@@ -129,7 +127,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
-      console.log('Signup complete');
       setSession(data.session);
       setUser(data.user);
     } catch (error) {
@@ -194,7 +191,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             return;
           }
           // Fall through to web OAuth if native fails
-          console.log('Native Apple Sign In failed, falling back to web OAuth:', error);
         }
       }
 
@@ -367,7 +363,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .single();
 
       if (profileError || !profile) {
-        console.log('Profile not found, creating manually...');
 
         // Extract user info from OAuth metadata
         const metadata = user.user_metadata || {};

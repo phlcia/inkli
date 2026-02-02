@@ -37,7 +37,7 @@ export default function FilterPanel({
   selectedCustomLabels: initialSelectedCustomLabels,
   onFiltersChange,
   resultCount,
-  shelfContext,
+  shelfContext: _shelfContext,
   customLabelSuggestions,
   onClearFilters,
   onTrackFilterApplied,
@@ -141,7 +141,7 @@ export default function FilterPanel({
               await onDeleteCustomLabel?.(label);
               // Clear from local selection if currently selected
               setSelectedCustomLabels((prev) => prev.filter((l) => l !== label));
-            } catch (error) {
+            } catch (_error) {
               Alert.alert('Error', 'Failed to delete shelf');
             }
           },

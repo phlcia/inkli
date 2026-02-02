@@ -72,34 +72,6 @@ export default function ShelfScreen({
       const userBooks = await getUserBooks(ownerUserId);
       setBooks(userBooks);
       
-      // DEBUG: Log book data to verify genres are loaded
-      console.log('=== ShelfScreen loadBooks DEBUG ===');
-      console.log('Loaded', userBooks.length, 'books');
-      if (userBooks.length > 0) {
-        const firstBook = userBooks[0];
-        console.log('Sample book:', {
-          title: firstBook?.book?.title,
-          genres: firstBook?.book?.genres,
-          custom_labels: firstBook?.custom_labels,
-        });
-        
-        // Count data availability
-        const withGenres = userBooks.filter(b => (b.book?.genres?.length ?? 0) > 0).length;
-        const withLabels = userBooks.filter(b => (b.custom_labels?.length ?? 0) > 0).length;
-        console.log('Books with genres:', withGenres, '/', userBooks.length);
-        console.log('Books with custom_labels:', withLabels, '/', userBooks.length);
-        
-        // List all unique genres and labels found
-        const allGenres = new Set<string>();
-        const allLabelsSet = new Set<string>();
-        userBooks.forEach((book) => {
-          book.book?.genres?.forEach(g => allGenres.add(g));
-          book.custom_labels?.forEach(l => allLabelsSet.add(l));
-        });
-        console.log('All genres found:', Array.from(allGenres));
-        console.log('All custom_labels found:', Array.from(allLabelsSet));
-      }
-      
       // Extract unique custom labels from user's books for auto-complete suggestions
       const allLabels = new Set<string>();
       userBooks.forEach((book) => {
@@ -236,7 +208,6 @@ export default function ShelfScreen({
       // Track analytics
       await trackCustomLabelDeleted(label, affectedCount, 'filter_panel', currentUser.id);
 
-      console.log(`Removed "${label}" from ${affectedCount} books`);
     } catch (error) {
       console.error('Error deleting custom label:', error);
       throw error; // Re-throw so FilterPanel can show error alert

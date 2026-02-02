@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import { Calendar, DateData } from 'react-native-calendars';
 import { colors, typography } from '../../config/theme';
+import { formatDateForDisplay } from '../../utils/dateRanges';
 
 interface DateRangePickerModalProps {
   visible: boolean;
@@ -99,9 +100,16 @@ export default function DateRangePickerModal({
     onClose();
   };
 
+  type MarkedDate = {
+    startingDay?: boolean;
+    endingDay?: boolean;
+    color: string;
+    textColor: string;
+  };
+
   // Build markedDates for calendar with period marking
   const getMarkedDates = () => {
-    const marked: any = {};
+    const marked: Record<string, MarkedDate> = {};
     
     if (startDate) {
       marked[startDate] = {
@@ -159,11 +167,6 @@ export default function DateRangePickerModal({
     return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
   };
 
-  const formatDateForDisplay = (dateString: string): string => {
-    const date = new Date(dateString + 'T00:00:00');
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  };
-
   return (
     <Modal
       visible={visible}
@@ -218,7 +221,7 @@ export default function DateRangePickerModal({
           {(startDate || endDate) && (
             <View style={styles.selectedDateContainer}>
               <Text style={styles.selectedDateText}>
-                {startDate ? formatDateForDisplay(startDate) : '...'} - {endDate ? formatDateForDisplay(endDate) : '...'}
+                {startDate ? formatDateForDisplay(startDate, { month: 'short' }) : '...'} - {endDate ? formatDateForDisplay(endDate, { month: 'short' }) : '...'}
               </Text>
             </View>
           )}

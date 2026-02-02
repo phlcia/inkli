@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -15,6 +15,9 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { useBookRanking } from '../../../hooks/useBookRanking';
 import { RankedBook } from '../../../utils/bookRanking';
 import { supabase } from '../../../config/supabase';
+import goodIcon from '../../../../assets/good.png';
+import midIcon from '../../../../assets/mid.png';
+import badIcon from '../../../../assets/bad.png';
 
 interface BookComparisonModalProps {
   visible: boolean;
@@ -55,7 +58,7 @@ export default function BookComparisonModal({
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [showRankedConfirmation, setShowRankedConfirmation] = useState(false);
-  const [existingBooks, setExistingBooks] = useState<RankedBook[]>([]);
+  const [, setExistingBooks] = useState<RankedBook[]>([]);
   const [shouldStartInsertion, setShouldStartInsertion] = useState(false);
 
   // Initialize ranking hook with empty array (will be populated when we load books)
@@ -64,7 +67,6 @@ export default function BookComparisonModal({
   // Start insertion after reset completes (when shouldStartInsertion is set to true)
   useEffect(() => {
     if (shouldStartInsertion) {
-      console.log('Starting insertion after reset for book:', currentBook.id);
       ranking.startInserting({
         id: currentBook.id,
         title: currentBook.title,
@@ -72,63 +74,38 @@ export default function BookComparisonModal({
         cover_url: currentBook.cover_url || null,
       }, rating);
       setShouldStartInsertion(false);
-      console.log('Insertion started - waiting for user comparisons');
     }
   }, [shouldStartInsertion, currentBook, rating, ranking]);
 
-  // Load existing liked books and initialize ranking
-  useEffect(() => {
-    if (visible && user) {
-      // Reset state when modal becomes visible
-      setShouldStartInsertion(false);
-      loadExistingBooks();
-    } else if (!visible) {
-      // Reset state when modal is hidden
-      setShouldStartInsertion(false);
-      setExistingBooks([]);
-    }
-  }, [visible, user]);
-
-  const loadExistingBooks = async () => {
+  const loadExistingBooks = useCallback(async () => {
     if (!user) return;
 
     try {
-      console.log('=== RANKING DEBUG: loadExistingBooks ===');
-      console.log('Current book ID:', currentBook.id);
-      console.log('Rating category:', rating);
       setLoading(true);
       // Get all books in the same rating category
       const categoryBooks = await getUserBooksByRating(user.id, rating);
-      console.log('All books in category:', categoryBooks.length);
       
       // Filter out the current book (it's being added)
       const otherBooks = categoryBooks.filter((book) => book.id !== currentBook.id);
-      console.log('Other books (excluding current):', otherBooks.length);
       
       // Convert to RankedBook format (only books with rank_score)
       const rankedBooks = otherBooks
         .filter((book) => book.rank_score !== null)
         .map(userBookToRankedBook);
-      console.log('Ranked books (with rank_score):', rankedBooks.length);
-      console.log('Ranked books details:', rankedBooks.map(b => ({ id: b.id, title: b.title, score: b.score })));
       
       // If no existing books, this is the first in category
       // It should already have default score from updateUserBookDetails
       // But if it doesn't, set it now
       if (rankedBooks.length === 0) {
-        console.log('No existing ranked books - this is first in category');
-        console.log('Checking if book already has default score...');
         // Check if book already has a score
-        const currentBookData = categoryBooks.find(b => b.id === currentBook.id);
+        const currentBookData = categoryBooks.find((b) => b.id === currentBook.id);
         if (currentBookData?.rank_score) {
-          console.log('Book already has rank_score:', currentBookData.rank_score);
           setShowRankedConfirmation(true);
           setTimeout(() => {
             setShowRankedConfirmation(false);
             onComplete();
           }, 1500);
         } else {
-          console.log('=== RANKING DEBUG: Book does NOT have rank_score - setting default score now ===');
           // Set default score for first book in category (max score for tier)
           setProcessing(true);
           try {
@@ -140,10 +117,6 @@ export default function BookComparisonModal({
             };
             const defaultScore = tierMaxScores[rating];
             
-            console.log('=== RANKING DEBUG: Setting default score ===');
-            console.log('Book ID:', currentBook.id);
-            console.log('Rating:', rating);
-            console.log('Default score:', defaultScore);
             
             // Update the book with default score
             const { data: updateData, error: updateError } = await supabase
@@ -177,8 +150,6 @@ export default function BookComparisonModal({
               return;
             }
             
-            console.log('=== RANKING DEBUG: SUCCESS - Default rank_score set successfully ===');
-            console.log('Verified score in database:', updateData.rank_score);
             
             setShowRankedConfirmation(true);
             setTimeout(() => {
@@ -195,7 +166,6 @@ export default function BookComparisonModal({
       }
       
       // Initialize ranking with existing books
-      console.log('Initializing ranking with', rankedBooks.length, 'existing books');
       
       // Set existingBooks first, then reset and flag to start insertion
       // The useEffect will trigger startInserting after the state updates
@@ -208,32 +178,32 @@ export default function BookComparisonModal({
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentBook.id, onComplete, ranking, rating, user]);
+
+  // Load existing liked books and initialize ranking
+  useEffect(() => {
+    if (visible && user) {
+      // Reset state when modal becomes visible
+      setShouldStartInsertion(false);
+      loadExistingBooks();
+    } else if (!visible) {
+      // Reset state when modal is hidden
+      setShouldStartInsertion(false);
+      setExistingBooks([]);
+    }
+  }, [loadExistingBooks, setExistingBooks, user, visible]);
 
   // Get current comparison from ranking system
   const comparison = ranking.getCurrentComparison();
   const rankingComplete = ranking.isComplete();
   
-  console.log('=== RANKING DEBUG: Render check ===');
-  console.log('Comparison:', comparison ? 'exists' : 'null');
-  console.log('Ranking complete?', rankingComplete);
-  console.log('Should show comparison?', comparison !== null && !rankingComplete);
   
   // Check if ranking completed and we need to save
   useEffect(() => {
     if (rankingComplete && !processing && !showRankedConfirmation) {
-      console.log('=== RANKING DEBUG: Ranking completed, saving result ===');
       const result = ranking.getResult();
-      console.log('Ranking result:', result);
       
       if (result) {
-        console.log('=== RANKING DEBUG: About to save final rank ===');
-        console.log('Calculated score:', result.score);
-        console.log('Position:', result.positionInTier);
-        console.log('Score type:', typeof result.score);
-        console.log('Score is valid number?', typeof result.score === 'number' && !isNaN(result.score));
-        console.log('Book ID to update:', currentBook.id);
-        console.log('Has updatedTierBooks?', !!result.updatedTierBooks);
         
         if (!currentBook.id || currentBook.id === '') {
           console.error('=== RANKING DEBUG: ERROR - Empty book ID ===');
@@ -246,12 +216,9 @@ export default function BookComparisonModal({
         // Save the final rank_score
         saveFinalRank(result)
           .then(() => {
-            console.log('=== RANKING DEBUG: After saveFinalRank ===');
-            console.log('saveFinalRank completed, showing confirmation');
             setShowRankedConfirmation(true);
             setProcessing(false);
             setTimeout(() => {
-              console.log('=== RANKING DEBUG: Closing modal ===');
               setShowRankedConfirmation(false);
               // Trigger refresh in other screens by navigating to them briefly
               // This ensures ProfileScreen and YourShelfScreen refresh
@@ -274,19 +241,14 @@ export default function BookComparisonModal({
     if (processing) return;
 
     try {
-      console.log('=== RANKING DEBUG: handlePreference ===');
-      console.log('Preferred book ID:', preferredBookId);
-      console.log('Current book ID:', currentBook.id);
       setProcessing(true);
       
       // Determine if user prefers new book or existing book
       if (preferredBookId === currentBook.id) {
         // User prefers the new book
-        console.log('User prefers NEW book');
         ranking.chooseNewBook();
       } else {
         // User prefers the existing book
-        console.log('User prefers EXISTING book');
         ranking.chooseExistingBook();
       }
 
@@ -308,9 +270,6 @@ export default function BookComparisonModal({
     }
 
     try {
-      console.log('=== RANKING DEBUG: saveFinalRank ===');
-      console.log('Result:', result);
-      console.log('Has updatedTierBooks?', !!result.updatedTierBooks);
       
       if (!currentBook.id || currentBook.id === '' || currentBook.id.trim() === '') {
         console.error('=== RANKING DEBUG: ERROR - Empty or invalid book ID ===');
@@ -328,7 +287,6 @@ export default function BookComparisonModal({
       // Check if redistribution happened (has updatedTierBooks)
       if (result.updatedTierBooks && result.updatedTierBooks.length > 0) {
         // Batch update all tier books
-        console.log('=== RANKING DEBUG: Batch updating tier books ===');
         const updates = result.updatedTierBooks.map(book => ({
           id: book.id,
           score: book.score,
@@ -339,19 +297,16 @@ export default function BookComparisonModal({
           if (otherUpdates.length > 0) {
             await updateTierScoresBatch(user.id, rating, otherUpdates, { touchUpdatedAt: false });
           }
-          console.log('=== RANKING DEBUG: Batch update completed ===');
         } catch (error) {
           console.error('Batch update failed; proceeding with current book update:', error);
         }
         // Fetch current notes before updating to preserve them
-        const { data: currentBookData } = await supabase
+        const { data: _currentBookData } = await supabase
           .from('user_books')
           .select('notes')
           .eq('id', result.insertedBook.id)
           .single();
         
-        console.log('=== RANKING DEBUG: Current book data before batch update ===');
-        console.log('Notes:', currentBookData?.notes);
         
         // Ensure the current book gets the normal update (activity + updated_at)
         const { data: currentUpdateData, error: currentUpdateError } = await supabase
@@ -370,27 +325,19 @@ export default function BookComparisonModal({
         }
         
         // Verify notes are preserved (dates are in read_sessions, not user_books)
-        console.log('=== RANKING DEBUG: After rank_score batch update ===');
-        console.log('Notes preserved:', currentUpdateData.notes);
       } else {
         // Fast path: single book update - use the calculated score directly
-        console.log('=== RANKING DEBUG: Single book update ===');
-        console.log('Using calculated score:', result.score);
-        console.log('currentBook.id:', currentBook.id);
-        console.log('result.insertedBook.id:', result.insertedBook.id);
         
         // Use result.insertedBook.id instead of currentBook.id to ensure we're using the correct ID
         const bookIdToUpdate = result.insertedBook.id;
         
         // Fetch current notes before updating to preserve them
-        const { data: currentBookData } = await supabase
+        const { data: _currentBookData } = await supabase
           .from('user_books')
           .select('notes')
           .eq('id', bookIdToUpdate)
           .single();
         
-        console.log('=== RANKING DEBUG: Current book data before update ===');
-        console.log('Notes:', currentBookData?.notes);
         
         // Update the book directly with the calculated score
         // The partial update should preserve other fields, but we'll be explicit
@@ -412,12 +359,9 @@ export default function BookComparisonModal({
         }
         
         // Verify notes are preserved (dates are in read_sessions, not user_books)
-        console.log('=== RANKING DEBUG: After rank_score update ===');
-        console.log('Notes preserved:', updateData.notes);
         
       }
       
-      console.log('=== RANKING DEBUG: saveFinalRank completed ===');
     } catch (error) {
       console.error('=== RANKING DEBUG: ERROR in saveFinalRank ===', error);
       Alert.alert('Error', 'Failed to save ranking, but your comparison was saved.');
@@ -428,7 +372,6 @@ export default function BookComparisonModal({
   const handleSkip = async () => {
     // When skipping, place it at the bottom of the category
     try {
-      console.log('=== RANKING DEBUG: handleSkip ===');
       setProcessing(true);
       
       // When skipping, place at the bottom (last position)
@@ -503,13 +446,7 @@ export default function BookComparisonModal({
           {showRankedConfirmation ? (
             <View style={styles.confirmationContainer}>
               <Image
-                source={
-                  rating === 'liked' 
-                    ? require('../../../../assets/good.png')
-                    : rating === 'fine'
-                    ? require('../../../../assets/mid.png')
-                    : require('../../../../assets/bad.png')
-                }
+                source={rating === 'liked' ? goodIcon : rating === 'fine' ? midIcon : badIcon}
                 style={styles.confirmationEmoji}
                 resizeMode="contain"
               />

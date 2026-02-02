@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, StatusBar, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography } from '../../../config/theme';
+import iconImage from '../../../../assets/icon.png';
 
 interface WelcomeScreenProps {
   onComplete: () => void;
@@ -23,7 +24,7 @@ export default function WelcomeScreen({ onComplete }: WelcomeScreenProps) {
         {/* Logo */}
         <View style={styles.logoContainer}>
           <Image
-            source={require('../../../../assets/icon.png')}
+            source={iconImage}
             style={styles.logoImage}
             resizeMode="contain"
           />

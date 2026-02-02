@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -139,7 +139,7 @@ function BookSearchItem({ book, onPress, disabled, trailing }: BookSearchItemPro
     return () => {
       isActive = false;
     };
-  }, [coverKey]);
+  }, [book, coverKey, coverUrl]);
 
   return (
     <TouchableOpacity style={styles.bookItem} onPress={onPress} disabled={disabled}>
@@ -199,7 +199,7 @@ export default function SearchScreen() {
       loadFollowingIds();
       loadPendingRequestIds();
     }
-  }, [user]);
+  }, [loadFollowingIds, loadPendingRequestIds, loadRecentMemberSearches, loadRecentSearches, user?.id]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -240,14 +240,18 @@ export default function SearchScreen() {
       supabase.removeChannel(followsChannel);
       supabase.removeChannel(requestsChannel);
     };
-  }, [user?.id]);
+  }, [loadFollowingIds, loadPendingRequestIds, user?.id]);
 
-  const getRecentSearchesKey = () =>
-    user?.id ? `${RECENT_SEARCHES_KEY}:${user.id}` : RECENT_SEARCHES_KEY;
-  const getRecentMemberSearchesKey = () =>
-    user?.id ? `${RECENT_MEMBER_SEARCHES_KEY}:${user.id}` : RECENT_MEMBER_SEARCHES_KEY;
+  const getRecentSearchesKey = useCallback(
+    () => (user?.id ? `${RECENT_SEARCHES_KEY}:${user.id}` : RECENT_SEARCHES_KEY),
+    [user?.id]
+  );
+  const getRecentMemberSearchesKey = useCallback(
+    () => (user?.id ? `${RECENT_MEMBER_SEARCHES_KEY}:${user.id}` : RECENT_MEMBER_SEARCHES_KEY),
+    [user?.id]
+  );
 
-  const loadRecentSearches = async () => {
+  const loadRecentSearches = useCallback(async () => {
     try {
       // Use AsyncStorage to load recent searches
       const stored = await AsyncStorage.getItem(getRecentSearchesKey());
@@ -259,7 +263,7 @@ export default function SearchScreen() {
       console.error('Error loading recent searches:', error);
       setRecentSearches([]);
     }
-  };
+  }, [getRecentSearchesKey]);
 
   const saveRecentSearch = async (book: any) => {
     try {
@@ -308,7 +312,7 @@ export default function SearchScreen() {
     }
   };
 
-  const loadRecentMemberSearches = async () => {
+  const loadRecentMemberSearches = useCallback(async () => {
     try {
       const stored = await AsyncStorage.getItem(getRecentMemberSearchesKey());
       if (stored) {
@@ -319,7 +323,7 @@ export default function SearchScreen() {
       console.error('Error loading recent member searches:', error);
       setRecentMemberSearches([]);
     }
-  };
+  }, [getRecentMemberSearchesKey]);
 
   const saveRecentMemberSearch = async (member: MemberResult) => {
     try {
@@ -368,21 +372,21 @@ export default function SearchScreen() {
     }
   };
 
-  const loadFollowingIds = async () => {
+  const loadFollowingIds = useCallback(async () => {
     if (!user?.id) return;
     const { followingIds: ids } = await getFollowingIds(user.id);
     setFollowingIds(new Set(ids));
-  };
+  }, [user?.id]);
 
-  const loadPendingRequestIds = async () => {
+  const loadPendingRequestIds = useCallback(async () => {
     if (!user?.id) return;
     const { requests } = await getOutgoingFollowRequests(user.id);
     const ids = requests.map((request) => request.requested_id);
     setPendingRequestIds(new Set(ids));
-  };
+  }, [user?.id]);
 
 
-  const performBookSearch = async (searchQuery: string, showLoading = true) => {
+  const performBookSearch = useCallback(async (searchQuery: string, showLoading = true) => {
     if (!searchQuery.trim() || searchQuery.trim().length < 2) {
       searchRequestIdRef.current += 1;
       setBookResults([]);
@@ -409,9 +413,9 @@ export default function SearchScreen() {
         setLoading(false);
       }
     }
-  };
+  }, []);
 
-  const performMemberSearch = async (searchQuery: string, showLoading = true) => {
+  const performMemberSearch = useCallback(async (searchQuery: string, showLoading = true) => {
     if (!searchQuery.trim() || searchQuery.trim().length < 2) {
       searchRequestIdRef.current += 1;
       setMemberResults([]);
@@ -446,7 +450,7 @@ export default function SearchScreen() {
         setLoading(false);
       }
     }
-  };
+  }, [user?.id]);
 
   const handleSearch = async () => {
     if (debounceTimerRef.current) {
@@ -512,7 +516,7 @@ export default function SearchScreen() {
         clearTimeout(debounceTimerRef.current);
       }
     };
-  }, [query, activeTab]);
+  }, [activeTab, performBookSearch, performMemberSearch, query]);
 
   const handleBookPress = async (book: any) => {
     try {
@@ -602,7 +606,6 @@ export default function SearchScreen() {
     await saveRecentMemberSearch(member);
     
     navigation.navigate('UserProfile', { userId: member.user_id, username: member.username });
-    console.log('Member pressed:', member.username);
   };
 
   const renderBookItem = ({ item }: { item: any }) => {

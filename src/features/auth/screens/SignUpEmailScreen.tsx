@@ -13,13 +13,14 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography } from '../../../config/theme';
 import { checkUsernameAvailability } from '../../../services/userProfile';
+import iconImage from '../../../../assets/icon.png';
 
 interface SignUpEmailScreenProps {
   onNext: (email: string, password: string, firstName: string, lastName: string, username: string) => void;
   onBack?: () => void;
 }
 
-export default function SignUpEmailScreen({ onNext, onBack }: SignUpEmailScreenProps) {
+export default function SignUpEmailScreen({ onNext, onBack: _onBack }: SignUpEmailScreenProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -98,7 +99,7 @@ export default function SignUpEmailScreen({ onNext, onBack }: SignUpEmailScreenP
         {/* Logo */}
         <View style={styles.logoContainer}>
           <Image
-            source={require('../../../../assets/icon.png')}
+            source={iconImage}
             style={styles.logoImage}
             resizeMode="contain"
           />

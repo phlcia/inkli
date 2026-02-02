@@ -8,6 +8,7 @@ import {
   Text,
   View,
   TouchableOpacity,
+  ActivityIndicator,
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -131,7 +132,7 @@ export default function NotificationsScreen() {
         );
       }
     },
-    [user]
+    [refreshFollowStates, user]
   );
 
   useFocusEffect(
@@ -288,12 +289,6 @@ export default function NotificationsScreen() {
   };
 
   const renderItem = ({ item }: { item: NotificationItem }) => {
-    const isRead =
-      readIds.has(item.id) ||
-      (lastSeenAt
-        ? new Date(item.createdAt).getTime() <=
-          new Date(lastSeenAt).getTime()
-        : false);
     const isSingleLine = singleLineIds.has(item.id);
     const followState = followStates[item.actorId];
     const showFollowAction =

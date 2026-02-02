@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,7 +7,6 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
-  Image,
   Platform,
   RefreshControl,
 } from 'react-native';
@@ -19,27 +18,32 @@ import {
   getUserBookCounts,
   getRecentUserBooks,
   UserBook,
-  addBookToShelf,
-  removeBookFromShelf,
 } from '../../../services/books';
+import { fetchBookWithUserStatus } from '../../../services/bookDetails';
 import { 
   getFollowerCount, 
   getFollowingCount,
-  followUser,
-  unfollowUser,
   checkIfFollowing,
   checkIfMuted,
   checkPendingFollowRequest,
   getBlockStatus,
-  blockUser,
-  unblockUser,
-  muteUser,
-  unmuteUser,
-  cancelFollowRequest,
 } from '../../../services/userProfile';
 import type { AccountType } from '../../../services/userProfile';
 import RecentActivityCard from '../../social/components/RecentActivityCard';
 import { supabase } from '../../../config/supabase';
+import { formatDateRange } from '../../../utils/dateRanges';
+import { getActionText } from '../../../utils/activityText';
+import { ProfileShelfCard, ProfileStatCard } from '../components/ProfileCards';
+import ProfileInfoSection from '../components/ProfileInfoSection';
+import { useToggleWantToRead } from '../../books/hooks/useToggleWantToRead';
+import { useFollowActions } from '../hooks/useFollowActions';
+import FollowMenuActions from '../components/FollowMenuActions';
+import ProfileHeader from '../components/ProfileHeader';
+import addIcon from '../../../../assets/add.png';
+import readingIcon from '../../../../assets/reading.png';
+import bookmarkIcon from '../../../../assets/bookmark.png';
+import rankIcon from '../../../../assets/rank.png';
+import fireIcon from '../../../../assets/fire.png';
 
 // Add this to your navigation type definitions
 type UserProfileRouteParams = {
@@ -85,12 +89,13 @@ export default function UserProfileScreen() {
   const [blockedByViewer, setBlockedByViewer] = useState(false);
   const [blockedByTarget, setBlockedByTarget] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
+  const handleToggleWantToRead = useToggleWantToRead({
+    currentUserId: currentUser?.id,
+    viewerShelfMap,
+    setViewerShelfMap,
+  });
 
-  useEffect(() => {
-    loadUserProfile();
-  }, [userId]);
-
-  const loadUserProfile = async (showLoading = true) => {
+  const loadUserProfile = useCallback(async (showLoading = true) => {
     try {
       if (showLoading) {
         setLoading(true);
@@ -179,7 +184,11 @@ export default function UserProfileScreen() {
       setLoading(false);
     }
   }
-  };
+  }, [currentUser?.id, navigation, userId]);
+
+  useEffect(() => {
+    loadUserProfile();
+  }, [loadUserProfile]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -190,49 +199,30 @@ export default function UserProfileScreen() {
     }
   };
 
-  const handleFollowToggle = async () => {
-    if (!currentUser?.id || currentUser.id === userId) return;
-
-    setFollowLoading(true);
-    try {
-      if (blockedByViewer) {
-        const { error } = await unblockUser(currentUser.id, userId);
-        if (!error) {
-          setBlockedByViewer(false);
-        }
-        return;
-      }
-      if (isFollowing) {
-        const { error } = await unfollowUser(currentUser.id, userId);
-        if (!error) {
-          setIsFollowing(false);
-          setFollowMenuOpen(false);
-          setFollowerCount(prev => Math.max(0, prev - 1));
-        }
-      } else if (followRequestPending) {
-        const { error } = await cancelFollowRequest(currentUser.id, userId);
-        if (!error) {
-          setFollowRequestPending(false);
-        }
-      } else {
-        const { action, error } = await followUser(currentUser.id, userId);
-        if (!error) {
-          if (action === 'following') {
-            setIsFollowing(true);
-            setFollowerCount(prev => prev + 1);
-            setFollowRequestPending(false);
-          } else {
-            setFollowRequestPending(true);
-          }
-        }
-      }
-    } catch (error) {
-      console.error('Error toggling follow:', error);
-      Alert.alert('Error', 'Failed to update follow status');
-    } finally {
-      setFollowLoading(false);
-    }
-  };
+  const {
+    handleFollowToggle,
+    handleMutePress,
+    handleBlockPress,
+    handleConfirmBlock,
+  } = useFollowActions({
+    currentUserId: currentUser?.id,
+    targetUserId: userId,
+    isFollowing,
+    followRequestPending,
+    blockedByViewer,
+    isMuted,
+    isFollowedByTarget,
+    setIsFollowing,
+    setFollowRequestPending,
+    setFollowMenuOpen,
+    setBlockedByViewer,
+    setIsMuted,
+    setIsFollowedByTarget,
+    setFollowerCount,
+    setFollowingCount,
+    setFollowLoading,
+    onError: (message) => Alert.alert('Error', message),
+  });
 
   const getJoinDate = () => {
     if (userProfile?.member_since) {
@@ -261,27 +251,10 @@ export default function UserProfileScreen() {
             ? 'Follow'
             : 'Follow';
 
-  const handleMutePress = () => {
-    setFollowMenuOpen(false);
-    if (!currentUser?.id || currentUser.id === userId) return;
-    if (isMuted) {
-      unmuteUser(currentUser.id, userId).then(({ error }) => {
-        if (!error) setIsMuted(false);
-      });
-      return;
-    }
-    muteUser(currentUser.id, userId).then(({ error }) => {
-      if (!error) setIsMuted(true);
-    });
-  };
-
-  const handleBlockPress = () => {
-    setFollowMenuOpen(false);
+  const handleBlockPressWithConfirm = () => {
     if (!currentUser?.id || currentUser.id === userId) return;
     if (blockedByViewer) {
-      unblockUser(currentUser.id, userId).then(({ error }) => {
-        if (!error) setBlockedByViewer(false);
-      });
+      handleBlockPress();
       return;
     }
     Alert.alert('Block user?', 'They will not be able to view your profile or activity.', [
@@ -289,121 +262,26 @@ export default function UserProfileScreen() {
       {
         text: 'Block',
         style: 'destructive',
-        onPress: async () => {
-          const { error } = await blockUser(currentUser.id, userId);
-          if (!error) {
-            setBlockedByViewer(true);
-            if (isFollowing) {
-              setFollowerCount((prev) => Math.max(0, prev - 1));
-            }
-            if (isFollowedByTarget) {
-              setFollowingCount((prev) => Math.max(0, prev - 1));
-            }
-            setIsFollowing(false);
-            setIsFollowedByTarget(false);
-            setFollowRequestPending(false);
-          }
-        },
+        onPress: handleConfirmBlock,
       },
     ]);
-  };
-
-  const renderShelfSection = (
-    iconSource: any,
-    title: string,
-    count: number,
-    onPress?: () => void
-  ) => (
-    <TouchableOpacity style={styles.shelfCard} onPress={onPress} activeOpacity={0.7}>
-      <Image
-        source={iconSource}
-        style={styles.shelfCardIcon}
-        resizeMode="contain"
-      />
-      <Text style={styles.shelfCardTitle}>{title}</Text>
-      <Text style={styles.shelfCardCount}>{count}</Text>
-    </TouchableOpacity>
-  );
-
-  const renderStatCard = (iconSource: any, label: string, value: string) => (
-    <View style={styles.statCard}>
-      <Image
-        source={iconSource}
-        style={styles.statIcon}
-        resizeMode="contain"
-      />
-      <Text style={styles.statLabel}>{label}</Text>
-      <Text style={styles.statValue}>{value}</Text>
-    </View>
-  );
-
-  const getActionText = (userBook: UserBook) => {
-    const firstName = userProfile?.first_name || 'User';
-    if (userBook.status === 'currently_reading' && userBook.last_progress_update) {
-      const progress = userBook.progress_percent ?? 0;
-      return `${firstName} is ${progress}% through`;
-    }
-    switch (userBook.status) {
-      case 'read':
-        return `${firstName} finished`;
-      case 'currently_reading':
-        return `${firstName} started reading`;
-      case 'want_to_read':
-        return `${firstName} bookmarked`;
-      default:
-        return `${firstName} added`;
-    }
-  };
-
-  const formatDateForDisplay = (dateString: string): string => {
-    const date = new Date(dateString + 'T00:00:00');
-    return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-  };
-
-  const formatDateRange = (startDate: string | null, endDate: string | null): string | null => {
-    if (!startDate && !endDate) return null;
-    if (startDate && endDate) {
-      return `${formatDateForDisplay(startDate)} - ${formatDateForDisplay(endDate)}`;
-    }
-    if (startDate) {
-      return formatDateForDisplay(startDate);
-    }
-    if (endDate) {
-      return formatDateForDisplay(endDate);
-    }
-    return null;
   };
 
   const handleBookPress = async (userBook: UserBook) => {
     if (!userBook.book) return;
 
     try {
-      const { data: fullBook, error } = await supabase
-        .from('books')
-        .select('*')
-        .eq('id', userBook.book_id)
-        .single();
-
-      if (error) throw error;
-
-      // Check if current user has this book
-      let userBookData = null;
-      if (currentUser?.id) {
-        const { data } = await supabase
-          .from('user_books')
-          .select('*')
-          .eq('user_id', currentUser.id)
-          .eq('book_id', fullBook.id)
-          .single();
-        userBookData = data;
-      }
+      const { book, userBook: userBookData } = await fetchBookWithUserStatus(
+        userBook.book_id,
+        currentUser?.id
+      );
 
       // Navigate to BookDetailScreen
       (navigation as any).navigate('Search', {
         screen: 'BookDetail',
         params: {
           book: {
-            ...fullBook,
+            ...book,
             userBook: userBookData || null,
           },
         },
@@ -418,7 +296,12 @@ export default function UserProfileScreen() {
     <RecentActivityCard
       key={userBook.id}
       userBook={userBook}
-      actionText={getActionText(userBook)}
+      actionText={getActionText({
+        status: userBook.status,
+        displayName: userProfile?.first_name || 'User',
+        hasProgressUpdate: !!userBook.last_progress_update,
+        progressPercent: userBook.progress_percent,
+      })}
       avatarUrl={userProfile?.profile_photo_url}
       avatarFallback={userProfile?.username?.charAt(0).toUpperCase() || 'U'}
       onPressBook={handleBookPress}
@@ -429,27 +312,6 @@ export default function UserProfileScreen() {
       }
     />
   );
-
-  const handleToggleWantToRead = async (userBook: UserBook) => {
-    if (!currentUser?.id || !userBook.book || !userBook.book_id) return;
-    const existing = viewerShelfMap[userBook.book_id];
-    if (existing?.status === 'want_to_read') {
-      await removeBookFromShelf(existing.id);
-      setViewerShelfMap((prev) => {
-        const next = { ...prev };
-        delete next[userBook.book_id];
-        return next;
-      });
-      return;
-    }
-    if (!existing) {
-      const result = await addBookToShelf(userBook.book, 'want_to_read', currentUser.id);
-      setViewerShelfMap((prev) => ({
-        ...prev,
-        [userBook.book_id]: { id: result.userBookId, status: 'want_to_read' },
-      }));
-    }
-  };
 
   if (loading) {
     return (
@@ -476,19 +338,11 @@ export default function UserProfileScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Text style={styles.backButtonText}>←</Text>
-        </TouchableOpacity>
-        <View style={styles.logoContainer}>
-          <Text style={styles.logo}>@{userProfile?.username || initialUsername}</Text>
-        </View>
-        <View style={styles.headerRight} />
-      </View>
+      <ProfileHeader
+        title={`@${userProfile?.username || initialUsername}`}
+        onBack={() => navigation.goBack()}
+        styles={styles}
+      />
 
       <ScrollView
         style={styles.scrollView}
@@ -503,140 +357,59 @@ export default function UserProfileScreen() {
         }
       >
         {/* Profile Section */}
-        <View style={styles.profileSection}>
-          <View style={styles.avatarContainer}>
-            {userProfile?.profile_photo_url ? (
-              <Image
-                source={{ uri: userProfile.profile_photo_url }}
-                style={styles.avatarImage}
-                resizeMode="cover"
-              />
-            ) : (
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>
-                  {userProfile?.username?.charAt(0).toUpperCase() || 'U'}
-                </Text>
-              </View>
-            )}
-          </View>
-          <Text style={styles.username}>
-            {userProfile?.first_name} {userProfile?.last_name}
-          </Text>
-          <Text style={styles.memberSince}>Member since {getJoinDate()}</Text>
-          {userProfile?.bio && (
-            <Text style={styles.bio}>{userProfile.bio}</Text>
-          )}
-
-          {/* Stats Row */}
-          {!isPrivateLocked && (
-            <View style={styles.statsRow}>
-              <TouchableOpacity
-                style={styles.statBox}
-                onPress={() =>
-                  (navigation as any).navigate('FollowersFollowing', {
-                    userId,
-                    username: userProfile?.username || initialUsername,
-                    initialTab: 'followers',
-                  })
-                }
-                activeOpacity={0.7}
-              >
-                <Text style={styles.statBoxValue}>{followerCount}</Text>
-                <Text style={styles.statBoxLabel}>Followers</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.statBox}
-                onPress={() =>
-                  (navigation as any).navigate('FollowersFollowing', {
-                    userId,
-                    username: userProfile?.username || initialUsername,
-                    initialTab: 'following',
-                  })
-                }
-                activeOpacity={0.7}
-              >
-                <Text style={styles.statBoxValue}>{followingCount}</Text>
-                <Text style={styles.statBoxLabel}>Following</Text>
-              </TouchableOpacity>
-              <View style={styles.statBox}>
-                <Text style={styles.statBoxValue}>
-                  {userProfile?.global_rank ? `#${userProfile.global_rank}` : '--'}
-                </Text>
-                <Text style={styles.statBoxLabel}>Rank</Text>
-              </View>
-            </View>
-          )}
-
+        <ProfileInfoSection
+          profilePhotoUrl={userProfile?.profile_photo_url}
+          avatarFallback={userProfile?.username?.charAt(0).toUpperCase() || 'U'}
+          displayName={`${userProfile?.first_name || ''} ${userProfile?.last_name || ''}`.trim()}
+          memberSinceLabel={`Member since ${getJoinDate()}`}
+          bio={userProfile?.bio}
+          showStats={!isPrivateLocked}
+          stats={{
+            followers: followerCount,
+            following: followingCount,
+            rankLabel: userProfile?.global_rank ? `#${userProfile.global_rank}` : '--',
+            onPressFollowers: () =>
+              (navigation as any).navigate('FollowersFollowing', {
+                userId,
+                username: userProfile?.username || initialUsername,
+                initialTab: 'followers',
+              }),
+            onPressFollowing: () =>
+              (navigation as any).navigate('FollowersFollowing', {
+                userId,
+                username: userProfile?.username || initialUsername,
+                initialTab: 'following',
+              }),
+          }}
+        >
           {/* Action Buttons */}
           {!isOwnProfile && (
-            <View style={styles.actionButtons}>
-              <View style={styles.followGroup}>
-                <TouchableOpacity
-                  style={[
-                    styles.followButton,
-                    (isFollowing || followRequestPending) && styles.followingButton,
-                    styles.followButtonConnected,
-                  ]}
-                  onPress={handleFollowToggle}
-                  disabled={followLoading}
-                >
-                  {followLoading ? (
-                    <ActivityIndicator size="small" color={(isFollowing || followRequestPending) ? colors.brownText : colors.white} />
-                  ) : (
-                    <Text
-                      style={[
-                        styles.followButtonText,
-                        (isFollowing || followRequestPending) && styles.followingButtonText,
-                      ]}
-                    >
-                      {followLabel}
-                    </Text>
-                  )}
-                </TouchableOpacity>
-                <>
-                  <TouchableOpacity
-                    style={[
-                      styles.followMenuTrigger,
-                      (isFollowing || followRequestPending) && styles.followingButton,
-                    ]}
-                    onPress={() => setFollowMenuOpen(prev => !prev)}
-                    activeOpacity={0.8}
-                  >
-                    <Image
-                      source={require('../../../../assets/dropdown.png')}
-                      style={[
-                        styles.followMenuTriggerIcon,
-                        (isFollowing || followRequestPending) &&
-                          styles.followMenuTriggerIconFollowing,
-                      ]}
-                      resizeMode="contain"
-                    />
-                  </TouchableOpacity>
-                  {followMenuOpen && (
-                    <View style={styles.followMenu}>
-                      <TouchableOpacity style={styles.followMenuItem} onPress={handleMutePress}>
-                        <Text style={styles.followMenuItemText}>{isMuted ? 'Unmute' : 'Mute'}</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={styles.followMenuItem} onPress={handleBlockPress}>
-                        <Text style={styles.followMenuItemText}>{blockedByViewer ? 'Unblock' : 'Block'}</Text>
-                      </TouchableOpacity>
-                    </View>
-                  )}
-                </>
-              </View>
-            </View>
+            <FollowMenuActions
+              followLoading={followLoading}
+              isFollowing={isFollowing}
+              followRequestPending={followRequestPending}
+              followLabel={followLabel}
+              isMuted={isMuted}
+              blockedByViewer={blockedByViewer}
+              followMenuOpen={followMenuOpen}
+              onToggleFollow={handleFollowToggle}
+              onToggleMenu={() => setFollowMenuOpen((prev) => !prev)}
+              onMutePress={handleMutePress}
+              onBlockPress={handleBlockPressWithConfirm}
+              styles={styles}
+            />
           )}
-        </View>
+        </ProfileInfoSection>
 
         {!isPrivateLocked && (
           <>
             {/* Shelf Sections */}
             <View style={styles.shelfCardsContainer}>
-              {renderShelfSection(
-                require('../../../../assets/add.png'),
-                'Read',
-                bookCounts.read,
-                () => {
+              <ProfileShelfCard
+                iconSource={addIcon}
+                title="Read"
+                count={bookCounts.read}
+                onPress={() => {
                   const parentNav = (navigation as any).getParent?.();
                   const target = {
                     screen: 'UserShelf',
@@ -651,13 +424,13 @@ export default function UserProfileScreen() {
                     return;
                   }
                   (navigation as any).navigate('Home', target);
-                }
-              )}
-              {renderShelfSection(
-                require('../../../../assets/reading.png'),
-                'Currently Reading',
-                bookCounts.currently_reading,
-                () => {
+                }}
+              />
+              <ProfileShelfCard
+                iconSource={readingIcon}
+                title="Currently Reading"
+                count={bookCounts.currently_reading}
+                onPress={() => {
                   const parentNav = (navigation as any).getParent?.();
                   const target = {
                     screen: 'UserShelf',
@@ -672,13 +445,13 @@ export default function UserProfileScreen() {
                     return;
                   }
                   (navigation as any).navigate('Home', target);
-                }
-              )}
-              {renderShelfSection(
-                require('../../../../assets/bookmark.png'),
-                'Want to Read',
-                bookCounts.want_to_read,
-                () => {
+                }}
+              />
+              <ProfileShelfCard
+                iconSource={bookmarkIcon}
+                title="Want to Read"
+                count={bookCounts.want_to_read}
+                onPress={() => {
                   const parentNav = (navigation as any).getParent?.();
                   const target = {
                     screen: 'UserShelf',
@@ -693,22 +466,22 @@ export default function UserProfileScreen() {
                     return;
                   }
                   (navigation as any).navigate('Home', target);
-                }
-              )}
+                }}
+              />
             </View>
 
             {/* Stats Cards */}
             <View style={styles.statsCardsRow}>
-              {renderStatCard(
-                require('../../../../assets/rank.png'),
-                'Rank on Inkli',
-                userProfile?.global_rank ? `#${userProfile.global_rank}` : '--'
-              )}
-              {renderStatCard(
-                require('../../../../assets/fire.png'),
-                'Weekly Streak',
-                `${userProfile?.weekly_streak ?? 0} weeks`
-              )}
+              <ProfileStatCard
+                iconSource={rankIcon}
+                label="Rank on Inkli"
+                value={userProfile?.global_rank ? `#${userProfile.global_rank}` : '--'}
+              />
+              <ProfileStatCard
+                iconSource={fireIcon}
+                label="Weekly Streak"
+                value={`${userProfile?.weekly_streak ?? 0} weeks`}
+              />
             </View>
 
             {/* Tabs */}
@@ -797,86 +570,14 @@ const styles = StyleSheet.create({
   headerRight: {
     width: 40,
   },
+  headerLeftSpacer: {
+    width: 40,
+  },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
     paddingBottom: 32,
-  },
-  profileSection: {
-    alignItems: 'center',
-    paddingVertical: 24,
-    borderBottomWidth: 1,
-    borderBottomColor: `${colors.brownText}1A`,
-  },
-  avatarContainer: {
-    marginBottom: 12,
-  },
-  avatar: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: colors.primaryBlue,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  avatarImage: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-  },
-  avatarText: {
-    fontSize: 40,
-    fontFamily: typography.body,
-    color: colors.white,
-    fontWeight: '600',
-  },
-  username: {
-    fontSize: 20,
-    fontFamily: typography.body,
-    color: colors.brownText,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  memberSince: {
-    fontSize: 14,
-    fontFamily: typography.body,
-    color: colors.brownText,
-    opacity: 0.6,
-    marginBottom: 8,
-  },
-  bio: {
-    fontSize: 14,
-    fontFamily: typography.body,
-    color: colors.brownText,
-    opacity: 0.8,
-    marginBottom: 16,
-    textAlign: 'center',
-    paddingHorizontal: 16,
-  },
-  statsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 24,
-    marginBottom: 20,
-    paddingHorizontal: 16,
-  },
-  statBox: {
-    alignItems: 'center',
-  },
-  statBoxValue: {
-    fontSize: 20,
-    fontFamily: typography.body,
-    color: colors.brownText,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  statBoxLabel: {
-    fontSize: 12,
-    fontFamily: typography.body,
-    color: colors.brownText,
-    opacity: 0.7,
   },
   actionButtons: {
     flexDirection: 'row',
@@ -981,32 +682,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: `${colors.brownText}1A`,
   },
-  shelfCard: {
-    flexDirection: 'row',
-    backgroundColor: colors.white,
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  shelfCardIcon: {
-    width: 24,
-    height: 24,
-    marginRight: 12,
-    tintColor: colors.brownText,
-  },
-  shelfCardTitle: {
-    flex: 1,
-    fontSize: 16,
-    fontFamily: typography.body,
-    color: colors.brownText,
-  },
-  shelfCardCount: {
-    fontSize: 18,
-    fontFamily: typography.body,
-    color: colors.brownText,
-    fontWeight: '600',
-  },
   statsCardsRow: {
     flexDirection: 'row',
     gap: 12,
@@ -1014,34 +689,6 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderBottomWidth: 1,
     borderBottomColor: `${colors.brownText}1A`,
-  },
-  statCard: {
-    flex: 1,
-    backgroundColor: colors.white,
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
-  },
-  statIcon: {
-    width: 32,
-    height: 32,
-    marginBottom: 8,
-    tintColor: colors.brownText,
-  },
-  statLabel: {
-    fontSize: 12,
-    fontFamily: typography.body,
-    color: colors.brownText,
-    opacity: 0.7,
-    marginBottom: 4,
-    textAlign: 'center',
-  },
-  statValue: {
-    fontSize: 18,
-    fontFamily: typography.body,
-    color: colors.brownText,
-    fontWeight: '600',
-    textAlign: 'center',
   },
   tabs: {
     flexDirection: 'row',

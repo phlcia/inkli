@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -52,11 +52,7 @@ export default function EditProfileScreen() {
   // Original values for comparison
   const [originalUsername, setOriginalUsername] = useState('');
 
-  useEffect(() => {
-    loadProfileData();
-  }, []);
-
-  const loadProfileData = async () => {
+  const loadProfileData = useCallback(async () => {
     if (!user) {
       setLoading(false);
       return;
@@ -93,7 +89,11 @@ export default function EditProfileScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user]);
+
+  useEffect(() => {
+    loadProfileData();
+  }, [loadProfileData]);
 
   const handleChooseFromLibrary = async () => {
     try {

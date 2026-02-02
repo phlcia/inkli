@@ -12,6 +12,14 @@ import { ProfileStackParamList } from '../../../navigation/ProfileStackNavigator
 import { SearchStackParamList } from '../../../navigation/SearchStackNavigator';
 import { formatActivityTimestamp } from '../../../utils/dateUtils';
 import { HomeStackParamList } from '../../../navigation/HomeStackNavigator';
+import heartShadedIcon from '../../../../assets/heartshaded.png';
+import heartIcon from '../../../../assets/heart.png';
+import commentIcon from '../../../../assets/comment.png';
+import shareIcon from '../../../../assets/share.png';
+import checkIcon from '../../../../assets/check.png';
+import readingIcon from '../../../../assets/reading.png';
+import shadedBookmarkIcon from '../../../../assets/shadedbookmark.png';
+import bookmarkIcon from '../../../../assets/bookmark.png';
 
 type RecentActivityCardProps = {
   userBook: UserBook;
@@ -76,9 +84,6 @@ export default function RecentActivityCard({
     ? actionText.slice(userDisplayName.length + 1)
     : actionText;
   const normalizedAction = actionSuffix.trim().toLowerCase();
-  const isProgressActivity =
-    normalizedAction.includes('% through') ||
-    normalizedAction.startsWith('finished reading');
 
   useEffect(() => {
     setLikesCount(userBook.likes_count ?? 0);
@@ -356,11 +361,7 @@ export default function RecentActivityCard({
             disabled={!user?.id || likeLoading}
           >
             <Image
-              source={
-                liked
-                  ? require('../../../../assets/heartshaded.png')
-                  : require('../../../../assets/heart.png')
-              }
+              source={liked ? heartShadedIcon : heartIcon}
               style={styles.cardFooterIconImage}
               resizeMode="contain"
             />
@@ -368,7 +369,7 @@ export default function RecentActivityCard({
           {showCommentIcon && (
             <TouchableOpacity style={styles.cardFooterIcon} onPress={handlePressComments}>
               <Image
-                source={require('../../../../assets/comment.png')}
+                source={commentIcon}
                 style={styles.cardFooterIconImage}
                 resizeMode="contain"
               />
@@ -376,7 +377,7 @@ export default function RecentActivityCard({
           )}
           <TouchableOpacity style={styles.cardFooterIcon}>
             <Image
-              source={require('../../../../assets/share.png')}
+              source={shareIcon}
               style={styles.cardFooterIconImage}
               resizeMode="contain"
             />
@@ -386,7 +387,7 @@ export default function RecentActivityCard({
           {isRead ? (
             <View style={styles.cardFooterIcon}>
               <Image
-                source={require('../../../../assets/check.png')}
+                source={checkIcon}
                 style={[styles.cardFooterIconImage, { tintColor: actionTint }]}
                 resizeMode="contain"
               />
@@ -394,7 +395,7 @@ export default function RecentActivityCard({
           ) : isCurrentlyReading ? (
             <View style={styles.cardFooterIcon}>
               <Image
-                source={require('../../../../assets/reading.png')}
+                source={readingIcon}
                 style={[styles.cardFooterIconImage, { tintColor: actionTint }]}
                 resizeMode="contain"
               />
@@ -406,11 +407,7 @@ export default function RecentActivityCard({
               disabled={!onToggleWantToRead}
             >
               <Image
-                source={
-                  isWantToRead
-                    ? require('../../../../assets/shadedbookmark.png')
-                    : require('../../../../assets/bookmark.png')
-                }
+                source={isWantToRead ? shadedBookmarkIcon : bookmarkIcon}
                 style={styles.cardFooterIconImage}
                 resizeMode="contain"
               />

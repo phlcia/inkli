@@ -33,6 +33,7 @@ import {
   getOutgoingFollowRequests,
   cancelFollowRequest,
 } from '../../../services/userProfile';
+import searchIcon from '../../../../assets/search.png';
 
 type ActivityLikesRoute = RouteProp<
   { ActivityLikes: ActivityLikesParams },
@@ -245,7 +246,7 @@ export default function ActivityLikesScreen() {
       </View>
 
       <View style={styles.searchContainer}>
-        <Image source={require('../../../../assets/search.png')} style={styles.searchIcon} />
+        <Image source={searchIcon} style={styles.searchIcon} />
         <TextInput
           style={styles.searchInput}
           placeholder="Search likes"

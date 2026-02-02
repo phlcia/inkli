@@ -16,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, useFocusEffect, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, typography } from '../../../config/theme';
+import { formatDateForDisplay } from '../../../utils/dateRanges';
 import { updateUserBookDetails, removeBookFromShelf, updateBookStatus, getReadSessions, addReadSession, updateReadSession, deleteReadSession, ReadSession, getUserBooks } from '../../../services/books';
 import { useAuth } from '../../../contexts/AuthContext';
 import BookComparisonModal from '../components/BookComparisonModal';
@@ -23,6 +24,9 @@ import DateRangePickerModal from '../../../components/ui/DateRangePickerModal';
 import GenreLabelPicker from '../../../components/books/GenreLabelPicker';
 import { supabase } from '../../../config/supabase';
 import { SearchStackParamList } from '../../../navigation/SearchStackNavigator';
+import goodIcon from '../../../../assets/good.png';
+import midIcon from '../../../../assets/mid.png';
+import badIcon from '../../../../assets/bad.png';
 
 type BookRankingScreenRouteProp = RouteProp<SearchStackParamList, 'BookRanking'>;
 type BookRankingScreenNavigationProp = NativeStackNavigationProp<SearchStackParamList, 'BookRanking'>;
@@ -169,7 +173,7 @@ export default function BookRankingScreen() {
 
         fetchInitialState();
       }
-    }, [userBookId, user])
+    }, [isNewInstance, userBookId, user])
   );
 
   // Fetch custom label suggestions for autocomplete
@@ -204,12 +208,6 @@ export default function BookRankingScreen() {
     if (!user || !userBookId) return false;
     
     try {
-      console.log('=== SAVE DEBUG: saveBookDetails ===');
-      console.log('UserBookId:', userBookId);
-      console.log('Rating:', selectedRating || rating);
-      console.log('Notes:', notes);
-      console.log('Started Date:', startedDate);
-      console.log('Finished Date:', finishedDate);
       
       setSaving(true);
       
@@ -229,7 +227,6 @@ export default function BookRankingScreen() {
       // Always update notes if they exist
       updateData.notes = notes.trim() || null;
       
-      console.log('Update data being sent:', updateData);
       
       // Save notes and rating
       // Use touchUpdatedAt: false to avoid triggering activity cards prematurely
@@ -289,8 +286,6 @@ export default function BookRankingScreen() {
         }
       }
       
-      console.log('=== SAVE DEBUG: Success ===');
-      console.log('Update result:', updateResult.data);
       setSaving(false);
       return true;
     } catch (error: any) {
@@ -325,11 +320,6 @@ export default function BookRankingScreen() {
   const handleShelveBook = async () => {
     // Show comparison modal if status is "read" and rating is set (liked, fine, or disliked)
     if (initialStatus === 'read' && rating) {
-      console.log('=== RANKING DEBUG: handleShelveBook ===');
-      console.log('userBookId:', userBookId);
-      console.log('Rating:', rating);
-      console.log('userBookId type:', typeof userBookId);
-      console.log('userBookId length:', userBookId?.length);
       
       if (!userBookId || userBookId === '' || userBookId.trim() === '') {
         console.error('=== RANKING DEBUG: ERROR - Cannot open comparison modal with empty userBookId ===');
@@ -339,12 +329,11 @@ export default function BookRankingScreen() {
       
       // Don't call saveBookDetails() again - rating is already saved when selected
       // Just open the comparison modal
-      console.log('Opening comparison modal with userBookId:', userBookId, 'and rating:', rating);
       setShowComparison(true);
     }
   };
 
-  const handleRevert = async (): Promise<void> => {
+  const handleRevert = React.useCallback(async (): Promise<void> => {
     if (!user || !userBookId) {
       return;
     }
@@ -473,7 +462,20 @@ export default function BookRankingScreen() {
       console.error('Error reverting book state:', error);
       Alert.alert('Error', 'Failed to revert changes');
     }
-  };
+  }, [
+    currentReadSession,
+    finishedDate,
+    initialState,
+    initialStatus,
+    isNewInstance,
+    notes,
+    previousStatus,
+    rating,
+    startedDate,
+    user,
+    userBookId,
+    wasNewBook,
+  ]);
 
   const handleClose = async () => {
     await handleRevert();
@@ -527,21 +529,23 @@ export default function BookRankingScreen() {
     });
 
     return unsubscribe;
-  }, [navigation, userBookId, user, wasNewBook, previousStatus, initialStatus, initialState, rating, notes, startedDate, finishedDate, isNewInstance, rankingCompleted]);
+  }, [
+    handleRevert,
+    initialStatus,
+    isNewInstance,
+    navigation,
+    rankingCompleted,
+    user,
+    userBookId,
+  ]);
 
   const handleComparisonComplete = async () => {
-    console.log('=== RANKING DEBUG: handleComparisonComplete ===');
-    console.log('Comparison modal completed');
     
     setShowComparison(false);
     setRankingCompleted(true);
     
     // Ensure dates and notes are saved after ranking completes
     // This is important because saveFinalRank only updates rank_score
-    console.log('=== SAVE DEBUG: Ensuring dates and notes are saved after ranking ===');
-    console.log('Notes:', notes);
-    console.log('Started Date:', startedDate);
-    console.log('Finished Date:', finishedDate);
     
     // Save dates and notes one more time to ensure they're persisted
     // Use a small delay to ensure rank_score update completed first
@@ -549,30 +553,20 @@ export default function BookRankingScreen() {
       try {
         // Save dates and notes if they exist
         if (notes || startedDate || finishedDate) {
-          console.log('=== SAVE DEBUG: Saving dates and notes after ranking ===');
           await saveBookDetails();
         }
         
         // Verify the score was saved before closing
-        console.log('Verifying rank_score was saved...');
         const { getUserBooksByRating } = await import('../../../services/books');
         if (user && rating) {
           const books = await getUserBooksByRating(user.id, rating);
           const book = books.find(b => b.id === userBookId);
-          console.log('=== RANKING DEBUG: Final verification ===');
-          console.log('Book rank_score after ranking:', book?.rank_score);
-          console.log('Book notes after ranking:', book?.notes);
           
           // Verify dates from read sessions
           const sessions = await getReadSessions(userBookId);
-          const latestSession = sessions.length > 0 ? sessions[0] : null;
-          console.log('Latest read session started_date:', latestSession?.started_date);
-          console.log('Latest read session finished_date:', latestSession?.finished_date);
           
           if (!book?.rank_score) {
             console.error('=== RANKING DEBUG: ERROR - rank_score is still null after ranking! ===');
-          } else {
-            console.log('=== RANKING DEBUG: SUCCESS - rank_score is set ===');
           }
         }
       } catch (err) {
@@ -591,9 +585,8 @@ export default function BookRankingScreen() {
             nav.navigate('Your Shelf', { refresh: Date.now() });
           }, 100);
         }
-      } catch (err) {
+      } catch (_err) {
         // Ignore navigation errors (screens might not be in stack)
-        console.log('Navigation refresh:', err);
       }
     }, 300);
     
@@ -601,22 +594,13 @@ export default function BookRankingScreen() {
     navigation.goBack();
   };
 
-  const formatDateForPicker = (date: Date): string => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
-
-  const formatDateForDisplay = (dateString: string): string => {
-    // dateString is in YYYY-MM-DD format, parse it as local date to avoid timezone issues
-    const date = new Date(dateString + 'T00:00:00'); // Add time to avoid timezone shift
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  };
-
   const formatSessionRange = (session: ReadSession): string => {
-    const start = session.started_date ? formatDateForDisplay(session.started_date) : null;
-    const end = session.finished_date ? formatDateForDisplay(session.finished_date) : null;
+    const start = session.started_date
+      ? formatDateForDisplay(session.started_date, { month: 'short' })
+      : null;
+    const end = session.finished_date
+      ? formatDateForDisplay(session.finished_date, { month: 'short' })
+      : null;
     if (start && end) return `${start} - ${end}`;
     if (start) return start;
     if (end) return end;
@@ -723,13 +707,8 @@ export default function BookRankingScreen() {
   };
 
   const handleSaveTags = async (genres: string[], customLabels: string[]) => {
-    console.log('=== handleSaveTags called ===');
-    console.log('Genres:', genres);
-    console.log('Custom Labels:', customLabels);
-    console.log('userBookId:', userBookId);
     
     if (!user || !userBookId) {
-      console.log('Early return - missing user/userBookId');
       return;
     }
     
@@ -737,7 +716,6 @@ export default function BookRankingScreen() {
       setSavingTags(true);
       
       // Update both user_genres and custom_labels in user_books table (per-user)
-      console.log('Calling updateUserBookDetails with user_genres and custom_labels');
       const { error } = await updateUserBookDetails(userBookId, user.id, {
         user_genres: genres,
         custom_labels: customLabels,
@@ -749,13 +727,11 @@ export default function BookRankingScreen() {
         setSavingTags(false);
         return;
       }
-      console.log('Tags saved successfully');
       
       // Update local state on success
       setUserGenres(genres);
       setSelectedCustomLabels(customLabels);
       setSavingTags(false);
-      console.log('=== handleSaveTags complete ===');
     } catch (error) {
       console.error('Error saving tags:', error);
       Alert.alert('Error', 'Something went wrong. Please try again.');
@@ -827,7 +803,7 @@ export default function BookRankingScreen() {
                 disabled={saving}
               >
                 <Image
-                  source={require('../../../../assets/good.png')}
+                  source={goodIcon}
                   style={styles.ratingEmoji}
                   resizeMode="contain"
                 />
@@ -844,7 +820,7 @@ export default function BookRankingScreen() {
                 disabled={saving}
               >
                 <Image
-                  source={require('../../../../assets/mid.png')}
+                  source={midIcon}
                   style={styles.ratingEmoji}
                   resizeMode="contain"
                 />
@@ -861,7 +837,7 @@ export default function BookRankingScreen() {
                 disabled={saving}
               >
                 <Image
-                  source={require('../../../../assets/bad.png')}
+                  source={badIcon}
                   style={styles.ratingEmoji}
                   resizeMode="contain"
                 />
@@ -912,7 +888,7 @@ export default function BookRankingScreen() {
               </Text>
               {startedDate || finishedDate ? (
                 <Text style={styles.dateButtonValue}>
-                  {startedDate ? formatDateForDisplay(startedDate) : '...'} - {finishedDate ? formatDateForDisplay(finishedDate) : '...'}
+                  {startedDate ? formatDateForDisplay(startedDate, { month: 'short' }) : '...'} - {finishedDate ? formatDateForDisplay(finishedDate, { month: 'short' }) : '...'}
                 </Text>
               ) : (
                 <Text style={styles.dateButtonPlaceholder}>Tap to set</Text>
