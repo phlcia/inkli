@@ -17,7 +17,7 @@ export default function GenreChip({
   onLongPress 
 }: GenreChipProps) {
   // Only custom labels (not preset genres) support long-press deletion
-  const isCustomLabel = !PRESET_GENRES.includes(genre as any);
+  const isCustomLabel = !PRESET_GENRES.includes(genre);
   
   return (
     <TouchableOpacity

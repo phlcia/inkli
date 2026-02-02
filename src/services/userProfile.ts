@@ -96,7 +96,7 @@ export async function checkIfFollowing(
       .single();
 
     return !!data && !error;
-  } catch (error) {
+  } catch (_error) {
     return false;
   }
 }
@@ -221,8 +221,6 @@ async function deleteOldProfilePicture(userId: string): Promise<{ success: boole
         console.warn('Failed to delete old profile picture, but continuing with upload:', deleteResult.error);
         // Don't throw - we can still proceed with upload
         // The old file will remain orphaned but new file will be primary
-      } else {
-        console.log('✓ Old profile picture deleted successfully');
       }
     }
 
@@ -245,23 +243,14 @@ export async function uploadProfilePhoto(
   imageUri: string
 ): Promise<{ url: string | null; path: string | null; error: any }> {
   try {
-    console.log('=== UPLOAD PROFILE PHOTO START ===');
-    console.log('1. Image URI:', imageUri);
-    console.log('2. User ID:', userId);
 
     // Verify user is authenticated and matches
     const { data: { session } } = await supabase.auth.getSession();
-    console.log('3. Session check:', {
-      hasSession: !!session,
-      sessionUserId: session?.user?.id,
-      matches: session?.user?.id === userId,
-    });
     
     if (!session || session.user.id !== userId) {
       console.error('3. ERROR: Authentication failed');
       return { url: null, path: null, error: new Error('User not authenticated or user ID mismatch') };
     }
-    console.log('3. ✓ Authentication OK');
 
     // Get file info to validate type and size
     const fileInfo = await FileSystem.getInfoAsync(imageUri);
@@ -276,27 +265,16 @@ export async function uploadProfilePhoto(
       console.error('4. ERROR: File too large:', fileInfo.size);
       return { url: null, path: null, error: new Error('Image file is too large. Maximum size is 5MB.') };
     }
-    console.log('4. ✓ File size OK:', fileInfo.size, 'bytes');
 
     // Read file using expo-file-system (reliable across all platforms and build types)
-    console.log('5. Reading file with FileSystem...');
-    console.log('5a. File URI:', imageUri);
-    
     const base64 = await FileSystem.readAsStringAsync(imageUri, {
       encoding: 'base64',
-    });
-
-    console.log('6. File read result:', {
-      hasBase64: !!base64,
-      base64Length: base64?.length || 0,
-      firstChars: base64?.substring(0, 50) || 'none',
     });
 
     if (!base64 || base64.length === 0) {
       console.error('6. ERROR: Base64 is empty!');
       return { url: null, path: null, error: new Error('Failed to read image file') };
     }
-    console.log('6. ✓ File read successfully, length:', base64.length);
 
     // Determine file extension and MIME type from URI
     // Extract extension from URI (handles various formats like file:///path/image.jpg or content://...)
@@ -324,19 +302,14 @@ export async function uploadProfilePhoto(
       webp: 'image/webp',
     };
     const contentType = mimeTypes[fileExt] || 'image/jpeg';
-    console.log('7. File info:', { fileExt, contentType });
 
     // Convert base64 to Uint8Array for upload
-    console.log('8. Converting base64 to bytes...');
-    console.log('8a. Checking if atob is available:', typeof atob !== 'undefined');
     
     let binaryString: string;
     try {
       if (typeof atob !== 'undefined') {
         binaryString = atob(base64);
-        console.log('8b. Used atob, binary string length:', binaryString.length);
       } else {
-        console.log('8b. atob not available, using manual decode');
         // Manual base64 decoding
         const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
         let output = '';
@@ -354,82 +327,50 @@ export async function uploadProfilePhoto(
           if (enc4 !== 64) output += String.fromCharCode(chr3);
         }
         binaryString = output;
-        console.log('8b. Manual decode complete, binary string length:', binaryString.length);
       }
     } catch (decodeError) {
       console.error('8. ERROR: Failed to decode base64:', decodeError);
       return { url: null, path: null, error: decodeError };
     }
-
     const bytes = new Uint8Array(binaryString.length);
     for (let i = 0; i < binaryString.length; i++) {
       bytes[i] = binaryString.charCodeAt(i);
     }
-    
-    console.log('9. Bytes conversion result:', {
-      bytesLength: bytes.length,
-      firstBytes: Array.from(bytes.slice(0, 10)),
-    });
 
     if (bytes.length === 0) {
       console.error('9. ERROR: Bytes array is empty!');
       return { url: null, path: null, error: new Error('Failed to convert image to bytes') };
     }
-    console.log('9. ✓ Bytes conversion successful, length:', bytes.length);
 
     // Step 1: Delete old profile picture before uploading new one
-    console.log('10. Deleting old profile picture...');
     const deleteResult = await deleteOldProfilePicture(userId);
     if (deleteResult.error) {
       console.warn('10. Warning: Could not delete old picture, but continuing:', deleteResult.error);
-    } else {
-      console.log('10. ✓ Old profile picture deletion completed');
     }
 
     // Step 2: Create timestamped filename pattern: {userId}/{userId}-{timestamp}.{ext}
     const timestamp = Date.now();
     const fileName = `${userId}-${timestamp}.${fileExt}`;
     const filePath = `${userId}/${fileName}`;
-    console.log('11. Upload path:', filePath);
-    console.log('11a. Timestamped filename:', fileName);
 
     // Step 3: Upload the new profile picture
-    console.log('12. Uploading to Supabase Storage...');
-    console.log('12a. Bucket: profile-photos');
-    console.log('12b. Path:', filePath);
-    console.log('12c. Content-Type:', contentType);
-    console.log('12d. Bytes length:', bytes.length);
-    
-    const { data, error } = await supabase.storage
+    const { data: _data, error } = await supabase.storage
       .from('profile-photos')
       .upload(filePath, bytes, {
         contentType,
         cacheControl: '3600',
       });
 
-    console.log('13. Upload response:', {
-      hasData: !!data,
-      hasError: !!error,
-      errorMessage: error?.message,
-      errorName: error?.name,
-      dataPath: data?.path,
-    });
-
     if (error) {
       console.error('13. ERROR: Upload failed:', error);
       return { url: null, path: null, error };
     }
-    console.log('13. ✓ Upload successful!');
 
     // Get public URL
     const { data: urlData } = supabase.storage
       .from('profile-photos')
       .getPublicUrl(filePath);
 
-    console.log('14. Public URL:', urlData.publicUrl);
-    console.log('14a. Storage path:', filePath);
-    console.log('=== UPLOAD PROFILE PHOTO SUCCESS ===');
-    
     // Return both URL and path - path is stored in DB, URL is for display
     return { url: urlData.publicUrl, path: filePath, error: null };
   } catch (error) {
@@ -470,7 +411,6 @@ export async function deleteProfilePhoto(
       filePath = photoUrlOrPath;
     }
 
-    console.log('Deleting profile photo from path:', filePath);
 
     // Delete from Supabase Storage
     const { error } = await supabase.storage
@@ -482,7 +422,6 @@ export async function deleteProfilePhoto(
       return { success: false, error };
     }
 
-    console.log('✓ Profile photo deleted successfully');
     return { success: true, error: null };
   } catch (error) {
     console.error('Exception deleting profile photo:', error);
@@ -542,14 +481,12 @@ export async function saveProfileWithPicture(
     // Handle profile picture changes
     if (deleteProfilePicture) {
       // Scenario 1: User wants to delete their profile picture
-      console.log('Deleting profile picture...');
       if (currentPhotoUrl) {
         await deleteProfilePhoto(currentPhotoUrl);
       }
       newProfilePhotoUrl = null;
     } else if (newImageUri) {
       // Scenario 2: User is uploading a new profile picture
-      console.log('Uploading new profile picture...');
       const uploadResult = await uploadProfilePhoto(userId, newImageUri);
       
       if (uploadResult.error) {
@@ -989,7 +926,7 @@ export async function checkIfMuted(
       .single();
 
     return !!data && !error;
-  } catch (error) {
+  } catch (_error) {
     return false;
   }
 }
@@ -1008,7 +945,7 @@ export async function checkPendingFollowRequest(
       .single();
 
     return !!data && !error;
-  } catch (error) {
+  } catch (_error) {
     return false;
   }
 }

@@ -12,6 +12,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography } from '../../../config/theme';
 import { useAuth } from '../../../contexts/AuthContext';
+import iconImage from '../../../../assets/icon.png';
+import appleIcon from '../../../../assets/apple.png';
+import googleIcon from '../../../../assets/google.png';
 
 interface SignInScreenProps {
   onSignUp?: () => void;
@@ -47,7 +50,7 @@ export default function SignInScreen({ onSignUp }: SignInScreenProps) {
         {/* Logo */}
         <View style={styles.logoContainer}>
           <Image
-            source={require('../../../../assets/icon.png')}
+            source={iconImage}
             style={styles.logoImage}
             resizeMode="contain"
           />
@@ -117,7 +120,7 @@ export default function SignInScreen({ onSignUp }: SignInScreenProps) {
           disabled={oauthLoading !== null}
         >
           <Image 
-            source={require('../../../../assets/apple.png')} 
+            source={appleIcon} 
             style={styles.appleIcon} 
             resizeMode="contain"
             tintColor={colors.white}
@@ -145,7 +148,7 @@ export default function SignInScreen({ onSignUp }: SignInScreenProps) {
           disabled={oauthLoading !== null}
         >
           <Image 
-            source={require('../../../../assets/google.png')} 
+            source={googleIcon} 
             style={styles.googleIcon} 
             resizeMode="contain"
           />

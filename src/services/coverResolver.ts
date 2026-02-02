@@ -68,7 +68,7 @@ export const verifyImageUrl = async (url: string): Promise<boolean> => {
     if (Number(contentLength) <= 1000) return false;
 
     return true;
-  } catch (error) {
+  } catch (_error) {
     return false;
   }
 };
@@ -133,7 +133,7 @@ export const cacheToDatabase = async (
         },
         { onConflict: 'isbn_13' }
       );
-  } catch (error) {
+  } catch (_error) {
     // Ignore cache failures to avoid breaking search flows.
   }
 };

@@ -240,7 +240,7 @@ export default function RecommendationsList({ showHeader = true }: Recommendatio
     return '#2FA463';
   };
 
-  const renderBookItem = (rec: Recommendation, index: number) => {
+  const renderBookItem = (rec: Recommendation, _index: number) => {
     const bookData = rec.book;
     if (!bookData) return null;
 

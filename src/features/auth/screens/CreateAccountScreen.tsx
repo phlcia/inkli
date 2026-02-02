@@ -2,6 +2,10 @@ import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, StatusBar, Alert, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography } from '../../../config/theme';
+import iconImage from '../../../../assets/icon.png';
+import appleIcon from '../../../../assets/apple.png';
+import googleIcon from '../../../../assets/google.png';
+import emailIcon from '../../../../assets/email.png';
 
 interface CreateAccountScreenProps {
   onAppleSignIn: () => Promise<void>;
@@ -23,7 +27,7 @@ export default function CreateAccountScreen({
         {/* Logo */}
         <View style={styles.logoContainer}>
           <Image
-            source={require('../../../../assets/icon.png')}
+            source={iconImage}
             style={styles.logoImage}
             resizeMode="contain"
           />
@@ -50,7 +54,7 @@ export default function CreateAccountScreen({
           disabled={oauthLoading !== null}
         >
           <Image
-            source={require('../../../../assets/apple.png')}
+            source={appleIcon}
             style={[styles.oauthIcon, styles.appleIcon]}
             resizeMode="contain"
           />
@@ -77,7 +81,7 @@ export default function CreateAccountScreen({
           disabled={oauthLoading !== null}
         >
           <Image
-            source={require('../../../../assets/google.png')}
+            source={googleIcon}
             style={styles.oauthIcon}
             resizeMode="contain"
           />
@@ -96,7 +100,7 @@ export default function CreateAccountScreen({
         {/* Email Sign Up */}
         <TouchableOpacity style={styles.emailButton} onPress={onEmailSignUp}>
           <Image
-            source={require('../../../../assets/email.png')}
+            source={emailIcon}
             style={styles.oauthIcon}
             resizeMode="contain"
           />

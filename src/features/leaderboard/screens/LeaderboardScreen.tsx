@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -28,11 +28,7 @@ export default function LeaderboardScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    fetchLeaderboard();
-  }, [currentUser]);
-
-  async function fetchLeaderboard(showLoading = true) {
+  const fetchLeaderboard = useCallback(async (showLoading = true) => {
     try {
       if (showLoading) {
         setLoading(true);
@@ -65,7 +61,6 @@ export default function LeaderboardScreen() {
           // Diagnostic: Check if user has books but no rank
           if (currentUserData.books_read_count > 0 && !currentUserData.global_rank) {
             console.warn('⚠️ User has books but no rank. Ranking system may need recalculation.');
-            console.log(`User has ${currentUserData.books_read_count} books but global_rank is null`);
           }
           
           const isInTop100 = leaders?.some(u => u.user_id === currentUser.id);
@@ -87,7 +82,6 @@ export default function LeaderboardScreen() {
           const usersWithoutRank = usersWithBooks.filter(u => !u.global_rank);
           if (usersWithoutRank.length > 0) {
             console.warn('⚠️ Found users with books but no ranks. Ranking system needs recalculation.');
-            console.log('Users with books but no rank:', usersWithoutRank.length);
           }
         }
       }
@@ -98,7 +92,11 @@ export default function LeaderboardScreen() {
         setLoading(false);
       }
     }
-  }
+  }, [currentUser]);
+
+  useEffect(() => {
+    fetchLeaderboard();
+  }, [fetchLeaderboard]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -156,7 +154,7 @@ export default function LeaderboardScreen() {
           </View>
         ) : (
           <>
-            {topUsers.map((user, index) => (
+            {topUsers.map((user, _index) => (
               <View 
                 key={user.user_id} 
                 style={[

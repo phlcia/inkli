@@ -128,7 +128,7 @@ export default function QuizScreen({ signupParams, onSignupComplete, onQuizCompl
     } finally {
       setLoading(false);
     }
-  }, [user, signupComplete]);
+  }, [handleQuizComplete, signupComplete, user]);
 
   useEffect(() => {
     if (user && signupComplete) {
@@ -211,7 +211,7 @@ export default function QuizScreen({ signupParams, onSignupComplete, onQuizCompl
     );
   };
 
-  const handleQuizComplete = async () => {
+  const handleQuizComplete = useCallback(async () => {
     if (!user) return;
 
     setLoading(true);
@@ -284,7 +284,7 @@ export default function QuizScreen({ signupParams, onSignupComplete, onQuizCompl
     } finally {
       setLoading(false);
     }
-  };
+  }, [user]);
 
   const handleContinueToRecommendations = async () => {
     if (!user) return;

@@ -35,7 +35,7 @@ export default function AuthStackNavigator({
   initialRouteName = 'Welcome',
   onQuizComplete,
 }: AuthStackNavigatorProps) {
-  const { signUp, signInWithApple, signInWithGoogle } = useAuth();
+  const { signInWithApple, signInWithGoogle } = useAuth();
 
   return (
     <Stack.Navigator
@@ -82,7 +82,7 @@ export default function AuthStackNavigator({
             onAppleSignIn={async () => {
               try {
                 await signInWithApple();
-              } catch (error: any) {
+              } catch (error) {
                 // Error handling is done in the OAuth method
                 console.error('Apple Sign In error:', error);
               }
@@ -90,7 +90,7 @@ export default function AuthStackNavigator({
             onGoogleSignIn={async () => {
               try {
                 await signInWithGoogle();
-              } catch (error: any) {
+              } catch (error) {
                 // Error handling is done in the OAuth method
                 console.error('Google Sign In error:', error);
               }

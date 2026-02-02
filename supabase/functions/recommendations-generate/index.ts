@@ -383,23 +383,23 @@ Deno.serve(async (req: Request) => {
     }
 
     // Get genres and themes for winner books
-    const { data: winnerGenres, error: winnerGenresError } = await supabaseDb
+    const { data: winnerGenres, error: _winnerGenresError } = await supabaseDb
       .from('book_genres')
       .select('book_id, genres!inner(name)')
       .in('book_id', winnerBookIds.length > 0 ? winnerBookIds : ['00000000-0000-0000-0000-000000000000'])
 
-    const { data: winnerThemes, error: winnerThemesError } = await supabaseDb
+    const { data: winnerThemes, error: _winnerThemesError } = await supabaseDb
       .from('book_themes')
       .select('book_id, themes!inner(name)')
       .in('book_id', winnerBookIds.length > 0 ? winnerBookIds : ['00000000-0000-0000-0000-000000000000'])
 
     // Get genres and themes for loser books
-    const { data: loserGenres, error: loserGenresError } = await supabaseDb
+    const { data: loserGenres, error: _loserGenresError } = await supabaseDb
       .from('book_genres')
       .select('book_id, genres!inner(name)')
       .in('book_id', loserBookIds.length > 0 ? loserBookIds : ['00000000-0000-0000-0000-000000000000'])
 
-    const { data: loserThemes, error: loserThemesError } = await supabaseDb
+    const { data: loserThemes, error: _loserThemesError } = await supabaseDb
       .from('book_themes')
       .select('book_id, themes!inner(name)')
       .in('book_id', loserBookIds.length > 0 ? loserBookIds : ['00000000-0000-0000-0000-000000000000'])

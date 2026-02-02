@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -19,11 +19,13 @@ import { useAuth } from '../../../contexts/AuthContext';
 import {
   getUserBookCounts,
   UserBook,
-  addBookToShelf,
-  removeBookFromShelf,
 } from '../../../services/books';
+import { fetchBookWithUserStatus } from '../../../services/bookDetails';
 import { fetchUserActivityCards } from '../../../services/activityFeed';
 import { ActivityFeedItem } from '../../../types/activityCards';
+import { formatDateRange } from '../../../utils/dateRanges';
+import { getActionText } from '../../../utils/activityText';
+import { useToggleWantToRead } from '../../books/hooks/useToggleWantToRead';
 import {
   acceptFollowRequest,
   getAccountType,
@@ -40,6 +42,16 @@ import {
 import type { AccountType, UserSummary } from '../../../services/userProfile';
 import RecentActivityCard from '../../social/components/RecentActivityCard';
 import { supabase } from '../../../config/supabase';
+import { ProfileShelfCard, ProfileStatCard } from '../components/ProfileCards';
+import ProfileInfoSection from '../components/ProfileInfoSection';
+import ProfileHeader from '../components/ProfileHeader';
+import dropdownIcon from '../../../../assets/dropdown.png';
+import addIcon from '../../../../assets/add.png';
+import readingIcon from '../../../../assets/reading.png';
+import bookmarkIcon from '../../../../assets/bookmark.png';
+import heartIcon from '../../../../assets/heart.png';
+import rankIcon from '../../../../assets/rank.png';
+import fireIcon from '../../../../assets/fire.png';
 
 type ProfileScreenNavigationProp = StackNavigationProp<
   ProfileStackParamList,
@@ -83,6 +95,11 @@ export default function ProfileScreen() {
   }>>([]);
   const [blockedUsers, setBlockedUsers] = useState<UserSummary[]>([]);
   const [mutedUsers, setMutedUsers] = useState<UserSummary[]>([]);
+  const handleToggleWantToRead = useToggleWantToRead({
+    currentUserId: user?.id,
+    viewerShelfMap,
+    setViewerShelfMap,
+  });
 
   const fetchUserProfile = async (userId: string) => {
     try {
@@ -107,31 +124,25 @@ export default function ProfileScreen() {
           bio: null,
         };
       }
-      
-      console.log('Profile fetched:', {
-        username: data?.username,
-        profile_photo_url: data?.profile_photo_url,
-        hasPhoto: !!data?.profile_photo_url,
-      });
       return data;
     } catch (error) {
       console.error('Error fetching user profile:', error);
       // Return placeholder profile on error
-        return {
-          username: 'New User',
-          first_name: 'New',
-          last_name: 'User',
-          books_read_count: 0,
-          weekly_streak: 0,
-          global_rank: null,
-          member_since: user?.created_at || new Date().toISOString(),
-          profile_photo_url: null,
-          bio: null,
-        };
+      return {
+        username: 'New User',
+        first_name: 'New',
+        last_name: 'User',
+        books_read_count: 0,
+        weekly_streak: 0,
+        global_rank: null,
+        member_since: user?.created_at || new Date().toISOString(),
+        profile_photo_url: null,
+        bio: null,
+      };
     }
   };
 
-  const hydrateRequesters = async (
+  const hydrateRequesters = useCallback(async (
     requests: Array<{ id: string; requester_id: string; created_at: string }>
   ) => {
     if (requests.length === 0) return [] as Array<{
@@ -154,9 +165,9 @@ export default function ProfileScreen() {
         created_at: req.created_at,
       }))
       .filter((item) => item.requester);
-  };
+  }, []);
 
-  const loadProfileData = async (showLoading = true) => {
+  const loadProfileData = useCallback(async (showLoading = true) => {
     if (!user) {
       if (showLoading) {
         setLoading(false);
@@ -168,7 +179,6 @@ export default function ProfileScreen() {
       if (showLoading) {
         setLoading(true);
       }
-      console.log('=== ProfileScreen: Loading profile data ===');
       const [
         counts,
         recent,
@@ -190,11 +200,6 @@ export default function ProfileScreen() {
         getBlockedUsers(user.id),
         getMutedUsers(user.id),
       ]);
-      console.log('=== ProfileScreen: Data loaded ===');
-      console.log('Recent books count:', recent.length);
-      recent.forEach((item, idx) => {
-        console.log(`  ${idx}: ${item.userBook.book?.title} - rank_score: ${item.userBook.rank_score}, rating: ${item.userBook.rating}`);
-      });
       setBookCounts(counts);
       setRecentBooks(recent);
       const map: Record<string, { id: string; status: UserBook['status'] }> = {};
@@ -237,25 +242,23 @@ export default function ProfileScreen() {
         setLoading(false);
       }
     }
-  };
+  }, [hydrateRequesters, user]);
 
   useFocusEffect(
     React.useCallback(() => {
-      console.log('=== ProfileScreen: useFocusEffect - loading data ===');
       loadProfileData();
-    }, [user])
+    }, [loadProfileData])
   );
 
   // Listen for route params changes (triggered when ranking completes)
   React.useEffect(() => {
     const params = (route.params as any);
     if (params?.refresh) {
-      console.log('=== ProfileScreen: Refresh triggered by route param ===');
       loadProfileData();
       // Clear the param to avoid repeated refreshes
       (navigation as any).setParams({ refresh: undefined });
     }
-  }, [route.params, navigation, user]);
+  }, [loadProfileData, navigation, route.params]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -294,7 +297,7 @@ export default function ProfileScreen() {
       const result = await updateAccountType(user.id, nextType);
       if (result.error) throw result.error;
       setAccountType(nextType);
-    } catch (error) {
+    } catch (_error) {
       Alert.alert('Error', 'Unable to update privacy settings.');
     } finally {
       setPrivacyUpdating(false);
@@ -307,7 +310,7 @@ export default function ProfileScreen() {
       if (error) throw error;
       setIncomingRequests((prev) => prev.filter((req) => req.id !== requestId));
       setFollowerCount((prev) => prev + 1);
-    } catch (error) {
+    } catch (_error) {
       Alert.alert('Error', 'Unable to accept follow request.');
     }
   };
@@ -317,7 +320,7 @@ export default function ProfileScreen() {
       const { error } = await rejectFollowRequest(requestId);
       if (error) throw error;
       setIncomingRequests((prev) => prev.filter((req) => req.id !== requestId));
-    } catch (error) {
+    } catch (_error) {
       Alert.alert('Error', 'Unable to reject follow request.');
     }
   };
@@ -328,7 +331,7 @@ export default function ProfileScreen() {
       const { error } = await unblockUser(user.id, userId);
       if (error) throw error;
       setBlockedUsers((prev) => prev.filter((item) => item.user_id !== userId));
-    } catch (error) {
+    } catch (_error) {
       Alert.alert('Error', 'Unable to unblock user.');
     }
   };
@@ -339,7 +342,7 @@ export default function ProfileScreen() {
       const { error } = await unmuteUser(user.id, userId);
       if (error) throw error;
       setMutedUsers((prev) => prev.filter((item) => item.user_id !== userId));
-    } catch (error) {
+    } catch (_error) {
       Alert.alert('Error', 'Unable to unmute user.');
     }
   };
@@ -376,113 +379,18 @@ export default function ProfileScreen() {
     );
   };
 
-  const renderShelfSection = (
-    iconSource: any,
-    title: string,
-    count: number,
-    onPress?: () => void
-  ) => (
-    <TouchableOpacity
-      style={styles.shelfCard}
-      onPress={onPress}
-      activeOpacity={0.7}
-      disabled={!onPress}
-    >
-      <Image
-        source={iconSource}
-        style={styles.shelfCardIcon}
-        resizeMode="contain"
-      />
-      <Text style={styles.shelfCardTitle}>{title}</Text>
-      <Text style={styles.shelfCardCount}>{count}</Text>
-    </TouchableOpacity>
-  );
-
-  const renderStatCard = (iconSource: any, label: string, value: string) => (
-    <View style={styles.statCard}>
-      <Image
-        source={iconSource}
-        style={styles.statIcon}
-        resizeMode="contain"
-      />
-      <Text style={styles.statLabel}>{label}</Text>
-      <Text style={styles.statValue}>{value}</Text>
-    </View>
-  );
-
-  const getActionText = (status: string | null, activityContent?: string | null) => {
-    const normalized = activityContent?.trim().toLowerCase() || '';
-    const isProgressActivity =
-      (normalized.startsWith('is ') && normalized.includes('% through')) ||
-      normalized.startsWith('finished reading');
-
-    if (isProgressActivity && activityContent) {
-      if (normalized.startsWith('finished reading')) {
-        return 'You finished reading';
-      }
-      if (normalized.startsWith('is ')) {
-        return `You are ${activityContent.slice(3)}`;
-      }
-      return `You ${activityContent}`;
-    }
-
-    switch (status) {
-      case 'read':
-        return 'You finished';
-      case 'currently_reading':
-        return 'You started reading';
-      case 'want_to_read':
-        return 'You bookmarked';
-      default:
-        return 'You added';
-    }
-  };
-
-  const formatDateForDisplay = (dateString: string): string => {
-    // dateString is in YYYY-MM-DD format, parse it as local date to avoid timezone issues
-    const date = new Date(dateString + 'T00:00:00'); // Add time to avoid timezone shift
-    return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-  };
-
-  const formatDateRange = (startDate: string | null, endDate: string | null): string | null => {
-    if (!startDate && !endDate) return null;
-    if (startDate && endDate) {
-      return `${formatDateForDisplay(startDate)} - ${formatDateForDisplay(endDate)}`;
-    }
-    if (startDate) {
-      return formatDateForDisplay(startDate);
-    }
-    if (endDate) {
-      return formatDateForDisplay(endDate);
-    }
-    return null;
-  };
-
   const handleBookPress = async (userBook: UserBook) => {
     if (!user || !userBook.book) return;
 
     try {
-      // Fetch full book details from database
-      const { data: fullBook, error } = await supabase
-        .from('books')
-        .select('*')
-        .eq('id', userBook.book_id)
-        .single();
+      const { book, userBook: userBookData } = await fetchBookWithUserStatus(
+        userBook.book_id,
+        user.id
+      );
 
-      if (error) throw error;
-
-      // Check if user already has this book
-      const { data: userBookData } = await supabase
-        .from('user_books')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('book_id', fullBook.id)
-        .single();
-
-      // Navigate to BookDetailScreen with book data
       navigation.navigate('BookDetail', {
         book: {
-          ...fullBook,
+          ...book,
           userBook: userBookData || null, // Include user's status, rating, etc.
         },
       });
@@ -506,7 +414,11 @@ export default function ProfileScreen() {
     <RecentActivityCard
       key={item.id}
       userBook={item.userBook}
-      actionText={getActionText(item.userBook.status, item.content)}
+      actionText={getActionText({
+        status: item.userBook.status,
+        activityContent: item.content,
+        isSelf: true,
+      })}
       avatarUrl={userProfile?.profile_photo_url}
       avatarFallback={getUsername()?.charAt(0)?.toUpperCase() || 'U'}
       onPressBook={handleBookPress}
@@ -515,27 +427,6 @@ export default function ProfileScreen() {
       onToggleWantToRead={() => handleToggleWantToRead(item.userBook)}
     />
   );
-
-  const handleToggleWantToRead = async (userBook: UserBook) => {
-    if (!user?.id || !userBook.book || !userBook.book_id) return;
-    const existing = viewerShelfMap[userBook.book_id];
-    if (existing?.status === 'want_to_read') {
-      await removeBookFromShelf(existing.id);
-      setViewerShelfMap((prev) => {
-        const next = { ...prev };
-        delete next[userBook.book_id];
-        return next;
-      });
-      return;
-    }
-    if (!existing) {
-      const result = await addBookToShelf(userBook.book, 'want_to_read', user.id);
-      setViewerShelfMap((prev) => ({
-        ...prev,
-        [userBook.book_id]: { id: result.userBookId, status: 'want_to_read' },
-      }));
-    }
-  };
 
   if (loading) {
     return (
@@ -547,17 +438,15 @@ export default function ProfileScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.logoContainer}>
-          <Text style={styles.logo}>@{getDisplayUsername()}</Text>
-        </View>
-        <View style={styles.headerRight}>
+      <ProfileHeader
+        title={`@${getDisplayUsername()}`}
+        styles={styles}
+        rightSlot={(
           <TouchableOpacity style={styles.signoutButton} onPress={handleSignOut}>
             <Text style={styles.signoutButtonText}>Sign Out</Text>
           </TouchableOpacity>
-        </View>
-      </View>
+        )}
+      />
 
       <ScrollView
         style={styles.scrollView}
@@ -572,75 +461,32 @@ export default function ProfileScreen() {
         }
       >
         {/* Profile Section */}
-        <View style={styles.profileSection}>
-          <View style={styles.avatarContainer}>
-            {userProfile?.profile_photo_url ? (
-              <Image
-                source={{ uri: userProfile.profile_photo_url }}
-                style={styles.avatarImage}
-                resizeMode="cover"
-                onError={(e) => {
-                  console.error('Error loading profile photo:', e.nativeEvent.error);
-                  console.log('Photo URL:', userProfile.profile_photo_url);
-                }}
-                onLoad={() => {
-                  console.log('Profile photo loaded successfully:', userProfile.profile_photo_url);
-                }}
-              />
-            ) : (
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>
-                  {getDisplayUsername()?.charAt(0)?.toUpperCase() || 'U'}
-                </Text>
-              </View>
-            )}
-          </View>
-          <Text style={styles.username}>{userProfile?.first_name} {userProfile?.last_name}</Text>
-          <Text style={styles.memberSince}>Member since {getJoinDate()}</Text>
-          {userProfile?.bio && (
-            <Text style={styles.bio}>{userProfile.bio}</Text>
-          )}
-
-          {/* Stats Row */}
-          <View style={styles.statsRow}>
-            <TouchableOpacity
-              style={styles.statBox}
-              onPress={() =>
-                user?.id &&
-                navigation.navigate('FollowersFollowing', {
-                  userId: user.id,
-                  username: userProfile?.username,
-                  initialTab: 'followers',
-                })
-              }
-              activeOpacity={0.7}
-            >
-              <Text style={styles.statBoxValue}>{followerCount}</Text>
-              <Text style={styles.statBoxLabel}>Followers</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.statBox}
-              onPress={() =>
-                user?.id &&
-                navigation.navigate('FollowersFollowing', {
-                  userId: user.id,
-                  username: userProfile?.username,
-                  initialTab: 'following',
-                })
-              }
-              activeOpacity={0.7}
-            >
-              <Text style={styles.statBoxValue}>{followingCount}</Text>
-              <Text style={styles.statBoxLabel}>Following</Text>
-            </TouchableOpacity>
-            <View style={styles.statBox}>
-              <Text style={styles.statBoxValue}>
-                {userRank ? `#${userRank}` : '--'}
-              </Text>
-              <Text style={styles.statBoxLabel}>Rank</Text>
-            </View>
-          </View>
-
+        <ProfileInfoSection
+          profilePhotoUrl={userProfile?.profile_photo_url}
+          avatarFallback={getDisplayUsername()?.charAt(0)?.toUpperCase() || 'U'}
+          displayName={`${userProfile?.first_name || ''} ${userProfile?.last_name || ''}`.trim()}
+          memberSinceLabel={`Member since ${getJoinDate()}`}
+          bio={userProfile?.bio}
+          stats={{
+            followers: followerCount,
+            following: followingCount,
+            rankLabel: userRank ? `#${userRank}` : '--',
+            onPressFollowers: () =>
+              user?.id &&
+              navigation.navigate('FollowersFollowing', {
+                userId: user.id,
+                username: userProfile?.username,
+                initialTab: 'followers',
+              }),
+            onPressFollowing: () =>
+              user?.id &&
+              navigation.navigate('FollowersFollowing', {
+                userId: user.id,
+                username: userProfile?.username,
+                initialTab: 'following',
+              }),
+          }}
+        >
           {/* Action Buttons */}
           <View style={styles.actionButtons}>
             <View style={styles.followGroup}>
@@ -658,7 +504,7 @@ export default function ProfileScreen() {
                   disabled={privacyUpdating}
                 >
                   <Image
-                    source={require('../../../../assets/dropdown.png')}
+                    source={dropdownIcon}
                     style={styles.followMenuTriggerIcon}
                     resizeMode="contain"
                   />
@@ -686,40 +532,63 @@ export default function ProfileScreen() {
               </>
             </View>
           </View>
-        </View>
+        </ProfileInfoSection>
 
         {/* Shelf Sections */}
         <View style={styles.shelfCardsContainer}>
-          {renderShelfSection(
-            require('../../../../assets/add.png'), 
-            'Read', 
-            bookCounts.read,
-            () => (navigation as any).navigate('Your Shelf', { screen: 'YourShelfMain', params: { initialTab: 'read' } })
-          )}
-          {renderShelfSection(
-            require('../../../../assets/reading.png'), 
-            'Currently Reading', 
-            bookCounts.currently_reading,
-            () => (navigation as any).navigate('Your Shelf', { screen: 'YourShelfMain', params: { initialTab: 'currently_reading' } })
-          )}
-          {renderShelfSection(
-            require('../../../../assets/bookmark.png'), 
-            'Want to Read', 
-            bookCounts.want_to_read,
-            () => (navigation as any).navigate('Your Shelf', { screen: 'YourShelfMain', params: { initialTab: 'want_to_read' } })
-          )}
-          {renderShelfSection(
-            require('../../../../assets/heart.png'), 
-            'Recommended for You', 
-            0,
-            handleOpenRecommendations
-          )}
+          <ProfileShelfCard
+            iconSource={addIcon}
+            title="Read"
+            count={bookCounts.read}
+            onPress={() =>
+              (navigation as any).navigate('Your Shelf', {
+                screen: 'YourShelfMain',
+                params: { initialTab: 'read' },
+              })
+            }
+          />
+          <ProfileShelfCard
+            iconSource={readingIcon}
+            title="Currently Reading"
+            count={bookCounts.currently_reading}
+            onPress={() =>
+              (navigation as any).navigate('Your Shelf', {
+                screen: 'YourShelfMain',
+                params: { initialTab: 'currently_reading' },
+              })
+            }
+          />
+          <ProfileShelfCard
+            iconSource={bookmarkIcon}
+            title="Want to Read"
+            count={bookCounts.want_to_read}
+            onPress={() =>
+              (navigation as any).navigate('Your Shelf', {
+                screen: 'YourShelfMain',
+                params: { initialTab: 'want_to_read' },
+              })
+            }
+          />
+          <ProfileShelfCard
+            iconSource={heartIcon}
+            title="Recommended for You"
+            count={0}
+            onPress={handleOpenRecommendations}
+          />
         </View>
 
         {/* Stats Cards */}
         <View style={styles.statsCardsRow}>
-          {renderStatCard(require('../../../../assets/rank.png'), 'Rank on Inkli', userRank ? `#${userRank}` : '--')}
-          {renderStatCard(require('../../../../assets/fire.png'), 'Weekly Streak', `${userProfile?.weekly_streak ?? 0} weeks`)}
+          <ProfileStatCard
+            iconSource={rankIcon}
+            label="Rank on Inkli"
+            value={userRank ? `#${userRank}` : '--'}
+          />
+          <ProfileStatCard
+            iconSource={fireIcon}
+            label="Weekly Streak"
+            value={`${userProfile?.weekly_streak ?? 0} weeks`}
+          />
         </View>
 
         {/* Tabs */}
@@ -874,6 +743,9 @@ const styles = StyleSheet.create({
     gap: 16,
     flexShrink: 0,
   },
+  headerLeftSpacer: {
+    width: 40,
+  },
   signoutButton: {
     backgroundColor: colors.primaryBlue,
     paddingHorizontal: 16,
@@ -893,81 +765,6 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingBottom: 32,
-  },
-  profileSection: {
-    alignItems: 'center',
-    paddingVertical: 24,
-    borderBottomWidth: 1,
-    borderBottomColor: `${colors.brownText}1A`, // 1A = 10% opacity in hex
-  },
-  avatarContainer: {
-    marginBottom: 12,
-  },
-  avatar: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: colors.primaryBlue,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  avatarImage: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-  },
-  avatarText: {
-    fontSize: 40,
-    fontFamily: typography.body,
-    color: colors.white,
-    fontWeight: '600',
-  },
-  username: {
-    fontSize: 20,
-    fontFamily: typography.body,
-    color: colors.brownText,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  memberSince: {
-    fontSize: 14,
-    fontFamily: typography.body,
-    color: colors.brownText,
-    opacity: 0.6,
-    marginBottom: 8,
-  },
-  bio: {
-    fontSize: 14,
-    fontFamily: typography.body,
-    color: colors.brownText,
-    opacity: 0.8,
-    marginBottom: 16,
-    textAlign: 'center',
-    paddingHorizontal: 16,
-  },
-  statsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 24,
-    marginBottom: 20,
-    paddingHorizontal: 16,
-  },
-  statBox: {
-    alignItems: 'center',
-  },
-  statBoxValue: {
-    fontSize: 20,
-    fontFamily: typography.body,
-    color: colors.brownText,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  statBoxLabel: {
-    fontSize: 12,
-    fontFamily: typography.body,
-    color: colors.brownText,
-    opacity: 0.7,
   },
   statItem: {
     fontSize: 14,
@@ -1008,32 +805,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: `${colors.brownText}1A`, // 1A = 10% opacity in hex
   },
-  shelfCard: {
-    flexDirection: 'row',
-    backgroundColor: colors.white,
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  shelfCardIcon: {
-    width: 24,
-    height: 24,
-    marginRight: 12,
-    tintColor: colors.brownText,
-  },
-  shelfCardTitle: {
-    flex: 1,
-    fontSize: 16,
-    fontFamily: typography.body,
-    color: colors.brownText,
-  },
-  shelfCardCount: {
-    fontSize: 18,
-    fontFamily: typography.body,
-    color: colors.brownText,
-    fontWeight: '600',
-  },
   statsCardsRow: {
     flexDirection: 'row',
     gap: 12,
@@ -1041,34 +812,6 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderBottomWidth: 1,
     borderBottomColor: `${colors.brownText}1A`, // 1A = 10% opacity in hex
-  },
-  statCard: {
-    flex: 1,
-    backgroundColor: colors.white,
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
-  },
-  statIcon: {
-    width: 32,
-    height: 32,
-    marginBottom: 8,
-    tintColor: colors.brownText,
-  },
-  statLabel: {
-    fontSize: 12,
-    fontFamily: typography.body,
-    color: colors.brownText,
-    opacity: 0.7,
-    marginBottom: 4,
-    textAlign: 'center',
-  },
-  statValue: {
-    fontSize: 18,
-    fontFamily: typography.body,
-    color: colors.brownText,
-    fontWeight: '600',
-    textAlign: 'center',
   },
   tabs: {
     flexDirection: 'row',
