@@ -7,8 +7,10 @@ import {
   Image,
   ActivityIndicator,
   RefreshControl,
+  TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 import { colors, typography } from '../../../config/theme';
 import { supabase } from '../../../config/supabase';
 import { useAuth } from '../../../contexts/AuthContext';
@@ -23,6 +25,7 @@ interface LeaderboardUser {
 
 export default function LeaderboardScreen() {
   const { user: currentUser } = useAuth();
+  const navigation = useNavigation<any>();
   const [topUsers, setTopUsers] = useState<LeaderboardUser[]>([]);
   const [currentUserRank, setCurrentUserRank] = useState<LeaderboardUser | null>(null);
   const [loading, setLoading] = useState(true);
@@ -107,6 +110,21 @@ export default function LeaderboardScreen() {
     }
   };
 
+  const handlePressUser = useCallback(
+    (userId: string, username: string) => {
+      if (currentUser?.id === userId) {
+        navigation.navigate('Profile', { screen: 'ProfileMain' });
+        return;
+      }
+
+      navigation.navigate('Profile', {
+        screen: 'UserProfile',
+        params: { userId, username, originTab: 'Leaderboard' },
+      });
+    },
+    [currentUser?.id, navigation]
+  );
+
   if (loading) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
@@ -155,12 +173,17 @@ export default function LeaderboardScreen() {
         ) : (
           <>
             {topUsers.map((user, _index) => (
-              <View 
+              <TouchableOpacity
                 key={user.user_id} 
                 style={[
                   styles.leaderboardRow,
                   user.user_id === currentUser?.id && styles.currentUserRow
                 ]}
+                activeOpacity={user.user_id === currentUser?.id ? 1 : 0.7}
+                onPress={() => {
+                  if (user.user_id === currentUser?.id) return;
+                  handlePressUser(user.user_id, user.username);
+                }}
               >
                 <Text style={styles.rank}>#{user.global_rank}</Text>
                 {user.profile_photo_url ? (
@@ -177,14 +200,20 @@ export default function LeaderboardScreen() {
                 )}
                 <Text style={styles.username} numberOfLines={1}>{user.username}</Text>
                 <Text style={styles.count}>{user.books_read_count}</Text>
-              </View>
+              </TouchableOpacity>
             ))}
             
             {/* Show current user's position if not in top 100 */}
             {currentUserRank && currentUserRank.global_rank > 100 && (
               <View style={styles.currentUserSection}>
                 <Text style={styles.yourRankLabel}>Your Rank</Text>
-                <View style={[styles.leaderboardRow, styles.currentUserRow]}>
+                <TouchableOpacity
+                  style={[styles.leaderboardRow, styles.currentUserRow]}
+                  activeOpacity={0.7}
+                  onPress={() =>
+                    handlePressUser(currentUserRank.user_id, currentUserRank.username)
+                  }
+                >
                   <Text style={styles.rank}>#{currentUserRank.global_rank}</Text>
                   {currentUserRank.profile_photo_url ? (
                     <Image 
@@ -200,7 +229,7 @@ export default function LeaderboardScreen() {
                   )}
                   <Text style={styles.username} numberOfLines={1}>{currentUserRank.username}</Text>
                   <Text style={styles.count}>{currentUserRank.books_read_count}</Text>
-                </View>
+                </TouchableOpacity>
               </View>
             )}
           </>

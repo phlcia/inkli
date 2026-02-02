@@ -721,7 +721,7 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingBottom: 16,
@@ -742,9 +742,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 16,
     flexShrink: 0,
+    marginLeft: 'auto',
   },
   headerLeftSpacer: {
-    width: 40,
+    width: 0,
   },
   signoutButton: {
     backgroundColor: colors.primaryBlue,
