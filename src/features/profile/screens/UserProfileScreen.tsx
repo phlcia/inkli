@@ -49,11 +49,12 @@ import fireIcon from '../../../../assets/fire.png';
 type UserProfileRouteParams = {
   userId: string;
   username?: string; // Optional - for display while loading
+  originTab?: string;
 };
 
 export default function UserProfileScreen() {
   const { user: currentUser } = useAuth();
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<{ params: UserProfileRouteParams }, 'params'>>();
   const { userId, username: initialUsername } = route.params;
 
@@ -340,7 +341,23 @@ export default function UserProfileScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <ProfileHeader
         title={`@${userProfile?.username || initialUsername}`}
-        onBack={() => navigation.goBack()}
+        onBack={() => {
+          const originTab = route.params?.originTab;
+          if (originTab) {
+            const state = navigation.getState?.();
+            if (state?.type === 'stack' && state.routes.length > 1) {
+              navigation.popToTop();
+            }
+            const parent = navigation.getParent();
+            if (parent) {
+              parent.navigate(originTab);
+              return;
+            }
+          }
+          if (navigation.canGoBack()) {
+            navigation.goBack();
+          }
+        }}
         styles={styles}
       />
 
