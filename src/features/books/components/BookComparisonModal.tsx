@@ -62,12 +62,21 @@ export default function BookComparisonModal({
   const [shouldStartInsertion, setShouldStartInsertion] = useState(false);
 
   // Initialize ranking hook with empty array (will be populated when we load books)
-  const ranking = useBookRanking([]);
+  const {
+    startInserting,
+    chooseNewBook,
+    chooseExistingBook,
+    getCurrentComparison,
+    isComplete,
+    getResult,
+    getBooks,
+    reset,
+  } = useBookRanking([]);
 
   // Start insertion after reset completes (when shouldStartInsertion is set to true)
   useEffect(() => {
     if (shouldStartInsertion) {
-      ranking.startInserting({
+      startInserting({
         id: currentBook.id,
         title: currentBook.title,
         authors: currentBook.authors || [],
@@ -75,7 +84,7 @@ export default function BookComparisonModal({
       }, rating);
       setShouldStartInsertion(false);
     }
-  }, [shouldStartInsertion, currentBook, rating, ranking]);
+  }, [shouldStartInsertion, currentBook, rating, startInserting]);
 
   const loadExistingBooks = useCallback(async () => {
     if (!user) return;
@@ -170,7 +179,7 @@ export default function BookComparisonModal({
       // Set existingBooks first, then reset and flag to start insertion
       // The useEffect will trigger startInserting after the state updates
       setExistingBooks(rankedBooks);
-      ranking.reset(rankedBooks);
+      reset(rankedBooks);
       setShouldStartInsertion(true);
     } catch (error) {
       console.error('Error loading existing books:', error);
@@ -178,7 +187,7 @@ export default function BookComparisonModal({
     } finally {
       setLoading(false);
     }
-  }, [currentBook.id, onComplete, ranking, rating, user]);
+  }, [currentBook.id, onComplete, rating, reset, user]);
 
   // Load existing liked books and initialize ranking
   useEffect(() => {
@@ -194,14 +203,14 @@ export default function BookComparisonModal({
   }, [loadExistingBooks, setExistingBooks, user, visible]);
 
   // Get current comparison from ranking system
-  const comparison = ranking.getCurrentComparison();
-  const rankingComplete = ranking.isComplete();
+  const comparison = getCurrentComparison();
+  const rankingComplete = isComplete();
   
   
   // Check if ranking completed and we need to save
   useEffect(() => {
     if (rankingComplete && !processing && !showRankedConfirmation) {
-      const result = ranking.getResult();
+      const result = getResult();
       
       if (result) {
         
@@ -246,10 +255,10 @@ export default function BookComparisonModal({
       // Determine if user prefers new book or existing book
       if (preferredBookId === currentBook.id) {
         // User prefers the new book
-        ranking.chooseNewBook();
+        chooseNewBook();
       } else {
         // User prefers the existing book
-        ranking.chooseExistingBook();
+        chooseExistingBook();
       }
 
       // Don't check state immediately - let React re-render first
@@ -263,7 +272,7 @@ export default function BookComparisonModal({
     }
   };
 
-  const saveFinalRank = async (result: ReturnType<typeof ranking.getResult>) => {
+  const saveFinalRank = async (result: ReturnType<typeof getResult>) => {
     if (!user || !result) {
       console.error('=== RANKING DEBUG: saveFinalRank - No user or result ===');
       return;
@@ -375,10 +384,10 @@ export default function BookComparisonModal({
       setProcessing(true);
       
       // When skipping, place at the bottom (last position)
-      const result = ranking.getResult();
+      const result = getResult();
       if (!result) {
         // If no result, get books and create a result
-        const allBooks = ranking.getBooks();
+        const allBooks = getBooks();
         const tierBooks = allBooks.filter(b => b.tier === rating);
         const position = tierBooks.length;
         const tierBounds = {

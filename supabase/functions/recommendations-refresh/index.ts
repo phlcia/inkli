@@ -18,6 +18,94 @@ const corsHeaders = {
 
 type GenreJoinRow = { genres?: { name?: string | null } | null };
 type ThemeJoinRow = { themes?: { name?: string | null } | null };
+type ShelfBookRow = {
+  book_id: string;
+  rating: string | null;
+  created_at: string | null;
+  status: string | null;
+  book?: { authors?: string[] | null } | null;
+};
+
+interface BookScore {
+  book_id: string;
+  score: number;
+  reasoning: string;
+}
+
+function daysSince(dateString: string | null): number {
+  if (!dateString) return Number.POSITIVE_INFINITY;
+  const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) return Number.POSITIVE_INFINITY;
+  const diffMs = Date.now() - date.getTime();
+  return Math.floor(diffMs / (24 * 60 * 60 * 1000));
+}
+
+function getRecencyWeight(createdAt: string | null): number {
+  const daysAgo = daysSince(createdAt);
+  if (daysAgo <= 30) return 1.5;
+  if (daysAgo <= 90) return 1.2;
+  return 1.0;
+}
+
+function getRatingWeight(rating: string | null): number {
+  switch (rating) {
+    case 'liked':
+      return 1.2;
+    case 'fine':
+      return 0.5;
+    case 'disliked':
+      return -0.8;
+    default:
+      return 0;
+  }
+}
+
+function ensureSmartDiversity(
+  scores: BookScore[],
+  books: Array<{ id: string; authors?: string[] | null }>,
+  genreMap: Map<string, string[]>,
+  targetCount: number
+): BookScore[] {
+  const diverse: BookScore[] = [];
+  const authorCount = new Map<string, number>();
+  const genreCount = new Map<string, number>();
+  const includedIds = new Set<string>();
+  const bookById = new Map(books.map((book) => [book.id, book]));
+
+  for (const score of scores) {
+    const book = bookById.get(score.book_id);
+    if (!book) continue;
+
+    const firstAuthor =
+      book.authors && book.authors.length > 0 ? book.authors[0].toLowerCase() : 'unknown';
+    const primaryGenre = genreMap.get(book.id)?.[0];
+    const authorBooks = authorCount.get(firstAuthor) || 0;
+    const genreBooks = primaryGenre ? genreCount.get(primaryGenre) || 0 : 0;
+
+    const maxPerAuthor = diverse.length < 10 ? 1 : 2;
+    const maxPerGenre = diverse.length < 10 ? 3 : 5;
+
+    if (authorBooks < maxPerAuthor && (!primaryGenre || genreBooks < maxPerGenre)) {
+      diverse.push(score);
+      includedIds.add(score.book_id);
+      authorCount.set(firstAuthor, authorBooks + 1);
+      if (primaryGenre) {
+        genreCount.set(primaryGenre, genreBooks + 1);
+      }
+
+      if (diverse.length >= targetCount) break;
+    }
+  }
+
+  if (diverse.length < targetCount) {
+    const remaining = scores
+      .filter((score) => !includedIds.has(score.book_id))
+      .slice(0, targetCount - diverse.length);
+    diverse.push(...remaining);
+  }
+
+  return diverse;
+}
 
 Deno.serve(async (req: Request) => {
   // Handle CORS preflight requests
@@ -72,7 +160,7 @@ Deno.serve(async (req: Request) => {
       )
     }
 
-    const algorithmVersion = 'v1'
+    const algorithmVersion = 'v2'
 
     const persistRecommendations = async (
       recommendations: Array<{ book_id: string; score: number; reasoning: string }>
@@ -180,8 +268,59 @@ Deno.serve(async (req: Request) => {
 
     const userComparisons = comparisons || []
 
-    // If user has <5 comparisons, return popular books
-    if (userComparisons.length < 5) {
+    // Get shelf data for preferences
+    const { data: shelfBooks, error: shelfError } = await supabaseDb
+      .from('user_books')
+      .select('book_id, rating, created_at, status, book:books(authors)')
+      .eq('user_id', user.id)
+      .in('status', ['read', 'currently_reading'])
+
+    if (shelfError) {
+      throw new Error(`Failed to fetch shelf data: ${shelfError.message}`)
+    }
+
+    const shelfRows = (shelfBooks || []) as ShelfBookRow[]
+    const shelfBookIds = shelfRows.map((row) => row.book_id).filter(Boolean)
+
+    const shelfGenreMap = new Map<string, string[]>()
+    const shelfThemeMap = new Map<string, string[]>()
+
+    if (shelfBookIds.length > 0) {
+      const { data: shelfGenres } = await supabaseDb
+        .from('book_genres')
+        .select('book_id, genres!inner(name)')
+        .in('book_id', shelfBookIds)
+
+      const { data: shelfThemes } = await supabaseDb
+        .from('book_themes')
+        .select('book_id, themes!inner(name)')
+        .in('book_id', shelfBookIds)
+
+      if (shelfGenres) {
+        const shelfGenreRows = shelfGenres as Array<{ book_id: string; genres?: { name?: string | null } | null }>
+        for (const row of shelfGenreRows) {
+          const genreName = row.genres?.name
+          if (!genreName) continue
+          const current = shelfGenreMap.get(row.book_id) || []
+          current.push(genreName)
+          shelfGenreMap.set(row.book_id, current)
+        }
+      }
+
+      if (shelfThemes) {
+        const shelfThemeRows = shelfThemes as Array<{ book_id: string; themes?: { name?: string | null } | null }>
+        for (const row of shelfThemeRows) {
+          const themeName = row.themes?.name
+          if (!themeName) continue
+          const current = shelfThemeMap.get(row.book_id) || []
+          current.push(themeName)
+          shelfThemeMap.set(row.book_id, current)
+        }
+      }
+    }
+
+    // If user has <5 comparisons and minimal shelf data, return popular books
+    if (userComparisons.length < 5 && shelfRows.length < 3) {
       const excludedIds = [
         ...new Set([
           ...userComparisons.map(c => c.winner_book_id),
@@ -289,6 +428,7 @@ Deno.serve(async (req: Request) => {
     // Build preference vectors
     const genrePreferences = new Map<string, number>()
     const themePreferences = new Map<string, number>()
+    const authorPreferences = new Set<string>()
 
     if (winnerGenres) {
       const winnerGenreRows = winnerGenres as GenreJoinRow[]
@@ -330,6 +470,30 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // Add shelf signals (rating + recency)
+    for (const row of shelfRows) {
+      const ratingWeight = getRatingWeight(row.rating)
+      if (ratingWeight === 0) continue
+      const recencyWeight = getRecencyWeight(row.created_at)
+      const totalWeight = ratingWeight * recencyWeight
+
+      const shelfGenres = shelfGenreMap.get(row.book_id) || []
+      for (const genreName of shelfGenres) {
+        genrePreferences.set(genreName, (genrePreferences.get(genreName) || 0) + totalWeight)
+      }
+
+      const shelfThemes = shelfThemeMap.get(row.book_id) || []
+      for (const themeName of shelfThemes) {
+        themePreferences.set(themeName, (themePreferences.get(themeName) || 0) + totalWeight)
+      }
+
+      if (row.book?.authors) {
+        for (const author of row.book.authors) {
+          authorPreferences.add(author)
+        }
+      }
+    }
+
     const comparedBookIds = new Set([
       ...userComparisons.map(c => c.winner_book_id),
       ...userComparisons.map(c => c.loser_book_id)
@@ -337,7 +501,7 @@ Deno.serve(async (req: Request) => {
 
     let allBooksQuery = supabaseDb
       .from('books')
-      .select('id, title, authors, cover_url')
+      .select('id, title, authors, cover_url, total_comparisons')
       .limit(1000)
 
     if (comparedBookIds.size > 0) {
@@ -350,7 +514,8 @@ Deno.serve(async (req: Request) => {
     }
 
     // Score each book
-    const bookScores: Array<{ book_id: string; score: number; reasoning: string }> = []
+    const bookScores: BookScore[] = []
+    const bookGenreMap = new Map<string, string[]>()
 
     for (const book of allBooks || []) {
       const { data: bookGenres } = await supabaseDb
@@ -363,38 +528,72 @@ Deno.serve(async (req: Request) => {
         .select('themes!inner(name)')
         .eq('book_id', book.id)
 
-      let genreScore = 0
+      const genreNames: string[] = []
       if (bookGenres) {
         const bookGenreRows = bookGenres as GenreJoinRow[]
         for (const bg of bookGenreRows) {
           const genreName = bg.genres?.name
           if (genreName) {
-            genreScore += genrePreferences.get(genreName) || 0
+            genreNames.push(genreName)
           }
         }
       }
+      bookGenreMap.set(book.id, genreNames)
 
-      let themeScore = 0
+      let genreScore = 0
+      for (const genreName of genreNames) {
+        genreScore += genrePreferences.get(genreName) || 0
+      }
+
+      const themeNames: string[] = []
       if (bookThemes) {
         const bookThemeRows = bookThemes as ThemeJoinRow[]
         for (const bt of bookThemeRows) {
           const themeName = bt.themes?.name
           if (themeName) {
-            themeScore += themePreferences.get(themeName) || 0
+            themeNames.push(themeName)
           }
         }
       }
 
-      const totalScore = (genreScore * 0.7) + (themeScore * 0.3)
+      let themeScore = 0
+      for (const themeName of themeNames) {
+        themeScore += themePreferences.get(themeName) || 0
+      }
 
-      if (totalScore <= 0 && (!bookGenres || bookGenres.length === 0)) {
+      const exploitScore = (genreScore * 0.7) + (themeScore * 0.3)
+
+      let explorationBonus = 0
+      for (const genreName of genreNames) {
+        const userExperience = genrePreferences.get(genreName) || 0
+        if (userExperience < 2) {
+          explorationBonus += 0.3
+        }
+      }
+
+      const firstAuthor =
+        book.authors && book.authors.length > 0 ? book.authors[0] : null
+      if (firstAuthor && !authorPreferences.has(firstAuthor)) {
+        explorationBonus += 0.2
+      }
+      explorationBonus = Math.min(explorationBonus, 1.0)
+
+      const popularityScore = Math.log((book.total_comparisons || 0) + 1) * 0.1
+
+      const totalScore =
+        (exploitScore * 0.7) +
+        (explorationBonus * 0.2) +
+        (popularityScore * 0.1)
+
+      if (totalScore <= 0 && genreNames.length === 0 && themeNames.length === 0) {
         continue
       }
 
       let reasoning = 'Recommended for you'
-      if (genreScore > 0 && bookGenres && bookGenres.length > 0) {
-        const topGenre = (bookGenres[0] as GenreJoinRow).genres?.name
-        reasoning = `Popular in ${topGenre}`
+      if (explorationBonus >= 0.6) {
+        reasoning = 'A fresh pick outside your usual reads'
+      } else if (genreScore > 0 && genreNames.length > 0) {
+        reasoning = `Popular in ${genreNames[0]}`
       } else if (totalScore > 0) {
         reasoning = 'Based on your preferences'
       }
@@ -407,7 +606,7 @@ Deno.serve(async (req: Request) => {
     }
 
     bookScores.sort((a, b) => b.score - a.score)
-    const topScores = bookScores.slice(0, 20)
+    const topScores = ensureSmartDiversity(bookScores, allBooks || [], bookGenreMap, 20)
 
     const topBookIds = topScores.map(bs => bs.book_id)
     const { data: recommendedBooks, error: booksError } = await supabaseDb
