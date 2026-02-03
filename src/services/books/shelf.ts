@@ -2,6 +2,7 @@ import { supabase } from '../../config/supabase';
 import { getSuggestedGenres } from '../../utils/genreMapper';
 import type { Book, ReadSession, UserBook } from './types';
 import { upsertBookViaEdge } from './upsert';
+import { onUserAction } from '../recommendationTriggers';
 
 /**
  * Check if user already has this book
@@ -100,11 +101,21 @@ export async function addBookToShelf(
 
       if (updateError) throw updateError;
 
-      return {
+      const result = {
         userBookId: existingCheck.userBookId,
         isUpdate: true,
         previousStatus: existingCheck.currentStatus,
       };
+
+      if (status && existingCheck.currentStatus !== status) {
+        try {
+          await onUserAction(userId, 'shelf_add');
+        } catch (actionError) {
+          console.error('Error triggering recommendations after shelf update:', actionError);
+        }
+      }
+
+      return result;
     }
 
     // Book doesn't exist - proceed with insert
@@ -158,11 +169,21 @@ export async function addBookToShelf(
             .update(updateData)
             .eq('id', retryCheck.userBookId);
 
-          return {
+          const result = {
             userBookId: retryCheck.userBookId,
             isUpdate: true,
             previousStatus: retryCheck.currentStatus,
           };
+
+          if (status && retryCheck.currentStatus !== status) {
+            try {
+              await onUserAction(userId, 'shelf_add');
+            } catch (actionError) {
+              console.error('Error triggering recommendations after shelf retry update:', actionError);
+            }
+          }
+
+          return result;
         }
       }
       throw userBookError;
@@ -172,10 +193,20 @@ export async function addBookToShelf(
       await initializeReadingProgress(userId, bookId);
     }
 
-    return {
+    const result = {
       userBookId: newUserBook.id,
       isUpdate: false,
     };
+
+    if (status) {
+      try {
+        await onUserAction(userId, 'shelf_add');
+      } catch (actionError) {
+        console.error('Error triggering recommendations after shelf add:', actionError);
+      }
+    }
+
+    return result;
   } catch (error) {
     console.error('Error adding book to shelf:', error);
     throw error;
@@ -526,22 +557,23 @@ export async function updateUserBookDetails(
     }
 
     if (updates.status !== undefined) updateData.status = updates.status;
+    let ratingChanged = false;
     if (updates.rating !== undefined) {
+      const { data: currentBook } = await supabase
+        .from('user_books')
+        .select('rank_score, rating')
+        .eq('id', userBookId)
+        .single();
+
       updateData.rating = updates.rating;
 
       // If rating is being set and rank_score is null, check if this is first in category
       if (updates.rating !== null) {
-        // Get current book to check if it already has rank_score
-        const { data: currentBook } = await supabase
-          .from('user_books')
-          .select('rank_score, rating')
-          .eq('id', userBookId)
-          .single();
-
         // Only set rank_score if:
         // 1. Current rank_score is null (not already set)
         // 2. Rating is actually changing (not just re-saving the same rating)
         const isRatingChanging = currentBook?.rating !== updates.rating;
+        ratingChanged = isRatingChanging;
 
         if (!currentBook?.rank_score && isRatingChanging) {
           const { data: categoryBooks } = await supabase
@@ -561,6 +593,7 @@ export async function updateUserBookDetails(
         // If rank_score is already set, don't touch it
         // If rating is not changing, don't touch rank_score
       } else {
+        ratingChanged = currentBook?.rating !== updates.rating;
         // If rating is being removed, also remove rank_score
         updateData.rank_score = null;
       }
@@ -578,6 +611,14 @@ export async function updateUserBookDetails(
 
     if (error) {
       console.error('=== updateUserBookDetails: update error ===', error);
+    }
+
+    if (!error && ratingChanged) {
+      try {
+        await onUserAction(userId, 'rating_change');
+      } catch (actionError) {
+        console.error('Error triggering recommendations after rating change:', actionError);
+      }
     }
 
     return { data, error };

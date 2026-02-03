@@ -33,6 +33,7 @@ type BookRankingScreenNavigationProp = NativeStackNavigationProp<SearchStackPara
 
 export default function BookRankingScreen() {
   const { user } = useAuth();
+  const userId = user?.id;
   const navigation = useNavigation<BookRankingScreenNavigationProp>();
   const route = useRoute<BookRankingScreenRouteProp>();
   const {
@@ -78,15 +79,52 @@ export default function BookRankingScreen() {
   const [selectedCustomLabels, setSelectedCustomLabels] = useState<string[]>([]);
   const [customLabelSuggestions, setCustomLabelSuggestions] = useState<string[]>([]);
   const [resolvedBookId, setResolvedBookId] = useState<string | null>(book?.id ?? null);
+  const [resolvedUserBookId, setResolvedUserBookId] = useState<string | null>(
+    userBookId && userBookId.trim() !== '' ? userBookId : null
+  );
   
   // Effective genres: user's overrides if set, otherwise book defaults
   const effectiveGenres = userGenres !== null ? userGenres : bookGenres;
   const coverUrl = book?.cover_url;
+  const comparisonUserBookId = resolvedUserBookId ?? userBookId ?? null;
+
+  useEffect(() => {
+    if (userBookId && userBookId.trim() !== '') {
+      setResolvedUserBookId(userBookId);
+    }
+  }, [userBookId]);
+
+  const ensureUserBookId = React.useCallback(async () => {
+    if (resolvedUserBookId) return resolvedUserBookId;
+    if (!userId) return null;
+
+    const lookupBookId = resolvedBookId ?? book?.id ?? null;
+    if (!lookupBookId) return null;
+
+    const { data, error } = await supabase
+      .from('user_books')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('book_id', lookupBookId)
+      .single();
+
+    if (error) {
+      console.error('Error resolving userBookId:', error);
+      return null;
+    }
+
+    if (data?.id) {
+      setResolvedUserBookId(data.id);
+      return data.id;
+    }
+
+    return null;
+  }, [resolvedUserBookId, userId, resolvedBookId, book?.id]);
 
   // Fetch initial book state when screen focuses
   useFocusEffect(
     React.useCallback(() => {
-      if (userBookId && user) {
+      if (userBookId && userId) {
         const fetchInitialState = async () => {
           try {
             // Fetch user_book data including book_id and user_genres
@@ -173,15 +211,15 @@ export default function BookRankingScreen() {
 
         fetchInitialState();
       }
-    }, [isNewInstance, userBookId, user])
+    }, [isNewInstance, userBookId, userId])
   );
 
   // Fetch custom label suggestions for autocomplete
   useEffect(() => {
     const fetchCustomLabelSuggestions = async () => {
-      if (!user) return;
+      if (!userId) return;
       try {
-        const userBooks = await getUserBooks(user.id);
+        const userBooks = await getUserBooks(userId);
         const allLabels = new Set<string>();
         userBooks.forEach((ub) => {
           if (ub.custom_labels?.length) {
@@ -194,7 +232,7 @@ export default function BookRankingScreen() {
       }
     };
     fetchCustomLabelSuggestions();
-  }, [user]);
+  }, [userId]);
 
   useEffect(() => {
     if (!openComparisonOnLoad || comparisonOpenedRef.current) return;
@@ -320,15 +358,13 @@ export default function BookRankingScreen() {
   const handleShelveBook = async () => {
     // Show comparison modal if status is "read" and rating is set (liked, fine, or disliked)
     if (initialStatus === 'read' && rating) {
-      
-      if (!userBookId || userBookId === '' || userBookId.trim() === '') {
+      const ensuredUserBookId = await ensureUserBookId();
+      if (!ensuredUserBookId || ensuredUserBookId.trim() === '') {
         console.error('=== RANKING DEBUG: ERROR - Cannot open comparison modal with empty userBookId ===');
         Alert.alert('Error', 'Book ID is missing. Please try adding the book again.');
         return;
       }
-      
-      // Don't call saveBookDetails() again - rating is already saved when selected
-      // Just open the comparison modal
+
       setShowComparison(true);
     }
   };
@@ -558,12 +594,12 @@ export default function BookRankingScreen() {
         
         // Verify the score was saved before closing
         const { getUserBooksByRating } = await import('../../../services/books');
-        if (user && rating) {
+        if (user && rating && comparisonUserBookId) {
           const books = await getUserBooksByRating(user.id, rating);
-          const book = books.find(b => b.id === userBookId);
+          const book = books.find(b => b.id === comparisonUserBookId);
           
           // Verify dates from read sessions
-          const sessions = await getReadSessions(userBookId);
+          const sessions = await getReadSessions(comparisonUserBookId);
           
           if (!book?.rank_score) {
             console.error('=== RANKING DEBUG: ERROR - rank_score is still null after ranking! ===');
@@ -966,11 +1002,11 @@ export default function BookRankingScreen() {
       </KeyboardAvoidingView>
 
       {/* Comparison Modal - Shows after rating "I liked it!" */}
-      {rating && userBookId && userBookId.trim() !== '' ? (
+      {rating && comparisonUserBookId && comparisonUserBookId.trim() !== '' ? (
         <BookComparisonModal
           visible={showComparison}
           currentBook={{
-            id: userBookId,
+            id: comparisonUserBookId,
             title: book.title,
             authors: book.authors,
             cover_url: coverUrl || null,

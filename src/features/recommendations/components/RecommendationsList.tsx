@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   Alert,
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, typography } from '../../../config/theme';
 import {
   fetchRecommendations,
@@ -28,6 +29,8 @@ type RecommendationsListProps = {
   showHeader?: boolean;
 };
 
+const LAST_SEEN_RECS_KEY = 'last_seen_recs';
+
 export default function RecommendationsList({ showHeader = true }: RecommendationsListProps) {
   const { user } = useAuth();
   const navigation = useNavigation<any>();
@@ -38,10 +41,12 @@ export default function RecommendationsList({ showHeader = true }: Recommendatio
   const [loadingMore, setLoadingMore] = useState(false);
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
+  const [displayCount, setDisplayCount] = useState(10);
   const [error, setError] = useState<string | null>(null);
   const [enrichingBookId, setEnrichingBookId] = useState<string | null>(null);
   const [circleStats, setCircleStats] = useState<Map<string, BookCircleStats>>(new Map());
   const [circleLoading, setCircleLoading] = useState<Set<string>>(new Set());
+  const [lastSeenRefreshTime, setLastSeenRefreshTime] = useState<Date | null>(null);
 
   const loadCircleStats = useCallback(async (bookIds: string[]) => {
     const newStats = new Map<string, BookCircleStats>();
@@ -84,6 +89,7 @@ export default function RecommendationsList({ showHeader = true }: Recommendatio
     const isInitial = targetPage === 0 && !append;
     if (isInitial) {
       setLoading(true);
+      setDisplayCount(10);
     } else {
       setLoadingMore(true);
     }
@@ -121,18 +127,64 @@ export default function RecommendationsList({ showHeader = true }: Recommendatio
 
   useFocusEffect(
     useCallback(() => {
+      let isActive = true;
+
+      const loadLastSeen = async () => {
+        try {
+          const stored = await AsyncStorage.getItem(LAST_SEEN_RECS_KEY);
+          if (stored && isActive) {
+            setLastSeenRefreshTime(new Date(stored));
+          }
+        } catch (storageError) {
+          console.error('Error loading last seen recs time:', storageError);
+        }
+      };
+
+      loadLastSeen();
       loadRecommendations(0, false);
+
+      return () => {
+        isActive = false;
+      };
     }, [loadRecommendations])
   );
 
+  const displayedRecommendations = recommendations.slice(0, displayCount);
+
   useEffect(() => {
-    if (recommendations.length === 0) return;
-    const unseenIds = recommendations
+    if (displayedRecommendations.length === 0) return;
+    const unseenIds = displayedRecommendations
       .filter((rec) => !rec.shown_at)
       .map((rec) => rec.id);
     if (unseenIds.length === 0) return;
     markRecommendationsShown(unseenIds);
-  }, [recommendations]);
+  }, [displayedRecommendations]);
+
+  const newRecCount = useMemo(() => {
+    if (!lastSeenRefreshTime) return 0;
+    return recommendations.filter((rec) => {
+      if (!rec.created_at) return false;
+      return new Date(rec.created_at) > lastSeenRefreshTime;
+    }).length;
+  }, [lastSeenRefreshTime, recommendations]);
+
+  const markListViewed = useCallback(async () => {
+    const now = new Date();
+    try {
+      await AsyncStorage.setItem(LAST_SEEN_RECS_KEY, now.toISOString());
+      setLastSeenRefreshTime(now);
+    } catch (storageError) {
+      console.error('Error saving last seen recs time:', storageError);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (loading || recommendations.length === 0) return;
+    const timeout = setTimeout(() => {
+      markListViewed();
+    }, 800);
+    return () => clearTimeout(timeout);
+  }, [loading, recommendations.length, markListViewed]);
 
   const handleRefresh = useCallback(async () => {
     if (!user) return;
@@ -156,9 +208,23 @@ export default function RecommendationsList({ showHeader = true }: Recommendatio
   }, [user, loadRecommendations]);
   
   const handleLoadMore = useCallback(async () => {
-    if (loadingMore || loading || refreshing || !hasMore) return;
+    if (loadingMore || loading || refreshing) return;
+    if (displayCount < recommendations.length) {
+      setDisplayCount((prev) => Math.min(prev + 10, recommendations.length));
+      return;
+    }
+    if (!hasMore) return;
     await loadRecommendations(page + 1, true);
-  }, [loadingMore, loading, refreshing, hasMore, loadRecommendations, page]);
+  }, [
+    loadingMore,
+    loading,
+    refreshing,
+    displayCount,
+    recommendations.length,
+    hasMore,
+    loadRecommendations,
+    page,
+  ]);
 
   const handleBookPress = useCallback(async (rec: Recommendation) => {
     if (!rec.book) return;
@@ -316,13 +382,13 @@ export default function RecommendationsList({ showHeader = true }: Recommendatio
         </View>
       ) : (
         <FlatList
-          data={recommendations}
+          data={displayedRecommendations}
           keyExtractor={(item) => item.id}
           renderItem={({ item, index }) => renderBookItem(item, index)}
           style={styles.scrollView}
           contentContainerStyle={[
             styles.scrollContent,
-            recommendations.length === 0 && styles.scrollContentEmpty,
+            displayedRecommendations.length === 0 && styles.scrollContentEmpty,
           ]}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primaryBlue} />
@@ -330,7 +396,16 @@ export default function RecommendationsList({ showHeader = true }: Recommendatio
           ListHeaderComponent={
             showHeader ? (
               <View style={styles.header}>
-                <Text style={styles.title}>Recommendations</Text>
+                <View style={styles.headerText}>
+                  <Text style={styles.title}>Recommendations</Text>
+                  {newRecCount > 0 ? (
+                    <View style={styles.newBadge}>
+                      <Text style={styles.newBadgeText}>
+                        {newRecCount} new recommendation{newRecCount === 1 ? '' : 's'}!
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
                 <TouchableOpacity onPress={handleRefresh} disabled={refreshing} style={styles.refreshButton}>
                   {refreshing ? (
                     <ActivityIndicator size="small" color={colors.primaryBlue} />
@@ -377,10 +452,28 @@ const styles = StyleSheet.create({
     paddingTop: 20,
     paddingBottom: 10,
   },
+  headerText: {
+    flex: 1,
+    marginRight: 12,
+  },
   title: {
     fontSize: 28,
     fontFamily: typography.heroTitle,
     color: colors.brownText,
+  },
+  newBadge: {
+    marginTop: 6,
+    alignSelf: 'flex-start',
+    backgroundColor: colors.primaryBlue,
+    borderRadius: 12,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+  },
+  newBadgeText: {
+    fontSize: 12,
+    fontFamily: typography.body,
+    color: colors.white,
+    fontWeight: '600',
   },
   refreshButton: {
     padding: 8,

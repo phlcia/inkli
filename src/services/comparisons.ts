@@ -1,4 +1,5 @@
 import { supabase } from '../config/supabase';
+import { onUserAction } from './recommendationTriggers';
 
 export interface Comparison {
   id: string;
@@ -51,7 +52,15 @@ export async function createComparison(
       return { data: null, error: new Error(errorMessage) };
     }
 
-    return { data: data.comparison as Comparison, error: null };
+    const comparison = data.comparison as Comparison;
+
+    try {
+      await onUserAction(comparison.user_id, 'comparison');
+    } catch (actionError) {
+      console.error('Error triggering recommendation refresh after comparison:', actionError);
+    }
+
+    return { data: comparison, error: null };
   } catch (error) {
     console.error('Exception creating comparison:', error);
     return {
