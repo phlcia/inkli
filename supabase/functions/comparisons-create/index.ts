@@ -56,7 +56,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const token = authHeader.replace('Bearer ', '')
-    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    const serviceRoleKey = Deno.env.get('EXPO_SERVICE_ROLE_KEY') ?? ''
     isServiceRoleConfigured = Boolean(serviceRoleKey)
     isServiceRoleDistinct = Boolean(serviceRoleKey && serviceRoleKey !== supabaseAnonKey)
     console.log('comparisons-create auth config', {

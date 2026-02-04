@@ -9,7 +9,7 @@
  *   node scripts/seed_starter_books.js
  * 
  * Requires:
- *   - SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables
+ *   - SUPABASE_URL (or EXPO_PUBLIC_SUPABASE_URL) and EXPO_PUBLIC_SUPABASE_ANON_KEY
  *   - Or update the script with your credentials
  */
 
@@ -68,17 +68,17 @@ const starterBooks = [
 ];
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || '';
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
 
-if (!supabaseUrl || !supabaseServiceKey) {
-  console.error('Error: Missing SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables');
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.error('Error: Missing SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY environment variables');
   console.error('Set them in your .env file or export them:');
   console.error('  export SUPABASE_URL="your-url"');
-  console.error('  export SUPABASE_SERVICE_ROLE_KEY="your-service-key"');
+  console.error('  export EXPO_PUBLIC_SUPABASE_ANON_KEY="your-anon-key"');
   process.exit(1);
 }
 
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 async function seedStarterBooks() {
   console.log('Starting to seed 30 starter books...\n');
@@ -162,8 +162,7 @@ async function seedStarterBooks() {
           .single();
 
         if (insertError) {
-          // If insert fails due to RLS, we need to use service role or Edge Function
-          // For now, log and continue
+          // If insert fails due to RLS, use an Edge Function or adjust policies
           console.error(`✗ Error inserting "${bookData.title}":`, insertError.message);
           errorCount++;
           continue;

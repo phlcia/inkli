@@ -30,7 +30,7 @@ Deno.serve(async (req: Request) => {
     // @ts-expect-error - Deno.env is available in Supabase Edge Functions runtime
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
     // @ts-expect-error - Deno.env is available in Supabase Edge Functions runtime
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    const supabaseServiceKey = Deno.env.get('EXPO_SERVICE_ROLE_KEY') ?? ''
 
     if (!supabaseUrl || !supabaseServiceKey) {
       throw new Error('Missing Supabase environment variables')
