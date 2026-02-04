@@ -53,6 +53,6 @@ SELECT cron.schedule(
 
 The function requires these environment variables (set automatically by Supabase):
 - `SUPABASE_URL` - Your Supabase project URL
-- `SUPABASE_SERVICE_ROLE_KEY` - Service role key (bypasses RLS)
+- `EXPO_SERVICE_ROLE_KEY` - Service role key (bypasses RLS)
 
 
