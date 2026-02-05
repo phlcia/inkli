@@ -66,10 +66,10 @@ export default function BookComparisonModal({
     startInserting,
     chooseNewBook,
     chooseExistingBook,
+    skipToBottom,
     getCurrentComparison,
     isComplete,
     getResult,
-    getBooks,
     reset,
   } = useBookRanking([]);
 
@@ -379,52 +379,10 @@ export default function BookComparisonModal({
   };
 
   const handleSkip = async () => {
-    // When skipping, place it at the bottom of the category
     try {
       setProcessing(true);
-      
-      // When skipping, place at the bottom (last position)
-      const result = getResult();
-      if (!result) {
-        // If no result, get books and create a result
-        const allBooks = getBooks();
-        const tierBooks = allBooks.filter(b => b.tier === rating);
-        const position = tierBooks.length;
-        const tierBounds = {
-          liked: { min: 6.5, max: 10.0 },
-          fine: { min: 3.5, max: 6.5 },
-          disliked: { min: 0, max: 3.5 },
-        };
-        const { min, max } = tierBounds[rating];
-        const score = tierBooks.length === 0
-          ? max
-          : Math.max(tierBooks[tierBooks.length - 1].score - 0.1, min + 0.001);
-        const roundedScore = Math.round(score * 1000) / 1000;
-        
-        // Create a mock result for skipping
-        const skipResult = {
-          books: allBooks,
-          insertedBook: {
-            id: currentBook.id,
-            title: currentBook.title,
-            authors: currentBook.authors || [],
-            cover_url: currentBook.cover_url || null,
-            tier: rating,
-            score: roundedScore,
-          },
-          positionInTier: position,
-          score: roundedScore,
-        };
-        await saveFinalRank(skipResult);
-      } else {
-        await saveFinalRank(result);
-      }
-      
-      setShowRankedConfirmation(true);
-      setTimeout(() => {
-        setShowRankedConfirmation(false);
-        onComplete();
-      }, 2000);
+      // Complete insertion at bottom using the normal ranking safeguards
+      skipToBottom();
     } catch (error) {
       console.error('=== RANKING DEBUG: ERROR in handleSkip ===', error);
       Alert.alert('Error', 'Failed to save ranking');

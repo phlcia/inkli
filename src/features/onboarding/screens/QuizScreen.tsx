@@ -170,11 +170,15 @@ export default function QuizScreen({ signupParams, onSignupComplete, onQuizCompl
   };
 
   const handleSkipComparison = () => {
-    if (comparisonCount >= QUIZ_COMPARISON_COUNT - 1) {
-      handleQuizComplete();
-    } else {
-      loadNextPair();
-    }
+    setComparisonCount((prev) => {
+      const nextCount = prev + 1;
+      if (nextCount >= QUIZ_COMPARISON_COUNT) {
+        handleQuizComplete();
+      } else {
+        loadNextPair();
+      }
+      return nextCount;
+    });
   };
 
   const handleSkipQuiz = async () => {
