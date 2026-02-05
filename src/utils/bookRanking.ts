@@ -225,6 +225,44 @@ function insertBookAtPosition(
 }
 
 /**
+ * Redistribute scores for existing books in a tier (without inserting a new book yet).
+ */
+function redistributeExistingTier(
+  rankingState: RankingState,
+  tier: BookTier
+): RankingState {
+  const { books } = rankingState;
+  const tierBooks = getBooksInTier(books, tier);
+  const redistributed = redistributeTierScores(tierBooks, tier);
+  const otherTierBooks = books.filter(b => b.tier !== tier);
+  const allBooks = [...otherTierBooks, ...redistributed].sort((a, b) => b.score - a.score);
+
+  return {
+    books: allBooks,
+    comparisonState: rankingState.comparisonState,
+  };
+}
+
+/**
+ * Insert a book at position and mark redistribution as having occurred.
+ */
+function insertBookAtPositionWithRedistributionFlag(
+  rankingState: RankingState,
+  newBook: Omit<RankedBook, 'score'> & { tier: BookTier },
+  position: number,
+  score: number
+): RankingState {
+  const state = insertBookAtPosition(rankingState, newBook, position, score);
+  return {
+    ...state,
+    comparisonState: {
+      ...state.comparisonState!,
+      needsRedistribution: true,
+    },
+  };
+}
+
+/**
  * Redistribute scores evenly across a tier's books
  * Maintains the order but spaces scores evenly between min and max
  */
@@ -296,6 +334,154 @@ function insertBookInTierWithRedistribution(
  * Process user's choice in the binary search
  * Returns updated ranking state with next comparison or final result
  */
+function finalizeInsertion(
+  rankingState: RankingState,
+  newBook: Omit<RankedBook, 'score'> & { tier: BookTier },
+  position: number
+): RankingState {
+  const { books } = rankingState;
+  const tierBooks = getBooksInTier(books, newBook.tier);
+  const { min, max } = TIER_BOUNDARIES[newBook.tier];
+
+  // If no existing books in tier, insert at max
+  if (tierBooks.length === 0) {
+    return insertBookAtPosition(rankingState, newBook, 0, max);
+  }
+
+  // Boundary collision checks
+  if (position === 0) {
+    const topBookScore = tierBooks[0].score;
+    if (topBookScore >= max - 0.1) {
+      return insertBookInTierWithRedistribution(rankingState, newBook, position);
+    }
+  }
+  if (position === tierBooks.length) {
+    const bottomBookScore = tierBooks[tierBooks.length - 1].score;
+    if (bottomBookScore <= min + 0.1) {
+      return insertBookInTierWithRedistribution(rankingState, newBook, position);
+    }
+  }
+
+  // Check if redistribution needed
+  const needsRedistribution = shouldRedistribute(tierBooks, position);
+
+  if (needsRedistribution) {
+    const redistributedState = redistributeExistingTier(rankingState, newBook.tier);
+    const refreshedTierBooks = getBooksInTier(redistributedState.books, newBook.tier);
+
+    let positionType: 'before' | 'after';
+    let refIndex: number;
+
+    if (position === 0) {
+      positionType = 'before';
+      refIndex = 0;
+    } else if (position === refreshedTierBooks.length) {
+      positionType = 'after';
+      refIndex = refreshedTierBooks.length - 1;
+    } else {
+      positionType = 'before';
+      refIndex = position;
+    }
+
+    const refreshedScore = calculateScore(
+      refreshedTierBooks,
+      refIndex,
+      positionType,
+      newBook.tier
+    );
+
+    if (refreshedScore > max || refreshedScore < min) {
+      return insertBookInTierWithRedistribution(redistributedState, newBook, position);
+    }
+
+    const collision = refreshedTierBooks.some(
+      (book) => Math.abs(book.score - refreshedScore) < 0.0001
+    );
+    if (collision) {
+      return insertBookInTierWithRedistribution(redistributedState, newBook, position);
+    }
+
+    return insertBookAtPositionWithRedistributionFlag(
+      redistributedState,
+      newBook,
+      position,
+      refreshedScore
+    );
+  }
+
+  // FAST PATH: Calculate midpoint score
+  let positionType: 'before' | 'after';
+  let refIndex: number;
+
+  if (position === 0) {
+    positionType = 'before';
+    refIndex = 0;
+  } else if (position === tierBooks.length) {
+    positionType = 'after';
+    refIndex = tierBooks.length - 1;
+  } else {
+    positionType = 'before';
+    refIndex = position;
+  }
+
+  const score = calculateScore(tierBooks, refIndex, positionType, newBook.tier);
+
+  // Check if score would violate boundaries
+  if (score > max || score < min) {
+    return insertBookInTierWithRedistribution(rankingState, newBook, position);
+  }
+
+  // Collision detection safeguard
+  const collision = tierBooks.some(
+    (book) => Math.abs(book.score - score) < 0.0001
+  );
+  if (collision) {
+    const redistributedState = redistributeExistingTier(rankingState, newBook.tier);
+    const refreshedTierBooks = getBooksInTier(redistributedState.books, newBook.tier);
+
+    let positionType: 'before' | 'after';
+    let refIndex: number;
+
+    if (position === 0) {
+      positionType = 'before';
+      refIndex = 0;
+    } else if (position === refreshedTierBooks.length) {
+      positionType = 'after';
+      refIndex = refreshedTierBooks.length - 1;
+    } else {
+      positionType = 'before';
+      refIndex = position;
+    }
+
+    const refreshedScore = calculateScore(
+      refreshedTierBooks,
+      refIndex,
+      positionType,
+      newBook.tier
+    );
+
+    if (refreshedScore > max || refreshedScore < min) {
+      return insertBookInTierWithRedistribution(redistributedState, newBook, position);
+    }
+
+    const refreshedCollision = refreshedTierBooks.some(
+      (book) => Math.abs(book.score - refreshedScore) < 0.0001
+    );
+    if (refreshedCollision) {
+      return insertBookInTierWithRedistribution(redistributedState, newBook, position);
+    }
+
+    return insertBookAtPositionWithRedistributionFlag(
+      redistributedState,
+      newBook,
+      position,
+      refreshedScore
+    );
+  }
+
+  return insertBookAtPosition(rankingState, newBook, position, score);
+}
+
 export function processComparison(
   rankingState: RankingState,
   userPrefersNewBook: boolean
@@ -309,7 +495,6 @@ export function processComparison(
   const { left, right, middle } = comparisonState;
   const newBook = comparisonState.bookA!;
   const tierBooks = getBooksInTier(books, newBook.tier);
-  const { min, max } = TIER_BOUNDARIES[newBook.tier];
   
   let position: number;
   
@@ -356,55 +541,36 @@ export function processComparison(
     }
   }
   
-  // NEW CODE - Add boundary collision checks
-  // If we're inserting at the very top and the current top is already near/at max,
-  // force redistribution to avoid duplicate scores at the boundary.
-  if (position === 0 && tierBooks.length > 0) {
-    const topBookScore = tierBooks[0].score;
-    if (topBookScore >= max - 0.1) {
-      return insertBookInTierWithRedistribution(rankingState, newBook, position);
+  return finalizeInsertion(rankingState, newBook, position);
+}
+
+/**
+ * Skip comparison by placing the new book at the bottom of its tier
+ * Completes the insertion path using normal safeguards.
+ */
+export function skipToBottom(rankingState: RankingState): RankingState {
+  const { comparisonState } = rankingState;
+
+  if (!comparisonState || comparisonState.isComplete || !comparisonState.bookA) {
+    return rankingState;
+  }
+
+  const newBook = comparisonState.bookA;
+  const tierBooks = getBooksInTier(rankingState.books, newBook.tier);
+  const position = tierBooks.length;
+
+  if (tierBooks.length > 0) {
+    const { min } = TIER_BOUNDARIES[newBook.tier];
+    const lowestBook = tierBooks[tierBooks.length - 1];
+    const gap = lowestBook.score - min;
+
+    if (gap > 0.15) {
+      const score = Math.max(lowestBook.score - 0.1, min + 0.001);
+      return insertBookAtPosition(rankingState, newBook, position, score);
     }
   }
-  // Likewise, if inserting at the bottom when the bottom book is at/near min,
-  // redistribute to keep spacing without collisions.
-  if (position === tierBooks.length && tierBooks.length > 0) {
-    const bottomBookScore = tierBooks[tierBooks.length - 1].score;
-    if (bottomBookScore <= min + 0.1) {
-      return insertBookInTierWithRedistribution(rankingState, newBook, position);
-    }
-  }
-  
-  // Check if redistribution needed
-  const needsRedistribution = shouldRedistribute(tierBooks, position);
-  
-  if (needsRedistribution) {
-    return insertBookInTierWithRedistribution(rankingState, newBook, position);
-  } else {
-    // FAST PATH: Calculate midpoint score
-    let positionType: 'before' | 'after';
-    let refIndex: number;
-    
-    if (position === 0) {
-      positionType = 'before';
-      refIndex = 0;
-    } else if (position === tierBooks.length) {
-      positionType = 'after';
-      refIndex = tierBooks.length - 1;
-    } else {
-      positionType = 'before';
-      refIndex = position;
-    }
-    
-    const score = calculateScore(tierBooks, refIndex, positionType, newBook.tier);
-    
-    // CRITICAL: Check if score would violate boundaries
-    if (score > max || score < min) {
-      // Force redistribution to stay in bounds
-      return insertBookInTierWithRedistribution(rankingState, newBook, position);
-    }
-    
-    return insertBookAtPosition(rankingState, newBook, position, score);
-  }
+
+  return finalizeInsertion(rankingState, newBook, position);
 }
 
 /**

@@ -5,6 +5,7 @@ import {
   initializeRanking,
   startInsertion,
   processComparison,
+  skipToBottom as skipToBottomUtil,
   getCurrentComparison as getCurrentComparisonUtil,
   isRankingComplete,
   getFinalResult,
@@ -63,6 +64,13 @@ export function useBookRanking(initialBooks: RankedBook[] = []) {
   }, []);
 
   /**
+   * Skip comparison and place new book at bottom of tier
+   */
+  const skipToBottom = useCallback(() => {
+    setRankingState((state) => skipToBottomUtil(state));
+  }, []);
+
+  /**
    * Get the current comparison pair
    * Returns null if no comparison is active or if ranking is complete
    */
@@ -104,6 +112,7 @@ export function useBookRanking(initialBooks: RankedBook[] = []) {
     startInserting,
     chooseNewBook,
     chooseExistingBook,
+    skipToBottom,
     getCurrentComparison,
     isComplete,
     getResult,
