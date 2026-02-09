@@ -213,6 +213,103 @@ export async function addBookToShelf(
   }
 }
 
+/**
+ * Add an existing book (already in books table) to user's shelf.
+ * Useful when we only have a book_id (e.g., activity feed cards).
+ */
+export async function addExistingBookToShelf(
+  bookId: string,
+  status: 'read' | 'currently_reading' | 'want_to_read' | null,
+  userId: string,
+  options?: {
+    rating?: 'liked' | 'fine' | 'disliked';
+    notes?: string;
+    genres?: string[];
+    custom_labels?: string[];
+  }
+): Promise<{ userBookId: string; isUpdate: boolean; previousStatus?: string }> {
+  try {
+    const userGenres = (options?.genres && options.genres.length > 0) ? options.genres : null;
+    const existingCheck = await checkUserHasBook(bookId, userId);
+
+    if (existingCheck.exists && existingCheck.userBookId) {
+      const updateData: any = {
+        status,
+        updated_at: new Date().toISOString(),
+      };
+
+      if (existingCheck.currentStatus === 'read' && status !== 'read') {
+        updateData.rank_score = null;
+      }
+      if (options?.rating !== undefined) updateData.rating = options.rating;
+      if (options?.notes !== undefined) updateData.notes = options.notes;
+      if (options?.custom_labels !== undefined) updateData.custom_labels = options.custom_labels;
+      if (userGenres !== null) updateData.user_genres = userGenres;
+
+      const { error: updateError } = await supabase
+        .from('user_books')
+        .update(updateData)
+        .eq('id', existingCheck.userBookId);
+
+      if (updateError) throw updateError;
+
+      if (status && existingCheck.currentStatus !== status) {
+        try {
+          await onUserAction(userId, 'shelf_add');
+        } catch (actionError) {
+          console.error('Error triggering recommendations after shelf update:', actionError);
+        }
+      }
+
+      return {
+        userBookId: existingCheck.userBookId,
+        isUpdate: true,
+        previousStatus: existingCheck.currentStatus,
+      };
+    }
+
+    const userBookData: any = {
+      user_id: userId,
+      book_id: bookId,
+      status,
+      rank_score: null,
+    };
+
+    if (options?.rating) userBookData.rating = options.rating;
+    if (options?.notes) userBookData.notes = options.notes;
+    if (options?.custom_labels) userBookData.custom_labels = options.custom_labels;
+    if (userGenres !== null) userBookData.user_genres = userGenres;
+
+    const { data: newUserBook, error: userBookError } = await supabase
+      .from('user_books')
+      .insert(userBookData)
+      .select('id')
+      .single();
+
+    if (userBookError) throw userBookError;
+
+    if (status === 'currently_reading') {
+      await initializeReadingProgress(userId, bookId);
+    }
+
+    if (status) {
+      try {
+        await onUserAction(userId, 'shelf_add');
+      } catch (actionError) {
+        console.error('Error triggering recommendations after shelf add:', actionError);
+      }
+    }
+
+    return {
+      userBookId: newUserBook.id,
+      isUpdate: false,
+    };
+  } catch (error) {
+    console.error('Error adding existing book to shelf:', error);
+    throw error;
+  }
+}
+
 function normalizeProgressPercent(progressPercent: number): number {
   const rounded = Math.round(progressPercent);
   return Math.max(0, Math.min(100, rounded));

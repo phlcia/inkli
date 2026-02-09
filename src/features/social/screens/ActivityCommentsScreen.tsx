@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -29,6 +29,7 @@ import { supabase } from '../../../config/supabase';
 import { UserBook } from '../../../services/books';
 import { fetchBookWithUserStatus } from '../../../services/bookDetails';
 import { formatDateRange } from '../../../utils/dateRanges';
+import { useToggleWantToRead } from '../../books/hooks/useToggleWantToRead';
 import ActivityCommentsHeader from '../components/ActivityCommentsHeader';
 import ActivityCommentsList from '../components/ActivityCommentsList';
 import { useActivityComments } from '../hooks/useActivityComments';
@@ -90,7 +91,50 @@ export default function ActivityCommentsScreen() {
       viewerStatus: route.params.viewerStatus ?? null,
     },
   });
+  const [viewerShelfMap, setViewerShelfMap] = useState<
+    Record<string, { id: string; status: UserBook['status'] }>
+  >({});
+  const handleToggleWantToRead = useToggleWantToRead({
+    currentUserId: currentUser?.id,
+    viewerShelfMap,
+    setViewerShelfMap,
+  });
   const canMention = !!currentUser?.id;
+
+  useEffect(() => {
+    const loadViewerShelfStatus = async () => {
+      if (!currentUser?.id || !headerUserBook?.book_id) {
+        setViewerShelfMap({});
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('user_books')
+        .select('id, book_id, status')
+        .eq('user_id', currentUser.id)
+        .eq('book_id', headerUserBook.book_id)
+        .single();
+
+      if (error) {
+        if (error.code !== 'PGRST116') {
+          console.error('Error loading viewer shelf status:', error);
+        }
+        setViewerShelfMap({});
+        return;
+      }
+
+      if (!data?.book_id) {
+        setViewerShelfMap({});
+        return;
+      }
+
+      setViewerShelfMap({
+        [data.book_id]: { id: data.id, status: data.status },
+      });
+    };
+
+    void loadViewerShelfStatus();
+  }, [currentUser?.id, headerUserBook?.book_id]);
 
   const handleBookPress = async (userBook: UserBook) => {
     if (!currentUser || !userBook.book) return;
@@ -200,7 +244,16 @@ export default function ActivityCommentsScreen() {
         headerActionText={headerActionText}
         headerAvatarUrl={headerAvatarUrl}
         headerAvatarFallback={headerAvatarFallback}
-        headerViewerStatus={headerViewerStatus}
+        headerViewerStatus={
+          headerUserBook?.book_id
+            ? viewerShelfMap[headerUserBook.book_id]?.status || null
+            : headerViewerStatus
+        }
+        onToggleWantToRead={
+          currentUser?.id && headerUserBook
+            ? () => handleToggleWantToRead(headerUserBook)
+            : undefined
+        }
         onPressBook={handleBookPress}
         formatDateRange={formatDateRange}
         onReply={setReplyTo}

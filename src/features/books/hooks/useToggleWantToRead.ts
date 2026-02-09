@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import { addBookToShelf, removeBookFromShelf } from '../../../services/books';
+import { addBookToShelf, addExistingBookToShelf, removeBookFromShelf } from '../../../services/books';
 import type { UserBook } from '../../../services/books';
 
 type ViewerShelfMap = Record<string, { id: string; status: UserBook['status'] }>;
@@ -30,7 +30,14 @@ export function useToggleWantToRead({
         return;
       }
       if (!existing) {
-        const result = await addBookToShelf(userBook.book, 'want_to_read', currentUserId);
+        const hasIdentifier = !!(
+          userBook.book.open_library_id ||
+          userBook.book.google_books_id ||
+          userBook.book.isbn_13
+        );
+        const result = hasIdentifier
+          ? await addBookToShelf(userBook.book, 'want_to_read', currentUserId)
+          : await addExistingBookToShelf(userBook.book_id, 'want_to_read', currentUserId);
         setViewerShelfMap((prev) => ({
           ...prev,
           [userBook.book_id]: { id: result.userBookId, status: 'want_to_read' },

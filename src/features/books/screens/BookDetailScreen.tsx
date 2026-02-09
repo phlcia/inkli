@@ -963,6 +963,8 @@ export default function BookDetailScreen() {
             })
           }
           onPressBook={handleFriendBookPress}
+          viewerStatus={currentStatus}
+          onToggleWantToRead={() => handleIconPress('want_to_read')}
           sectionRef={friendsRankingsSectionRef}
           styles={styles}
           FriendsRankingSkeletonCard={FriendsRankingSkeletonCard}

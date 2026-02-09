@@ -25,6 +25,7 @@ type ActivityCommentsListProps = {
   headerAvatarUrl: string | null;
   headerAvatarFallback: string;
   headerViewerStatus: 'read' | 'currently_reading' | 'want_to_read' | null;
+  onToggleWantToRead?: () => void;
   onPressBook: (userBook: UserBook) => void;
   formatDateRange: (startDate: string | null, endDate?: string | null) => string | null;
   onReply: (comment: CommentRow['item']) => void;
@@ -65,6 +66,7 @@ export default function ActivityCommentsList({
   headerAvatarUrl,
   headerAvatarFallback,
   headerViewerStatus,
+  onToggleWantToRead,
   onPressBook,
   formatDateRange,
   onReply,
@@ -175,6 +177,7 @@ export default function ActivityCommentsList({
               onPressBook={onPressBook}
               formatDateRange={formatDateRange}
               viewerStatus={headerViewerStatus}
+              onToggleWantToRead={onToggleWantToRead}
               showCommentIcon={false}
               showCommentsLink={false}
             />
