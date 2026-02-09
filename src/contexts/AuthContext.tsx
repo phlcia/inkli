@@ -4,7 +4,7 @@ import { supabase } from '../config/supabase';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as WebBrowser from 'expo-web-browser';
 import { Platform } from 'react-native';
-import { makeRedirectUri } from 'expo-auth-session';
+import { getAuthRedirectUri } from '../utils/authRedirect';
 
 // Complete auth session for better UX
 WebBrowser.maybeCompleteAuthSession();
@@ -144,10 +144,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signInWithApple = async () => {
     try {
-      const redirectUri = makeRedirectUri({
-        scheme: 'inkli',
-        path: 'auth/callback',
-      });
+      const redirectUri = getAuthRedirectUri();
 
       let idToken: string | null = null;
       let rawNonce: string | null = null;
@@ -271,10 +268,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signInWithGoogle = async () => {
     try {
-      const redirectUri = makeRedirectUri({
-        scheme: 'inkli',
-        path: 'auth/callback',
-      });
+      const redirectUri = getAuthRedirectUri();
 
       // Use Supabase's OAuth method with web-based flow
       const { data, error } = await supabase.auth.signInWithOAuth({
@@ -444,4 +438,3 @@ export function useAuth() {
   }
   return context;
 }
-
