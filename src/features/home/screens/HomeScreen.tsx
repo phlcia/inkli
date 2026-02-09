@@ -21,6 +21,9 @@ import { HomeStackParamList } from '../../../navigation/HomeStackNavigator';
 import { formatDateRange as formatDateRangeUtil } from '../../../utils/dateRanges';
 import { getActionText } from '../../../utils/activityText';
 import { fetchBookWithUserStatus } from '../../../services/bookDetails';
+import { supabase } from '../../../config/supabase';
+import { useToggleWantToRead } from '../../books/hooks/useToggleWantToRead';
+import type { UserBook } from '../../../services/books';
 import heartIcon from '../../../../assets/heart.png';
 import searchIcon from '../../../../assets/search.png';
 
@@ -35,6 +38,55 @@ export default function HomeScreen() {
   const [paginating, setPaginating] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [viewerShelfMap, setViewerShelfMap] = useState<Record<string, { id: string; status: UserBook['status'] }>>({});
+
+  const handleToggleWantToRead = useToggleWantToRead({
+    currentUserId: user?.id,
+    viewerShelfMap,
+    setViewerShelfMap,
+  });
+
+  const hydrateViewerShelfMap = useCallback(
+    async (nextCards: ActivityFeedItem[], replace: boolean) => {
+      if (!user?.id) {
+        if (replace) setViewerShelfMap({});
+        return;
+      }
+      const bookIds = Array.from(
+        new Set(
+          nextCards
+            .map((item) => item.userBook.book_id)
+            .filter((bookId): bookId is string => !!bookId)
+        )
+      );
+      if (bookIds.length === 0) {
+        if (replace) setViewerShelfMap({});
+        return;
+      }
+      const missingIds = replace ? bookIds : bookIds.filter((id) => !viewerShelfMap[id]);
+      if (missingIds.length === 0) return;
+
+      const { data, error } = await supabase
+        .from('user_books')
+        .select('id, book_id, status')
+        .eq('user_id', user.id)
+        .in('book_id', missingIds);
+
+      if (error) {
+        console.error('Error loading viewer shelf status:', error);
+        if (replace) setViewerShelfMap({});
+        return;
+      }
+
+      const map: Record<string, { id: string; status: UserBook['status'] }> = {};
+      (data || []).forEach((item: any) => {
+        map[item.book_id] = { id: item.id, status: item.status };
+      });
+
+      setViewerShelfMap((prev) => (replace ? map : { ...prev, ...map }));
+    },
+    [user?.id, viewerShelfMap]
+  );
 
   const loadInitial = useCallback(async () => {
     if (!user) return;
@@ -46,6 +98,7 @@ export default function HomeScreen() {
       setCards(result.cards);
       setCursor(result.nextCursor);
       setHasMore(result.cards.length === 20);
+      await hydrateViewerShelfMap(result.cards, true);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       const offlineHint =
@@ -59,11 +112,17 @@ export default function HomeScreen() {
     } finally {
       setInitialLoading(false);
     }
-  }, [user]);
+  }, [user, hydrateViewerShelfMap]);
 
   useEffect(() => {
     loadInitial();
   }, [loadInitial]);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setViewerShelfMap({});
+    }
+  }, [user?.id]);
 
   useFocusEffect(
     useCallback(() => {
@@ -99,6 +158,7 @@ export default function HomeScreen() {
       setCards(result.cards);
       setCursor(result.nextCursor);
       setHasMore(result.cards.length === 20);
+      await hydrateViewerShelfMap(result.cards, true);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       const offlineHint =
@@ -112,7 +172,7 @@ export default function HomeScreen() {
     } finally {
       setRefreshing(false);
     }
-  }, [user]);
+  }, [user, hydrateViewerShelfMap]);
 
   const handleLoadMore = useCallback(async () => {
     if (!user || !hasMore || paginating || refreshing || initialLoading) return;
@@ -126,6 +186,7 @@ export default function HomeScreen() {
       setCards((prev) => [...prev, ...result.cards]);
       setCursor(result.nextCursor);
       setHasMore(result.cards.length === 20);
+      await hydrateViewerShelfMap(result.cards, false);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       const offlineHint =
@@ -139,7 +200,7 @@ export default function HomeScreen() {
     } finally {
       setPaginating(false);
     }
-  }, [user, hasMore, paginating, refreshing, initialLoading, cursor]);
+  }, [user, hasMore, paginating, refreshing, initialLoading, cursor, hydrateViewerShelfMap]);
 
   const formatDateRange = useCallback(
     (startDate: string | null, endDate: string | null): string | null =>
@@ -196,10 +257,23 @@ export default function HomeScreen() {
           })
         }
         formatDateRange={formatDateRange}
-        viewerStatus={null}
+        viewerStatus={
+          item.userBook.book_id ? viewerShelfMap[item.userBook.book_id]?.status || null : null
+        }
+        onToggleWantToRead={
+          user?.id ? () => handleToggleWantToRead(item.userBook) : undefined
+        }
       />
     ),
-    [formatDateRange, getActionTextForItem, handleBookPress, navigation]
+    [
+      formatDateRange,
+      getActionTextForItem,
+      handleBookPress,
+      handleToggleWantToRead,
+      navigation,
+      user?.id,
+      viewerShelfMap,
+    ]
   );
 
   const listEmptyComponent = useMemo(() => {

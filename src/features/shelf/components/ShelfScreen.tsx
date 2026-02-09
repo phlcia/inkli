@@ -427,7 +427,7 @@ export default function ShelfScreen({
         {canShowRecommendations && (
           <TouchableOpacity style={styles.tab} onPress={() => setActiveTab('recommended')}>
             <Text style={[styles.tabText, activeTab === 'recommended' && styles.tabTextActive]}>
-              Recommended
+              Recommended for You
             </Text>
           </TouchableOpacity>
         )}

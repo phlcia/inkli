@@ -14,6 +14,8 @@ export type FriendsRankingsSectionProps = {
   onShowMore: () => void;
   onPressUser: (userId: string, username: string) => void;
   onPressBook: (userBook: UserBook) => void;
+  viewerStatus?: UserBook['status'] | null;
+  onToggleWantToRead?: () => void;
   sectionRef?: RefObject<View>;
   styles: Record<string, object>;
   FriendsRankingSkeletonCard: React.ComponentType;
@@ -29,6 +31,8 @@ export default function FriendsRankingsSection({
   onShowMore,
   onPressUser,
   onPressBook,
+  viewerStatus = null,
+  onToggleWantToRead,
   sectionRef,
   styles,
   FriendsRankingSkeletonCard,
@@ -77,7 +81,8 @@ export default function FriendsRankingsSection({
             onPressBook={onPressBook}
             onPressUser={() => onPressUser(userProfile.user_id, userProfile.username)}
             formatDateRange={formatDateRange}
-            viewerStatus={null}
+            viewerStatus={viewerStatus}
+            onToggleWantToRead={onToggleWantToRead}
             showCommentsLink={true}
             showCommentIcon={true}
             hideActionText={true}
