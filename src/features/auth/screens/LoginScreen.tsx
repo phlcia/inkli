@@ -11,6 +11,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { useAuth } from '../../../contexts/AuthContext';
 import { colors, typography } from '../../../config/theme';
 import { supabase } from '../../../config/supabase';
+import { getAuthRedirectUri } from '../../../utils/authRedirect';
 
 // This is important for the OAuth flow to work properly
 WebBrowser.maybeCompleteAuthSession();
@@ -46,10 +47,11 @@ export default function LoginScreen() {
   const handleGoogleSignIn = async () => {
     try {
       setLoading(true);
+      const redirectUri = getAuthRedirectUri();
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: 'com.inkli.app://',
+          redirectTo: redirectUri,
           skipBrowserRedirect: false,
         }
       });
@@ -59,7 +61,7 @@ export default function LoginScreen() {
       if (data?.url) {
         const result = await WebBrowser.openAuthSessionAsync(
           data.url,
-          'com.inkli.app://'
+          redirectUri
         );
 
         if (result.type === 'success') {
