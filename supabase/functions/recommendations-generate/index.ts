@@ -244,7 +244,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const token = authHeader.replace('Bearer ', '')
-    const serviceRoleKey = Deno.env.get('EXPO_SERVICE_ROLE_KEY') ?? ''
+    const serviceRoleKey = Deno.env.get('SERVICE_ROLE_KEY') ?? ''
 
     const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey, {
       global: {
@@ -259,7 +259,7 @@ Deno.serve(async (req: Request) => {
       : supabaseAuth
 
     const { data: { user }, error: authError } = await supabaseAuth.auth.getUser(token)
-    
+
     if (authError || !user) {
       return new Response(
         JSON.stringify({ error: 'Unauthorized' }),
@@ -459,15 +459,15 @@ Deno.serve(async (req: Request) => {
 
       const recommendations = (popularBooks || []).map(book => ({
         book_id: book.id,
-          book: {
-            id: book.id,
-            title: book.title,
-            authors: book.authors,
-            cover_url: book.cover_url,
-            open_library_id: book.open_library_id || null,
-            isbn_10: book.isbn_10 || null,
-            isbn_13: book.isbn_13 || null,
-          },
+        book: {
+          id: book.id,
+          title: book.title,
+          authors: book.authors,
+          cover_url: book.cover_url,
+          open_library_id: book.open_library_id || null,
+          isbn_10: book.isbn_10 || null,
+          isbn_13: book.isbn_13 || null,
+        },
         reasoning: 'Popular book',
         score: (book.global_win_rate || 0) * (book.total_comparisons || 0),
       }))
@@ -488,7 +488,7 @@ Deno.serve(async (req: Request) => {
 
     // Calculate win rate per book
     const bookStats = new Map<string, { wins: number; total: number }>()
-    
+
     for (const comp of userComparisons) {
       // Count wins
       const winnerStats = bookStats.get(comp.winner_book_id) || { wins: 0, total: 0 }
@@ -773,9 +773,9 @@ Deno.serve(async (req: Request) => {
     console.error('Edge function error:', error)
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : 'Internal server error' }),
-      { 
+      {
         status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
     )
   }

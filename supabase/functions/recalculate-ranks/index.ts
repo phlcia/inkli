@@ -30,7 +30,7 @@ Deno.serve(async (req: Request) => {
     // @ts-expect-error - Deno.env is available in Supabase Edge Functions runtime
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
     // @ts-expect-error - Deno.env is available in Supabase Edge Functions runtime
-    const supabaseServiceKey = Deno.env.get('EXPO_SERVICE_ROLE_KEY') ?? ''
+    const supabaseServiceKey = Deno.env.get('SERVICE_ROLE_KEY') ?? ''
 
     if (!supabaseUrl || !supabaseServiceKey) {
       throw new Error('Missing Supabase environment variables')
@@ -39,17 +39,17 @@ Deno.serve(async (req: Request) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
     console.log('Running full rank recalculation...')
-    
+
     // Call the database function to recalculate all ranks
     const { error } = await supabase.rpc('recalculate_all_ranks')
 
     if (error) {
       console.error('Recalculation error:', error)
       return new Response(
-        JSON.stringify({ 
+        JSON.stringify({
           error: error.message,
-          details: error 
-        }), 
+          details: error
+        }),
         {
           status: 500,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -58,13 +58,13 @@ Deno.serve(async (req: Request) => {
     }
 
     console.log('Rank recalculation complete')
-    
+
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         success: true,
         message: 'All ranks recalculated successfully',
         timestamp: new Date().toISOString()
-      }), 
+      }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       }
@@ -72,10 +72,10 @@ Deno.serve(async (req: Request) => {
   } catch (error) {
     console.error('Function error:', error)
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         error: error instanceof Error ? error.message : 'Unknown error',
-        details: error 
-      }), 
+        details: error
+      }),
       {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
