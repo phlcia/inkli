@@ -786,6 +786,9 @@ export default function BookDetailScreen() {
               onProgressChange={(progress) => {
                 setReadingProgress(progress);
                 void refreshBookStatus();
+                if (progress >= 100 && currentStatus === 'currently_reading') {
+                  void handleIconPress('read');
+                }
               }}
               disabled={Boolean(loading)}
             />
