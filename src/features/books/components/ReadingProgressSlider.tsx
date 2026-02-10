@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, PanResponder } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Text, StyleSheet, TextInput } from 'react-native';
 import { colors, typography } from '../../../config/theme';
 import { updateReadingProgress } from '../../../services/books';
 
@@ -17,8 +17,8 @@ function clampProgress(value: number): number {
   return Math.max(0, Math.min(100, value));
 }
 
-function snapToStep(value: number, step: number): number {
-  return Math.round(value / step) * step;
+function sanitizeInput(text: string): string {
+  return text.replace(/[^0-9]/g, '').slice(0, 3);
 }
 
 export default function ReadingProgressSlider({
@@ -28,19 +28,18 @@ export default function ReadingProgressSlider({
   onProgressChange,
   disabled = false,
 }: ReadingProgressSliderProps) {
-  const [trackWidth, setTrackWidth] = useState(1);
-  const [trackPageX, setTrackPageX] = useState(0);
   const [displayProgress, setDisplayProgress] = useState(clampProgress(initialProgress));
+  const [inputValue, setInputValue] = useState(String(clampProgress(initialProgress)));
   const [pendingProgress, setPendingProgress] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const lastSavedRef = useRef(clampProgress(initialProgress));
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
-  const trackRef = useRef<View | null>(null);
 
   useEffect(() => {
     const normalized = clampProgress(initialProgress);
     lastSavedRef.current = normalized;
     setDisplayProgress(normalized);
+    setInputValue(String(normalized));
   }, [initialProgress]);
 
   useEffect(() => {
@@ -71,61 +70,55 @@ export default function ReadingProgressSlider({
     };
   }, [pendingProgress, userId, bookId, onProgressChange]);
 
-  const updateFromX = useCallback(
-    (x: number, snap: boolean) => {
-      const raw = clampProgress((x / trackWidth) * 100);
-      const next = snap ? clampProgress(snapToStep(raw, 5)) : raw;
-      setDisplayProgress(next);
-      if (snap) {
-        setPendingProgress(next);
-      }
-    },
-    [trackWidth]
-  );
-
-  const panResponder = useMemo(() =>
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => !disabled,
-      onMoveShouldSetPanResponder: () => !disabled,
-      onPanResponderGrant: (evt) => {
-        const localX = evt.nativeEvent.locationX;
-        updateFromX(localX, false);
-      },
-      onPanResponderMove: (_evt, gestureState) => {
-        const localX = gestureState.moveX - trackPageX;
-        updateFromX(localX, false);
-      },
-      onPanResponderRelease: (_evt, gestureState) => {
-        const localX = gestureState.moveX - trackPageX;
-        updateFromX(localX, true);
-      },
-      onPanResponderTerminationRequest: () => true,
-      onPanResponderTerminate: (_evt, gestureState) => {
-        const localX = gestureState.moveX - trackPageX;
-        updateFromX(localX, true);
-      },
-    }),
-    [disabled, trackPageX, updateFromX]
-  );
+  const handleInputChange = (text: string) => {
+    if (disabled) return;
+    const sanitized = sanitizeInput(text);
+    setInputValue(sanitized);
+    if (sanitized.length === 0) {
+      setDisplayProgress(0);
+      setPendingProgress(null);
+      return;
+    }
+    const numeric = clampProgress(Number(sanitized));
+    setDisplayProgress(numeric);
+    setPendingProgress(numeric);
+  };
 
   return (
     <View style={styles.container}>
-      <View style={styles.headerRow}>
-        <Text style={styles.percentText}>Read: {Math.round(displayProgress)}%</Text>
-        {saving && <Text style={styles.savingText}>saving...</Text>}
+      <View style={styles.inputRow}>
+        <Text style={styles.inputLabel}>Percent read:</Text>
+        <View style={styles.inputRight}>
+          <View style={[styles.inputWrapper, disabled && styles.inputDisabled]}>
+            <TextInput
+              value={inputValue}
+              onChangeText={handleInputChange}
+              onBlur={() => {
+                const fallback = clampProgress(lastSavedRef.current);
+                if (inputValue.length === 0) {
+                  setInputValue(String(fallback));
+                  setDisplayProgress(fallback);
+                  return;
+                }
+                const clamped = clampProgress(Number(inputValue));
+                setInputValue(String(clamped));
+                setDisplayProgress(clamped);
+                setPendingProgress(clamped);
+              }}
+              editable={!disabled}
+              keyboardType="number-pad"
+              maxLength={3}
+              placeholder="1-100"
+              placeholderTextColor="#9B9B9B"
+              style={styles.input}
+            />
+            <Text style={styles.inputSuffix}>%</Text>
+          </View>
+          {saving && <Text style={styles.savingText}>saving...</Text>}
+        </View>
       </View>
 
-      <View
-        ref={trackRef}
-        style={[styles.trackContainer, disabled && styles.trackDisabled]}
-        onLayout={() => {
-          trackRef.current?.measure((_x, _y, width, _height, pageX) => {
-            setTrackWidth(width || 1);
-            setTrackPageX(pageX || 0);
-          });
-        }}
-        {...panResponder.panHandlers}
-      >
+      <View style={[styles.trackContainer, disabled && styles.trackDisabled]}>
         <View style={styles.track} />
         <View
           style={[
@@ -142,15 +135,6 @@ export default function ReadingProgressSlider({
             ]}
           />
         ))}
-        <View
-          style={[
-            styles.thumb,
-            {
-              left: `${clampProgress(displayProgress)}%`,
-              transform: [{ translateX: -14 }],
-            },
-          ]}
-        />
       </View>
     </View>
   );
@@ -160,23 +144,58 @@ const styles = StyleSheet.create({
   container: {
     width: '100%',
   },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  percentText: {
-    fontSize: 16,
-    fontFamily: typography.body,
-    color: colors.brownText,
-    fontWeight: '600',
-  },
   savingText: {
     fontSize: 12,
     fontFamily: typography.body,
     color: colors.brownText,
     opacity: 0.6,
+  },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    marginBottom: 12,
+    gap: 6,
+  },
+  inputLabel: {
+    fontSize: 16,
+    fontFamily: typography.body,
+    color: colors.brownText,
+    fontWeight: '600',
+  },
+  inputRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E1E1E1',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: colors.white,
+    minWidth: 60,
+    justifyContent: 'flex-start',
+  },
+  inputDisabled: {
+    opacity: 0.6,
+  },
+  input: {
+    fontSize: 16,
+    fontFamily: typography.body,
+    color: colors.brownText,
+    padding: 0,
+    textAlign: 'left',
+    minWidth: 28,
+  },
+  inputSuffix: {
+    marginLeft: 6,
+    fontSize: 14,
+    fontFamily: typography.body,
+    color: colors.brownText,
   },
   trackContainer: {
     height: 36,
@@ -204,17 +223,5 @@ const styles = StyleSheet.create({
     top: 13,
     marginLeft: -1,
     backgroundColor: '#C8C8C8',
-  },
-  thumb: {
-    position: 'absolute',
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: colors.white,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
   },
 });
