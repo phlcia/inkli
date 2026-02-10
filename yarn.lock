@@ -1420,6 +1420,11 @@
   dependencies:
     invariant "^2.2.4"
 
+"@react-native-google-signin/google-signin@^16.1.1":
+  version "16.1.1"
+  resolved "https://registry.npmjs.org/@react-native-google-signin/google-signin/-/google-signin-16.1.1.tgz"
+  integrity sha512-lcHBnZ7uvCJiWtGooKOklo/4okqszWvJ0BatW1UaIe+ynmpVpp1lyJkvv1Mj08d39k4soaWuhZVNKjD/RFL34Q==
+
 "@react-native/assets-registry@0.81.5":
   version "0.81.5"
   resolved "https://registry.npmjs.org/@react-native/assets-registry/-/assets-registry-0.81.5.tgz"
@@ -2984,7 +2989,7 @@ expo-web-browser@~15.0.10:
   resolved "https://registry.npmjs.org/expo-web-browser/-/expo-web-browser-15.0.10.tgz"
   integrity sha512-fvDhW4bhmXAeWFNFiInmsGCK83PAqAcQaFyp/3pE/jbdKmFKoRCWr46uZGIfN4msLK/OODhaQ/+US7GSJNDHJg==
 
-expo@*, expo@>=52.0.0, expo@~54.0.30:
+expo@*, expo@>=52.0.0, expo@>=52.0.40, expo@~54.0.30:
   version "54.0.31"
   resolved "https://registry.npmjs.org/expo/-/expo-54.0.31.tgz"
   integrity sha512-kQ3RDqA/a59I7y+oqQGyrPbbYlgPMUdKBOgvFLpoHbD2bCM+F75i4N0mUijy7dG5F/CUCu2qHmGGUCXBbMDkCg==

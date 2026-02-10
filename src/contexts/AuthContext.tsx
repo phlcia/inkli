@@ -5,6 +5,7 @@ import * as AppleAuthentication from 'expo-apple-authentication';
 import * as WebBrowser from 'expo-web-browser';
 import { Platform } from 'react-native';
 import { getAuthRedirectUri } from '../utils/authRedirect';
+import { GoogleSignin } from '@react-native-google-signin/google-signin';
 
 // Complete auth session for better UX
 WebBrowser.maybeCompleteAuthSession();
@@ -28,6 +29,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Configure Google Sign-In
+    // Client IDs are read from Info.plist (set by config plugin)
+    // This is secure because client IDs are public (no secrets involved)
+    try {
+      GoogleSignin.configure({
+        iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+        webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+      });
+    } catch (error) {
+      console.warn('Google Sign-In configuration warning:', error);
+      // Non-fatal - will show error when user tries to sign in
+    }
+
     // Check for existing session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
@@ -66,7 +80,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     readingInterests?: string[]
   ) => {
     try {
-      
+
       // Sign up with username and other data in metadata (trigger will use it)
       const { data, error } = await supabase.auth.signUp({
         email,
@@ -103,7 +117,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (profileError || !profile) {
         console.error('Profile not created by trigger, creating manually...');
-        
+
         // Fallback: create manually if trigger failed
         const { error: insertError } = await supabase
           .from('user_profiles')
@@ -225,7 +239,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Extract code from URL (could be in query params or hash)
         const url = new URL(result.url);
         let code = url.searchParams.get('code');
-        
+
         // If not in query params, check hash fragment
         if (!code && url.hash) {
           const hashParams = new URLSearchParams(url.hash.substring(1));
@@ -256,8 +270,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(sessionData.user);
       }
     } catch (error: any) {
-      if (error.code === 'ERR_REQUEST_CANCELED' || error.code === 'ERR_CANCELED' || 
-          error.message?.includes('cancelled') || error.message?.includes('cancel')) {
+      if (error.code === 'ERR_REQUEST_CANCELED' || error.code === 'ERR_CANCELED' ||
+        error.message?.includes('cancelled') || error.message?.includes('cancel')) {
         // User cancelled, don't throw error
         return;
       }
@@ -268,73 +282,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signInWithGoogle = async () => {
     try {
-      const redirectUri = getAuthRedirectUri();
+      // Use native Google Sign-In SDK
+      // Client IDs are configured in Info.plist (secure, public values)
+      await GoogleSignin.hasPlayServices();
+      await GoogleSignin.signIn();
+      const { idToken } = await GoogleSignin.getTokens();
 
-      // Use Supabase's OAuth method with web-based flow
-      const { data, error } = await supabase.auth.signInWithOAuth({
+      if (!idToken) {
+        throw new Error('Google Sign In failed - no ID token received');
+      }
+
+      // Sign in with Supabase using the Google ID token
+      const { data, error } = await supabase.auth.signInWithIdToken({
         provider: 'google',
-        options: {
-          redirectTo: redirectUri,
-          skipBrowserRedirect: false, // Use browser-based flow
-        },
+        token: idToken,
       });
 
-      if (error) {
-        console.error('Google sign-in error:', error);
-        throw error;
-      }
+      if (error) throw error;
 
-      // Open the OAuth URL in browser
-      if (data.url) {
-        const result = await WebBrowser.openAuthSessionAsync(
-          data.url,
-          redirectUri
-        );
+      // Ensure profile is created (trigger should handle it, but add fallback)
+      await ensureUserProfile(data.user);
 
-        if (result.type !== 'success') {
-          if (result.type === 'cancel') {
-            // User cancelled, don't throw error
-            return;
-          }
-          throw new Error('Google Sign In was cancelled or failed');
-        }
-
-        // Extract code from URL (could be in query params or hash)
-        const url = new URL(result.url);
-        let code = url.searchParams.get('code');
-        
-        // If not in query params, check hash fragment
-        if (!code && url.hash) {
-          const hashParams = new URLSearchParams(url.hash.substring(1));
-          code = hashParams.get('code');
-        }
-
-        // If still not found, try to extract from the full URL string as fallback
-        if (!code) {
-          const codeMatch = result.url.match(/[#&]code=([^&]+)/);
-          code = codeMatch?.[1] ?? null;
-        }
-
-        if (!code) {
-          throw new Error('No authorization code received');
-        }
-
-        // Exchange code for session
-        const { data: sessionData, error: sessionError } = await supabase.auth.exchangeCodeForSession(code);
-
-        if (sessionError) throw sessionError;
-
-        // Ensure profile is created
-        if (sessionData.user) {
-          await ensureUserProfile(sessionData.user);
-        }
-
-        setSession(sessionData.session);
-        setUser(sessionData.user);
-      }
+      setSession(data.session);
+      setUser(data.user);
     } catch (error: any) {
-      if (error.code === 'ERR_REQUEST_CANCELED' || error.code === 'ERR_CANCELED' || 
-          error.message?.includes('cancelled') || error.message?.includes('cancel')) {
+      // Handle user cancellation
+      if (error.code === 'SIGN_IN_CANCELLED' ||
+        error.code === '-5' ||
+        error.code === 'ERR_REQUEST_CANCELED' ||
+        error.code === 'ERR_CANCELED' ||
+        error.message?.includes('cancelled') ||
+        error.message?.includes('cancel')) {
         // User cancelled, don't throw error
         return;
       }
@@ -365,10 +343,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const firstName = nameParts[0] || metadata.first_name || '';
         const lastName = nameParts.slice(1).join(' ') || metadata.last_name || '';
         const email = user.email || '';
-        const username = metadata.preferred_username || 
-                        metadata.username || 
-                        email.split('@')[0] || 
-                        'user_' + user.id.substring(0, 8);
+        const username = metadata.preferred_username ||
+          metadata.username ||
+          email.split('@')[0] ||
+          'user_' + user.id.substring(0, 8);
 
         // Create profile manually
         const { error: insertError } = await supabase
