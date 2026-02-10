@@ -21,6 +21,7 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import { colors, typography } from '../../../config/theme';
 import { useAuth } from '../../../contexts/AuthContext';
 import { ProfileStackParamList } from '../../../navigation/ProfileStackNavigator';
+import { LeaderboardStackParamList } from '../../../navigation/LeaderboardStackNavigator';
 import { SearchStackParamList } from '../../../navigation/SearchStackNavigator';
 import { FollowersFollowingParams } from '../../../navigation/types';
 import {
@@ -46,7 +47,10 @@ export default function FollowersFollowingScreen() {
   const { user: currentUser } = useAuth();
   type FollowersFollowingNavigation = CompositeNavigationProp<
     StackNavigationProp<ProfileStackParamList, 'FollowersFollowing'>,
-    StackNavigationProp<SearchStackParamList, 'FollowersFollowing'>
+    CompositeNavigationProp<
+      StackNavigationProp<SearchStackParamList, 'FollowersFollowing'>,
+      StackNavigationProp<LeaderboardStackParamList, 'FollowersFollowing'>
+    >
   >;
 
   const navigation = useNavigation<FollowersFollowingNavigation>();

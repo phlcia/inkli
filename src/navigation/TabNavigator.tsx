@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { StackActions } from '@react-navigation/native';
 import { Image, View, Text, StyleSheet } from 'react-native';
 import { colors, typography } from '../config/theme';
 import { useAuth } from '../contexts/AuthContext';
@@ -7,7 +8,7 @@ import { supabase } from '../config/supabase';
 import HomeStackNavigator from './HomeStackNavigator';
 import YourShelfStackNavigator from './YourShelfStackNavigator';
 import SearchStackNavigator from './SearchStackNavigator';
-import LeaderboardScreen from '../features/leaderboard/screens/LeaderboardScreen';
+import LeaderboardStackNavigator from './LeaderboardStackNavigator';
 import ProfileStackNavigator from './ProfileStackNavigator';
 import homeIcon from '../../assets/home.png';
 import yourShelfIcon from '../../assets/your shelf.png';
@@ -144,7 +145,7 @@ export default function TabNavigator() {
       />
       <Tab.Screen
         name="Leaderboard"
-        component={LeaderboardScreen}
+        component={LeaderboardStackNavigator}
         options={{
           headerShown: false,
           tabBarIcon: ({ focused }) => (
@@ -167,6 +168,17 @@ export default function TabNavigator() {
           headerShown: false,
           tabBarIcon: ({ focused }) => <ProfileTabIcon focused={focused} />,
         }}
+        listeners={({ navigation, route }) => ({
+          tabPress: () => {
+            const state = route.state as any;
+            if (state?.type === 'stack' && state.index > 0 && state.key) {
+              navigation.dispatch({
+                ...StackActions.popToTop(),
+                target: state.key,
+              });
+            }
+          },
+        })}
       />
     </Tab.Navigator>
   );

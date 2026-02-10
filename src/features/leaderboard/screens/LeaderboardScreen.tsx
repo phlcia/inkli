@@ -10,7 +10,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { StackActions, useNavigation } from '@react-navigation/native';
 import { colors, typography } from '../../../config/theme';
 import { supabase } from '../../../config/supabase';
 import { useAuth } from '../../../contexts/AuthContext';
@@ -113,14 +113,20 @@ export default function LeaderboardScreen() {
   const handlePressUser = useCallback(
     (userId: string, username: string) => {
       if (currentUser?.id === userId) {
+        const state = navigation.getState?.();
+        const profileRoute = state?.routes?.find((route: any) => route.name === 'Profile');
+        const profileState = (profileRoute?.state as any) || null;
+        if (profileState?.key) {
+          navigation.dispatch({
+            ...StackActions.popToTop(),
+            target: profileState.key,
+          });
+        }
         navigation.navigate('Profile', { screen: 'ProfileMain' });
         return;
       }
 
-      navigation.navigate('Profile', {
-        screen: 'UserProfile',
-        params: { userId, username, originTab: 'Leaderboard' },
-      });
+      navigation.navigate('UserProfile', { userId, username });
     },
     [currentUser?.id, navigation]
   );
@@ -180,10 +186,7 @@ export default function LeaderboardScreen() {
                   user.user_id === currentUser?.id && styles.currentUserRow
                 ]}
                 activeOpacity={user.user_id === currentUser?.id ? 1 : 0.7}
-                onPress={() => {
-                  if (user.user_id === currentUser?.id) return;
-                  handlePressUser(user.user_id, user.username);
-                }}
+                onPress={() => handlePressUser(user.user_id, user.username)}
               >
                 <Text style={styles.rank}>#{user.global_rank}</Text>
                 {user.profile_photo_url ? (
