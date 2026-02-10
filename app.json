@@ -15,7 +15,11 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.inkli.app"
+      "bundleIdentifier": "com.inkli.app",
+      "infoPlist": {
+        "GIDClientID": "1095402736688-7osnai7gdf6ka6ng530ij0q83j06ju8l.apps.googleusercontent.com",
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -34,7 +38,10 @@
               "scheme": "inkli"
             }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ]
     },
@@ -42,7 +49,18 @@
       "favicon": "./assets/icon.png"
     },
     "plugins": [
-      "expo-web-browser"
-    ]
+      "expo-web-browser",
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.1095402736688-7osnai7gdf6ka6ng530ij0q83j06ju8l"
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "9ed75875-385f-41e2-a97b-c163e9ebf418"
+      }
+    }
   }
 }
