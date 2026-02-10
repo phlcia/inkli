@@ -1,9 +1,13 @@
 import React from 'react';
 import { useRoute, RouteProp } from '@react-navigation/native';
 import ShelfScreen from '../../shelf/components/ShelfScreen';
-import { SearchStackParamList } from '../../../navigation/SearchStackNavigator';
-
-type UserShelfRoute = RouteProp<SearchStackParamList, 'UserShelf'>;
+type UserShelfRoute = RouteProp<{
+  UserShelf: {
+    userId: string;
+    username?: string;
+    initialTab?: 'read' | 'currently_reading' | 'want_to_read';
+  };
+}, 'UserShelf'>;
 
 export default function UserShelfScreen() {
   const route = useRoute<UserShelfRoute>();

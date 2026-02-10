@@ -277,16 +277,23 @@ export default function UserProfileScreen() {
         currentUser?.id
       );
 
-      // Navigate to BookDetailScreen
-      (navigation as any).navigate('Search', {
-        screen: 'BookDetail',
-        params: {
-          book: {
-            ...book,
-            userBook: userBookData || null,
-          },
+      const target = {
+        book: {
+          ...book,
+          userBook: userBookData || null,
         },
-      });
+      };
+      const state = navigation.getState?.();
+      if (state?.routeNames?.includes('BookDetail')) {
+        (navigation as any).navigate('BookDetail', target);
+        return;
+      }
+      const parentNav = (navigation as any).getParent?.();
+      if (parentNav?.navigate) {
+        parentNav.navigate('Search', { screen: 'BookDetail', params: target });
+        return;
+      }
+      (navigation as any).navigate('Search', { screen: 'BookDetail', params: target });
     } catch (error) {
       console.error('Error loading book details:', error);
       Alert.alert('Error', 'Could not load book details');
@@ -427,20 +434,22 @@ export default function UserProfileScreen() {
                 title="Read"
                 count={bookCounts.read}
                 onPress={() => {
-                  const parentNav = (navigation as any).getParent?.();
                   const target = {
-                    screen: 'UserShelf',
-                    params: {
-                      userId,
-                      username: userProfile?.username,
-                      initialTab: 'read',
-                    },
+                    userId,
+                    username: userProfile?.username,
+                    initialTab: 'read' as const,
                   };
-                  if (parentNav?.navigate) {
-                    parentNav.navigate('Home', target);
+                  const state = navigation.getState?.();
+                  if (state?.routeNames?.includes('UserShelf')) {
+                    (navigation as any).navigate('UserShelf', target);
                     return;
                   }
-                  (navigation as any).navigate('Home', target);
+                  const parentNav = (navigation as any).getParent?.();
+                  if (parentNav?.navigate) {
+                    parentNav.navigate('Home', { screen: 'UserShelf', params: target });
+                    return;
+                  }
+                  (navigation as any).navigate('Home', { screen: 'UserShelf', params: target });
                 }}
               />
               <ProfileShelfCard
@@ -448,20 +457,22 @@ export default function UserProfileScreen() {
                 title="Currently Reading"
                 count={bookCounts.currently_reading}
                 onPress={() => {
-                  const parentNav = (navigation as any).getParent?.();
                   const target = {
-                    screen: 'UserShelf',
-                    params: {
-                      userId,
-                      username: userProfile?.username,
-                      initialTab: 'currently_reading',
-                    },
+                    userId,
+                    username: userProfile?.username,
+                    initialTab: 'currently_reading' as const,
                   };
-                  if (parentNav?.navigate) {
-                    parentNav.navigate('Home', target);
+                  const state = navigation.getState?.();
+                  if (state?.routeNames?.includes('UserShelf')) {
+                    (navigation as any).navigate('UserShelf', target);
                     return;
                   }
-                  (navigation as any).navigate('Home', target);
+                  const parentNav = (navigation as any).getParent?.();
+                  if (parentNav?.navigate) {
+                    parentNav.navigate('Home', { screen: 'UserShelf', params: target });
+                    return;
+                  }
+                  (navigation as any).navigate('Home', { screen: 'UserShelf', params: target });
                 }}
               />
               <ProfileShelfCard
@@ -469,20 +480,22 @@ export default function UserProfileScreen() {
                 title="Want to Read"
                 count={bookCounts.want_to_read}
                 onPress={() => {
-                  const parentNav = (navigation as any).getParent?.();
                   const target = {
-                    screen: 'UserShelf',
-                    params: {
-                      userId,
-                      username: userProfile?.username,
-                      initialTab: 'want_to_read',
-                    },
+                    userId,
+                    username: userProfile?.username,
+                    initialTab: 'want_to_read' as const,
                   };
-                  if (parentNav?.navigate) {
-                    parentNav.navigate('Home', target);
+                  const state = navigation.getState?.();
+                  if (state?.routeNames?.includes('UserShelf')) {
+                    (navigation as any).navigate('UserShelf', target);
                     return;
                   }
-                  (navigation as any).navigate('Home', target);
+                  const parentNav = (navigation as any).getParent?.();
+                  if (parentNav?.navigate) {
+                    parentNav.navigate('Home', { screen: 'UserShelf', params: target });
+                    return;
+                  }
+                  (navigation as any).navigate('Home', { screen: 'UserShelf', params: target });
                 }}
               />
             </View>
