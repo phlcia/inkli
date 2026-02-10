@@ -56,7 +56,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const token = authHeader.replace('Bearer ', '')
-    const serviceRoleKey = Deno.env.get('EXPO_SERVICE_ROLE_KEY') ?? ''
+    const serviceRoleKey = Deno.env.get('SERVICE_ROLE_KEY') ?? ''
     isServiceRoleConfigured = Boolean(serviceRoleKey)
     isServiceRoleDistinct = Boolean(serviceRoleKey && serviceRoleKey !== supabaseAnonKey)
     console.log('comparisons-create auth config', {
@@ -74,7 +74,7 @@ Deno.serve(async (req: Request) => {
 
     // Get authenticated user
     const { data: { user }, error: authError } = await supabaseAuth.auth.getUser(token)
-    
+
     if (authError || !user) {
       return new Response(
         JSON.stringify({ error: 'Unauthorized' }),
@@ -186,8 +186,8 @@ Deno.serve(async (req: Request) => {
 
     // Database triggers automatically update book and user stats
     return new Response(
-      JSON.stringify({ 
-        success: true, 
+      JSON.stringify({
+        success: true,
         comparison,
         message: 'Comparison created successfully'
       }),
@@ -204,9 +204,9 @@ Deno.serve(async (req: Request) => {
           serviceRoleDistinctFromAnon: isServiceRoleDistinct,
         },
       }),
-      { 
+      {
         status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
     )
   }

@@ -134,7 +134,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const token = authHeader.replace('Bearer ', '')
-    const serviceRoleKey = Deno.env.get('EXPO_SERVICE_ROLE_KEY') ?? ''
+    const serviceRoleKey = Deno.env.get('SERVICE_ROLE_KEY') ?? ''
 
     const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey, {
       global: {
@@ -149,7 +149,7 @@ Deno.serve(async (req: Request) => {
       : supabaseAuth
 
     const { data: { user }, error: authError } = await supabaseAuth.auth.getUser(token)
-    
+
     if (authError || !user) {
       return new Response(
         JSON.stringify({ error: 'Unauthorized' }),
@@ -242,7 +242,7 @@ Deno.serve(async (req: Request) => {
     // Reset rankings_since_last_refresh counter first
     const { error: updateError } = await supabaseDb
       .from('user_profiles')
-      .update({ 
+      .update({
         rankings_since_last_refresh: 0,
         last_refresh_at: new Date().toISOString()
       })
@@ -255,7 +255,7 @@ Deno.serve(async (req: Request) => {
     // Import and use the same logic as recommendations-generate
     // For MVP simplicity, we'll duplicate the logic here
     // (In production, you could extract to a shared module)
-    
+
     // Get user's comparison history
     const { data: comparisons, error: comparisonsError } = await supabaseDb
       .from('comparisons')
@@ -380,7 +380,7 @@ Deno.serve(async (req: Request) => {
 
     // Calculate win rate per book (same logic as generate)
     const bookStats = new Map<string, { wins: number; total: number }>()
-    
+
     for (const comp of userComparisons) {
       const winnerStats = bookStats.get(comp.winner_book_id) || { wins: 0, total: 0 }
       winnerStats.wins++
@@ -637,7 +637,7 @@ Deno.serve(async (req: Request) => {
     )
 
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         success: true,
         recommendations: storedRecommendations
       }),
@@ -648,9 +648,9 @@ Deno.serve(async (req: Request) => {
     console.error('Edge function error:', error)
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : 'Internal server error' }),
-      { 
+      {
         status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
     )
   }

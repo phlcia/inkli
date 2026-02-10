@@ -48,7 +48,7 @@ Deno.serve(async (req: Request) => {
         },
       },
     })
-    const serviceRoleKey = Deno.env.get('EXPO_SERVICE_ROLE_KEY') ?? ''
+    const serviceRoleKey = Deno.env.get('SERVICE_ROLE_KEY') ?? ''
     const supabaseDb = serviceRoleKey
       ? createClient(supabaseUrl, serviceRoleKey)
       : supabaseAuth
@@ -56,7 +56,7 @@ Deno.serve(async (req: Request) => {
     // Get authenticated user
     const token = authHeader.replace('Bearer ', '')
     const { data: { user }, error: authError } = await supabaseAuth.auth.getUser(token)
-    
+
     if (authError || !user) {
       return new Response(
         JSON.stringify({ error: 'Unauthorized' }),
@@ -70,7 +70,7 @@ Deno.serve(async (req: Request) => {
     // Update user profile to mark quiz as skipped
     const { error: updateError } = await supabaseDb
       .from('user_profiles')
-      .update({ 
+      .update({
         skipped_onboarding_quiz: true,
         completed_onboarding_quiz: false
       })
@@ -132,9 +132,9 @@ Deno.serve(async (req: Request) => {
     console.error('Edge function error:', error)
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : 'Internal server error' }),
-      { 
+      {
         status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
     )
   }
