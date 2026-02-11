@@ -1,7 +1,7 @@
 # Recalculate Ranks Edge Function
 
 This Supabase Edge Function recalculates all user ranks in the system. It's useful for:
-- Periodic maintenance (run daily via cron)
+- Periodic maintenance (run hourly via cron)
 - Data integrity checks
 - Recovering from any data inconsistencies
 
@@ -28,8 +28,8 @@ In Supabase Dashboard, go to Database > Cron Jobs and add:
 
 ```sql
 SELECT cron.schedule(
-  'daily-rank-recalc',
-  '0 3 * * *',  -- Run at 3am daily
+  'hourly-rank-recalc',
+  '0 * * * *',  -- Run hourly at minute 0
   $$SELECT net.http_post(
     url := 'https://YOUR_PROJECT_REF.supabase.co/functions/v1/recalculate-ranks',
     headers := jsonb_build_object(
@@ -43,8 +43,8 @@ SELECT cron.schedule(
 Or simply call the RPC function directly:
 ```sql
 SELECT cron.schedule(
-  'daily-rank-recalc',
-  '0 3 * * *',
+  'hourly-rank-recalc',
+  '0 * * * *',
   $$SELECT recalculate_all_ranks()$$
 );
 ```
@@ -53,6 +53,4 @@ SELECT cron.schedule(
 
 The function requires these environment variables (set automatically by Supabase):
 - `SUPABASE_URL` - Your Supabase project URL
-- `EXPO_SERVICE_ROLE_KEY` - Service role key (bypasses RLS)
-
-
+- `SERVICE_ROLE_KEY` - Service role key (bypasses RLS)

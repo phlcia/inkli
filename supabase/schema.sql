@@ -1455,7 +1455,7 @@ BEGIN
     SELECT
       user_id,
       books_read_count,
-      DENSE_RANK() OVER (ORDER BY books_read_count DESC, created_at ASC) as new_rank
+      ROW_NUMBER() OVER (ORDER BY books_read_count DESC, created_at ASC, user_id ASC) as new_rank
     FROM user_profiles
     WHERE books_read_count > 0
   )
@@ -1511,13 +1511,14 @@ BEGIN
     FROM user_books
     WHERE user_id = user_profiles.user_id
     AND status = 'read'
-  );
+  )
+  WHERE user_profiles.user_id IS NOT NULL;
 
   WITH ranked_users AS (
     SELECT
       user_id,
       books_read_count,
-      DENSE_RANK() OVER (ORDER BY books_read_count DESC, created_at ASC) as rank
+      ROW_NUMBER() OVER (ORDER BY books_read_count DESC, created_at ASC, user_id ASC) as rank
     FROM user_profiles
     WHERE books_read_count > 0
   )
