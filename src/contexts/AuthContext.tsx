@@ -14,7 +14,7 @@ interface AuthContextType {
   user: User | null;
   session: Session | null;
   loading: boolean;
-  signIn: (email: string, password: string) => Promise<void>;
+  signIn: (identifier: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, username?: string, firstName?: string, lastName?: string, readingInterests?: string[]) => Promise<void>;
   signOut: () => Promise<void>;
   signInWithApple: () => Promise<void>;
@@ -61,7 +61,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  const signIn = async (email: string, password: string) => {
+  const signIn = async (identifier: string, password: string) => {
+    const trimmedIdentifier = identifier.trim();
+    let email = trimmedIdentifier;
+
+    if (!trimmedIdentifier.includes('@')) {
+      const { data, error } = await supabase.functions.invoke('resolve-username', {
+        body: { username: trimmedIdentifier },
+      });
+      if (error) throw error;
+      email = data?.email ?? '';
+      if (!email) {
+        throw new Error('No account found with that username');
+      }
+    }
+
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,

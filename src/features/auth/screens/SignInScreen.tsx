@@ -21,21 +21,21 @@ interface SignInScreenProps {
 }
 
 export default function SignInScreen({ onSignUp }: SignInScreenProps) {
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [oauthLoading, setOauthLoading] = useState<'apple' | 'google' | null>(null);
   const { signIn, signInWithApple, signInWithGoogle } = useAuth();
 
   const handleSignIn = async () => {
-    if (!email || !password) {
+    if (!identifier || !password) {
       Alert.alert('Error', 'Please fill in all fields');
       return;
     }
 
     try {
       setLoading(true);
-      await signIn(email, password);
+      await signIn(identifier, password);
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Sign in failed');
     } finally {
@@ -59,14 +59,13 @@ export default function SignInScreen({ onSignUp }: SignInScreenProps) {
         {/* Tagline */}
         <Text style={styles.tagline}>you read it,{"\n"}you rank it!</Text>
 
-        {/* Email Input */}
+        {/* Email or Username Input */}
         <TextInput
           style={styles.input}
-          placeholder="Email"
+          placeholder="Username or email"
           placeholderTextColor={colors.brownText}
-          value={email}
-          onChangeText={setEmail}
-          keyboardType="email-address"
+          value={identifier}
+          onChangeText={setIdentifier}
           autoCapitalize="none"
           autoCorrect={false}
         />
