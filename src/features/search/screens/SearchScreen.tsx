@@ -9,6 +9,8 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -745,30 +747,35 @@ export default function SearchScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.logoContainer}>
-          <Text style={styles.logo}>Search</Text>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}
+        style={styles.keyboardAvoidingView}
+      >
+        {/* Header */}
+        <View style={styles.header}>
+          <View style={styles.logoContainer}>
+            <Text style={styles.logo}>Search</Text>
+          </View>
+          <View style={styles.headerRight}>
+          </View>
         </View>
-        <View style={styles.headerRight}>
-        </View>
-      </View>
 
-      <View style={styles.content}>
-        <View style={styles.searchContainer}>
-          <TextInput
-            style={styles.searchInput}
-            placeholder={placeholder}
-            placeholderTextColor={colors.brownText}
-            value={query}
-            onChangeText={setQuery}
-            onSubmitEditing={handleSearch}
-            returnKeyType="search"
-          />
-          <TouchableOpacity style={styles.searchButton} onPress={handleSearch}>
-            <Text style={styles.searchButtonText}>Search</Text>
-          </TouchableOpacity>
-        </View>
+        <View style={styles.content}>
+          <View style={styles.searchContainer}>
+            <TextInput
+              style={styles.searchInput}
+              placeholder={placeholder}
+              placeholderTextColor={colors.brownText}
+              value={query}
+              onChangeText={setQuery}
+              onSubmitEditing={handleSearch}
+              returnKeyType="search"
+            />
+            <TouchableOpacity style={styles.searchButton} onPress={handleSearch}>
+              <Text style={styles.searchButtonText}>Search</Text>
+            </TouchableOpacity>
+          </View>
 
         {/* Tabs */}
         <View style={styles.tabsContainer}>
@@ -806,6 +813,8 @@ export default function SearchScreen() {
               renderItem={renderRecentSearchItem}
               keyExtractor={(item) => item.id}
               contentContainerStyle={styles.listContainer}
+              keyboardDismissMode="on-drag"
+              keyboardShouldPersistTaps="handled"
               refreshControl={
                 <RefreshControl
                   refreshing={refreshing}
@@ -831,6 +840,8 @@ export default function SearchScreen() {
               renderItem={renderRecentMemberItem}
               keyExtractor={(item) => item.user_id}
               contentContainerStyle={styles.listContainer}
+              keyboardDismissMode="on-drag"
+              keyboardShouldPersistTaps="handled"
               refreshControl={
                 <RefreshControl
                   refreshing={refreshing}
@@ -860,6 +871,8 @@ export default function SearchScreen() {
                 }
               }}
               contentContainerStyle={styles.listContainer}
+              keyboardDismissMode="on-drag"
+              keyboardShouldPersistTaps="handled"
               refreshControl={
                 <RefreshControl
                   refreshing={refreshing}
@@ -870,7 +883,8 @@ export default function SearchScreen() {
             />
           )
         )}
-      </View>
+        </View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -879,6 +893,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.creamBackground,
+  },
+  keyboardAvoidingView: {
+    flex: 1,
   },
   header: {
     flexDirection: 'row',

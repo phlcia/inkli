@@ -9,6 +9,7 @@ import {
   Image,
   ActivityIndicator,
   Platform,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -230,57 +231,65 @@ export default function FollowersFollowingScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Text style={styles.backButtonText}>←</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>@{username || 'Profile'}</Text>
-        <View style={styles.headerSpacer} />
-      </View>
-
-      <View style={styles.tabs}>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'followers' && styles.tabActive]}
-          onPress={() => setActiveTab('followers')}
-        >
-          <Text style={styles.tabLabel}>{followers.length} Followers</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'following' && styles.tabActive]}
-          onPress={() => setActiveTab('following')}
-        >
-          <Text style={styles.tabLabel}>{following.length} Following</Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.searchContainer}>
-        <Image source={searchIcon} style={styles.searchIcon} />
-        <TextInput
-          style={styles.searchInput}
-          placeholder={`Search ${activeTab}`}
-          placeholderTextColor={colors.brownText}
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-        />
-      </View>
-
-      {loading ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primaryBlue} />
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}
+        style={styles.keyboardAvoidingView}
+      >
+        <View style={styles.header}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <Text style={styles.backButtonText}>←</Text>
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>@{username || 'Profile'}</Text>
+          <View style={styles.headerSpacer} />
         </View>
-      ) : (
-        <FlatList
-          data={filteredData}
-          keyExtractor={(item) => item.user_id}
-          renderItem={renderItem}
-          refreshing={refreshing}
-          onRefresh={handleRefresh}
-          contentContainerStyle={styles.listContent}
-        />
-      )}
+
+        <View style={styles.tabs}>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'followers' && styles.tabActive]}
+            onPress={() => setActiveTab('followers')}
+          >
+            <Text style={styles.tabLabel}>{followers.length} Followers</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'following' && styles.tabActive]}
+            onPress={() => setActiveTab('following')}
+          >
+            <Text style={styles.tabLabel}>{following.length} Following</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.searchContainer}>
+          <Image source={searchIcon} style={styles.searchIcon} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder={`Search ${activeTab}`}
+            placeholderTextColor={colors.brownText}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+        </View>
+
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={colors.primaryBlue} />
+          </View>
+        ) : (
+          <FlatList
+            data={filteredData}
+            keyExtractor={(item) => item.user_id}
+            renderItem={renderItem}
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            contentContainerStyle={styles.listContent}
+            keyboardDismissMode="on-drag"
+            keyboardShouldPersistTaps="handled"
+          />
+        )}
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -289,6 +298,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.creamBackground,
+  },
+  keyboardAvoidingView: {
+    flex: 1,
   },
   header: {
     flexDirection: 'row',

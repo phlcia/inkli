@@ -9,6 +9,7 @@ import {
   Image,
   ActivityIndicator,
   Platform,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -234,45 +235,53 @@ export default function ActivityLikesScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Text style={styles.backButtonText}>←</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Likes</Text>
-        <View style={styles.headerSpacer} />
-      </View>
-
-      <View style={styles.searchContainer}>
-        <Image source={searchIcon} style={styles.searchIcon} />
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search likes"
-          placeholderTextColor={colors.brownText}
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-        />
-      </View>
-
-      {loading ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primaryBlue} />
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}
+        style={styles.keyboardAvoidingView}
+      >
+        <View style={styles.header}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <Text style={styles.backButtonText}>←</Text>
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Likes</Text>
+          <View style={styles.headerSpacer} />
         </View>
-      ) : (
-        <FlatList
-          data={filteredLikes}
-          keyExtractor={(item) => item.id}
-          renderItem={renderItem}
-          refreshing={refreshing}
-          onRefresh={handleRefresh}
-          contentContainerStyle={styles.listContent}
-          ListEmptyComponent={
-            <Text style={styles.emptyText}>No likes yet</Text>
-          }
-        />
-      )}
+
+        <View style={styles.searchContainer}>
+          <Image source={searchIcon} style={styles.searchIcon} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search likes"
+            placeholderTextColor={colors.brownText}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+        </View>
+
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={colors.primaryBlue} />
+          </View>
+        ) : (
+          <FlatList
+            data={filteredLikes}
+            keyExtractor={(item) => item.id}
+            renderItem={renderItem}
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            contentContainerStyle={styles.listContent}
+            keyboardDismissMode="on-drag"
+            keyboardShouldPersistTaps="handled"
+            ListEmptyComponent={
+              <Text style={styles.emptyText}>No likes yet</Text>
+            }
+          />
+        )}
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -281,6 +290,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.creamBackground,
+  },
+  keyboardAvoidingView: {
+    flex: 1,
   },
   header: {
     flexDirection: 'row',
