@@ -104,6 +104,22 @@ export default function LeaderboardScreen() {
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.access_token) {
+          const { error } = await supabase.functions.invoke('recalculate-ranks', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${session.access_token}`,
+            },
+          });
+          if (error) {
+            console.error('Error recalculating ranks:', error);
+          }
+        }
+      } catch (error) {
+        console.error('Error invoking recalculate-ranks:', error);
+      }
       await fetchLeaderboard(false);
     } finally {
       setRefreshing(false);
