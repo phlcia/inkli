@@ -9,6 +9,8 @@ import {
   Alert,
   ActivityIndicator,
   Image,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography } from '../../../config/theme';
@@ -95,15 +97,19 @@ export default function SignUpEmailScreen({ onNext, onBack: _onBack }: SignUpEma
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <StatusBar barStyle="dark-content" backgroundColor={colors.creamBackground} />
-      <View style={styles.content}>
-        {/* Logo */}
-        <View style={styles.logoContainer}>
-          <Image
-            source={iconImage}
-            style={styles.logoImage}
-            resizeMode="contain"
-          />
-        </View>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.keyboardAvoidingView}
+      >
+        <View style={styles.content}>
+          {/* Logo */}
+          <View style={styles.logoContainer}>
+            <Image
+              source={iconImage}
+              style={styles.logoImage}
+              resizeMode="contain"
+            />
+          </View>
 
         {/* Title */}
         <Text style={styles.title}>sign up with email</Text>
@@ -191,11 +197,12 @@ export default function SignUpEmailScreen({ onNext, onBack: _onBack }: SignUpEma
           autoCorrect={false}
         />
 
-        {/* Next Button */}
-        <TouchableOpacity style={styles.nextButton} onPress={handleNext}>
-          <Text style={styles.nextButtonText}>Next</Text>
-        </TouchableOpacity>
-      </View>
+          {/* Next Button */}
+          <TouchableOpacity style={styles.nextButton} onPress={handleNext}>
+            <Text style={styles.nextButtonText}>Next</Text>
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -204,6 +211,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.creamBackground,
+  },
+  keyboardAvoidingView: {
+    flex: 1,
   },
   content: {
     flex: 1,

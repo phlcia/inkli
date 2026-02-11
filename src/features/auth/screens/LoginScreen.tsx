@@ -6,6 +6,8 @@ import {
   TouchableOpacity,
   StyleSheet,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { useAuth } from '../../../contexts/AuthContext';
@@ -77,9 +79,13 @@ export default function LoginScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.logo}>inkli</Text>
-      <Text style={styles.title}>{isSignUp ? 'Sign Up' : 'Sign In'}</Text>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={styles.keyboardAvoidingView}
+    >
+      <View style={styles.container}>
+        <Text style={styles.logo}>inkli</Text>
+        <Text style={styles.title}>{isSignUp ? 'Sign Up' : 'Sign In'}</Text>
 
       <TextInput
         style={styles.input}
@@ -129,16 +135,20 @@ export default function LoginScreen() {
         </Text>
       </TouchableOpacity>
 
-      <TouchableOpacity onPress={() => setIsSignUp(!isSignUp)}>
-        <Text style={styles.switchText}>
-          {isSignUp ? 'Already have an account? Sign In' : "Don't have an account? Sign Up"}
-        </Text>
-      </TouchableOpacity>
-    </View>
+        <TouchableOpacity onPress={() => setIsSignUp(!isSignUp)}>
+          <Text style={styles.switchText}>
+            {isSignUp ? 'Already have an account? Sign In' : "Don't have an account? Sign Up"}
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
+  keyboardAvoidingView: {
+    flex: 1,
+  },
   container: {
     flex: 1,
     backgroundColor: colors.creamBackground,
