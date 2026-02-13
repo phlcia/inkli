@@ -16,6 +16,7 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import { ProfileStackParamList } from '../../../navigation/ProfileStackNavigator';
 import { colors, typography } from '../../../config/theme';
 import { useAuth } from '../../../contexts/AuthContext';
+import { useErrorHandler } from '../../../contexts/ErrorHandlerContext';
 import {
   getUserBookCounts,
   UserBook,
@@ -60,6 +61,7 @@ type ProfileScreenNavigationProp = StackNavigationProp<
 
 export default function ProfileScreen() {
   const { user, signOut } = useAuth();
+  const { handleApiError, showClientError } = useErrorHandler();
   const navigation = useNavigation<ProfileScreenNavigationProp>();
   const route = useRoute();
   const [bookCounts, setBookCounts] = useState({
@@ -235,14 +237,13 @@ export default function ProfileScreen() {
         bio: null,
       });
     } catch (error) {
-      console.error('Error loading profile data:', error);
-      Alert.alert('Error', 'Failed to load profile data');
+      handleApiError(error, 'load profile', () => loadProfileData(showLoading));
     } finally {
       if (showLoading) {
         setLoading(false);
       }
     }
-  }, [hydrateRequesters, user]);
+  }, [hydrateRequesters, user, handleApiError]);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -297,8 +298,8 @@ export default function ProfileScreen() {
       const result = await updateAccountType(user.id, nextType);
       if (result.error) throw result.error;
       setAccountType(nextType);
-    } catch (_error) {
-      Alert.alert('Error', 'Unable to update privacy settings.');
+    } catch (error) {
+      handleApiError(error, 'update privacy');
     } finally {
       setPrivacyUpdating(false);
     }
@@ -310,8 +311,8 @@ export default function ProfileScreen() {
       if (error) throw error;
       setIncomingRequests((prev) => prev.filter((req) => req.id !== requestId));
       setFollowerCount((prev) => prev + 1);
-    } catch (_error) {
-      Alert.alert('Error', 'Unable to accept follow request.');
+    } catch (error) {
+      handleApiError(error, 'accept follow request');
     }
   };
 
@@ -320,8 +321,8 @@ export default function ProfileScreen() {
       const { error } = await rejectFollowRequest(requestId);
       if (error) throw error;
       setIncomingRequests((prev) => prev.filter((req) => req.id !== requestId));
-    } catch (_error) {
-      Alert.alert('Error', 'Unable to reject follow request.');
+    } catch (error) {
+      handleApiError(error, 'reject follow request');
     }
   };
 
@@ -331,8 +332,8 @@ export default function ProfileScreen() {
       const { error } = await unblockUser(user.id, userId);
       if (error) throw error;
       setBlockedUsers((prev) => prev.filter((item) => item.user_id !== userId));
-    } catch (_error) {
-      Alert.alert('Error', 'Unable to unblock user.');
+    } catch (error) {
+      handleApiError(error, 'unblock user');
     }
   };
 
@@ -342,8 +343,8 @@ export default function ProfileScreen() {
       const { error } = await unmuteUser(user.id, userId);
       if (error) throw error;
       setMutedUsers((prev) => prev.filter((item) => item.user_id !== userId));
-    } catch (_error) {
-      Alert.alert('Error', 'Unable to unmute user.');
+    } catch (error) {
+      handleApiError(error, 'unmute user');
     }
   };
 
@@ -371,7 +372,7 @@ export default function ProfileScreen() {
             try {
               await signOut();
             } catch (error: any) {
-              Alert.alert('Error', error.message || 'Failed to sign out');
+              handleApiError(error, 'sign out');
             }
           },
         },
@@ -395,8 +396,7 @@ export default function ProfileScreen() {
         },
       });
     } catch (error) {
-      console.error('Error loading book details:', error);
-      Alert.alert('Error', 'Could not load book details');
+      handleApiError(error, 'load book');
     }
   };
 

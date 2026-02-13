@@ -13,6 +13,7 @@ import {
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { colors, typography } from '../../../config/theme';
 import { useAuth } from '../../../contexts/AuthContext';
+import { useErrorHandler } from '../../../contexts/ErrorHandlerContext';
 import { FriendsLikedBook, getFriendsRecentLiked, formatCount } from '../../../services/books';
 import { getScoreColor } from '../../../utils/rankScoreColors';
 import { supabase } from '../../../config/supabase';
@@ -29,6 +30,7 @@ export default function FriendsLikedList({
   showHeader = true,
 }: FriendsLikedListProps) {
   const { user } = useAuth();
+  const { handleApiError } = useErrorHandler();
   const navigation = useNavigation<any>();
   const [items, setItems] = useState<FriendsLikedBook[]>([]);
   const [loading, setLoading] = useState(true);
@@ -43,12 +45,12 @@ export default function FriendsLikedList({
       const results = await getFriendsRecentLiked(userId, limit);
       setItems(results);
     } catch (err) {
-      console.error('Error loading friends liked books:', err);
+      handleApiError(err, 'load recommendations', loadItems);
       setError('Failed to load friends activity');
     } finally {
       setLoading(false);
     }
-  }, [userId, limit]);
+  }, [userId, limit, handleApiError]);
 
   useFocusEffect(
     useCallback(() => {
@@ -94,8 +96,7 @@ export default function FriendsLikedList({
           },
         });
       } catch (error) {
-        console.error('Error loading book details:', error);
-        Alert.alert('Error', 'Could not load book details');
+        handleApiError(error, 'load book');
       }
     },
     [navigation, user?.id]

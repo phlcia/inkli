@@ -6,7 +6,6 @@ import {
   Image,
   TouchableOpacity,
   ScrollView,
-  Animated,
   Platform,
   StatusBar,
   Modal,
@@ -19,6 +18,7 @@ import { colors, typography } from '../../../config/theme';
 import { BookCoverPlaceholder } from '../components/BookCoverPlaceholder';
 import { addBookToShelf, checkUserHasBook, removeBookFromShelf, updateBookStatus, redistributeRanksForRating, formatCount, UserBook, getReadSessions, BookShelfCounts } from '../../../services/books';
 import { useAuth } from '../../../contexts/AuthContext';
+import { useErrorHandler } from '../../../contexts/ErrorHandlerContext';
 import { supabase } from '../../../config/supabase';
 import { SearchStackParamList } from '../../../navigation/SearchStackNavigator';
 import ReadingProgressSlider from '../components/ReadingProgressSlider';
@@ -39,17 +39,16 @@ export default function BookDetailScreen() {
   const navigation = useNavigation<BookDetailScreenNavigationProp>();
   const route = useRoute<BookDetailScreenRouteProp>();
   const { user } = useAuth();
+  const { handleApiError, showClientError } = useErrorHandler();
   const { book } = route.params;
 
   const [currentStatus, setCurrentStatus] = useState<
     'read' | 'currently_reading' | 'want_to_read' | null
   >(null);
   const [loading, setLoading] = useState<string | null>(null);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [animatedIcon, setAnimatedIcon] = useState<string | null>(null);
   const [userRankScore, setUserRankScore] = useState<number | null>(null);
   const friendsRankingsSectionRef = useRef<View>(null);
-  const fadeAnim = React.useRef(new Animated.Value(0)).current;
   const refreshBookStatusRef = useRef<() => void>(() => {});
 
   // "What you think" section state
@@ -153,7 +152,6 @@ export default function BookDetailScreen() {
     userBookId,
     setUserBookId,
     refreshBookStatusRef,
-    setToastMessage,
   });
 
   // Check if book already exists in user's shelf and fetch notes/dates
@@ -257,29 +255,6 @@ export default function BookDetailScreen() {
     }, [refreshBookStatus])
   );
 
-  // Toast animation
-  useEffect(() => {
-    if (toastMessage) {
-      fadeAnim.setValue(0);
-      Animated.sequence([
-        Animated.timing(fadeAnim, {
-          toValue: 1,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-        Animated.delay(2000),
-        Animated.timing(fadeAnim, {
-          toValue: 0,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-      ]).start(() => {
-        setToastMessage(null);
-        setAnimatedIcon(null);
-      });
-    }
-  }, [toastMessage, fadeAnim]);
-
   const getEmptyShelfCounts = (): BookShelfCounts => ({
     read: 0,
     currently_reading: 0,
@@ -309,7 +284,7 @@ export default function BookDetailScreen() {
 
   const handleReadIconPress = async () => {
     if (!user) {
-      setToastMessage('You must be logged in to add books');
+      showClientError('You must be logged in to add books');
       return;
     }
 
@@ -384,8 +359,14 @@ export default function BookDetailScreen() {
               }
               void refreshShelfCounts();
             } catch (error: any) {
-              console.error('Error removing book from shelf:', error);
-              setToastMessage(error?.message || 'Failed to remove book from shelf');
+              handleApiError(error, 'remove from shelf', () => {
+                updateBookStatus(userBookId, null, {
+                  clearRankScore: true,
+                  touchUpdatedAt: true,
+                }).then(({ error }) => {
+                  if (!error) void refreshShelfCounts();
+                });
+              });
             } finally {
               setLoading(null);
             }
@@ -397,7 +378,7 @@ export default function BookDetailScreen() {
 
   const handleIconPress = async (status: 'read' | 'currently_reading' | 'want_to_read') => {
     if (!user) {
-      setToastMessage('You must be logged in to add books');
+      showClientError('You must be logged in to add books');
       return;
     }
 
@@ -493,11 +474,11 @@ export default function BookDetailScreen() {
             void refreshShelfCounts();
           } else {
             rollbackOptimisticUpdate();
-            setToastMessage('Book not found on shelf');
+            showClientError("Book not found on shelf");
           }
         } else {
           rollbackOptimisticUpdate();
-          setToastMessage('Book not found');
+          showClientError('Book not found');
         }
       } else {
         if (status === 'read') {
@@ -536,9 +517,8 @@ export default function BookDetailScreen() {
         
         
         if (!result.userBookId || result.userBookId === '') {
-          console.error('=== BookDetailScreen: ERROR - Empty userBookId from addBookToShelf ===');
           rollbackOptimisticUpdate();
-          setToastMessage('Failed to add book - missing book ID');
+          showClientError('Failed to add book - missing book ID');
           setLoading(null);
           return;
         }
@@ -569,10 +549,8 @@ export default function BookDetailScreen() {
         // Removed toast messages - no feedback needed for adding to shelf
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to update book';
-      console.error('Error managing book:', error);
       rollbackOptimisticUpdate();
-      setToastMessage(message);
+      handleApiError(error, 'update book', () => handleIconPress(status));
       setLoading(null);
     } finally {
       // Keep animated icon for visual feedback
@@ -640,7 +618,7 @@ export default function BookDetailScreen() {
         },
       });
     } catch (error) {
-      console.error('Error loading book details:', error);
+      handleApiError(error, 'load book');
     }
   };
 
@@ -983,18 +961,6 @@ export default function BookDetailScreen() {
           loadingIndicatorColor={colors.white}
         />
       </ScrollView>
-
-      {/* Toast Message */}
-      {toastMessage && (
-        <Animated.View
-          style={[styles.toastWrapper, { opacity: fadeAnim }]}
-          pointerEvents="none"
-        >
-          <View style={styles.toast}>
-            <Text style={styles.toastText}>{toastMessage}</Text>
-          </View>
-        </Animated.View>
-      )}
 
       <Modal
         visible={showRankingActionSheet}

@@ -22,6 +22,7 @@ import {
 import { StackNavigationProp } from '@react-navigation/stack';
 import { colors, typography } from '../../../config/theme';
 import { useAuth } from '../../../contexts/AuthContext';
+import { useErrorHandler } from '../../../contexts/ErrorHandlerContext';
 import { ProfileStackParamList } from '../../../navigation/ProfileStackNavigator';
 import { SearchStackParamList } from '../../../navigation/SearchStackNavigator';
 import { ActivityCommentsParams } from '../../../navigation/types';
@@ -41,6 +42,7 @@ type ActivityCommentsRoute = RouteProp<
 
 export default function ActivityCommentsScreen() {
   const { user: currentUser } = useAuth();
+  const { handleApiError } = useErrorHandler();
   type ActivityCommentsNavigation = CompositeNavigationProp<
     StackNavigationProp<ProfileStackParamList, 'ActivityComments'>,
     StackNavigationProp<SearchStackParamList, 'ActivityComments'>
@@ -151,8 +153,7 @@ export default function ActivityCommentsScreen() {
         },
       });
     } catch (error) {
-      console.error('Error loading book details:', error);
-      Alert.alert('Error', 'Could not load book details');
+      handleApiError(error, 'load book');
     }
   };
 

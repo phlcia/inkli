@@ -11,6 +11,7 @@ import {
 import * as Haptics from 'expo-haptics';
 import { colors, typography } from '../../../config/theme';
 import { useAuth } from '../../../contexts/AuthContext';
+import { useErrorHandler } from '../../../contexts/ErrorHandlerContext';
 import { getUserBooks, updateTierScoresBatch, UserBook } from '../../../services/books';
 import { YourShelfStackParamList } from '../../../navigation/YourShelfStackNavigator';
 
@@ -26,6 +27,7 @@ const TIER_BOUNDARIES = {
 
 export default function ReorderShelfScreen() {
   const { user } = useAuth();
+  const { handleApiError } = useErrorHandler();
   const navigation = useNavigation<ReorderNavigationProp>();
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -54,12 +56,11 @@ export default function ReorderShelfScreen() {
       tiers.disliked.sort(sortByRank);
       setReorderBooks(tiers);
     } catch (error) {
-      console.error('Error loading read books:', error);
-      Alert.alert('Error', 'Failed to load your read books.');
+      handleApiError(error, 'load shelf', loadReadBooks);
     } finally {
       setLoading(false);
     }
-  }, [user?.id]);
+  }, [user?.id, handleApiError]);
 
   useEffect(() => {
     void loadReadBooks();
@@ -99,8 +100,7 @@ export default function ReorderShelfScreen() {
         }
       }
     } catch (error) {
-      console.error('Error saving reorder:', error);
-      Alert.alert('Failed to save order', 'Your changes were not saved. Please try again.');
+      handleApiError(error, 'save shelf');
     } finally {
       setIsSaving(false);
       navigation.navigate('YourShelfMain', { refresh: true, initialTab: 'read' });

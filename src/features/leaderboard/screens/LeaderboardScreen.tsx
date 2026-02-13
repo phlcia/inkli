@@ -14,6 +14,7 @@ import { StackActions, useNavigation } from '@react-navigation/native';
 import { colors, typography } from '../../../config/theme';
 import { supabase } from '../../../config/supabase';
 import { useAuth } from '../../../contexts/AuthContext';
+import { useErrorHandler } from '../../../contexts/ErrorHandlerContext';
 
 interface LeaderboardUser {
   user_id: string;
@@ -25,6 +26,7 @@ interface LeaderboardUser {
 
 export default function LeaderboardScreen() {
   const { user: currentUser } = useAuth();
+  const { handleApiError } = useErrorHandler();
   const navigation = useNavigation<any>();
   const [topUsers, setTopUsers] = useState<LeaderboardUser[]>([]);
   const [currentUserRank, setCurrentUserRank] = useState<LeaderboardUser | null>(null);
@@ -46,8 +48,7 @@ export default function LeaderboardScreen() {
         .limit(100);
       
       if (leadersError) {
-        console.error('Error fetching leaders:', leadersError);
-        return;
+        throw leadersError;
       }
       
       setTopUsers(leaders || []);
@@ -89,13 +90,13 @@ export default function LeaderboardScreen() {
         }
       }
     } catch (error) {
-      console.error('Error fetching leaderboard:', error);
+      handleApiError(error, 'load leaderboard', () => fetchLeaderboard(showLoading));
     } finally {
       if (showLoading) {
         setLoading(false);
       }
     }
-  }, [currentUser]);
+  }, [currentUser, handleApiError]);
 
   useEffect(() => {
     fetchLeaderboard();
@@ -113,12 +114,10 @@ export default function LeaderboardScreen() {
               Authorization: `Bearer ${session.access_token}`,
             },
           });
-          if (error) {
-            console.error('Error recalculating ranks:', error);
-          }
+          if (error) throw error;
         }
       } catch (error) {
-        console.error('Error invoking recalculate-ranks:', error);
+        handleApiError(error, 'recalculate ranks');
       }
       await fetchLeaderboard(false);
     } finally {

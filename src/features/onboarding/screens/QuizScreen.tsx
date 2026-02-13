@@ -20,6 +20,7 @@ import QuizBookCard from '../components/QuizBookCard';
 import TasteProfileCard from '../components/TasteProfileCard';
 import { supabase } from '../../../config/supabase';
 import { useAuth } from '../../../contexts/AuthContext';
+import { useErrorHandler } from '../../../contexts/ErrorHandlerContext';
 import { AuthStackParamList } from '../../../navigation/AuthStackNavigator';
 
 const QUIZ_COMPARISON_COUNT = 12; // Default number of comparisons
@@ -40,6 +41,7 @@ interface QuizScreenProps {
 
 export default function QuizScreen({ signupParams, onSignupComplete, onQuizComplete }: QuizScreenProps) {
   const { user, signUp } = useAuth();
+  const { handleApiError } = useErrorHandler();
   const navigation = useNavigation();
   const route = useRoute<QuizScreenRouteProp>();
   
@@ -113,7 +115,7 @@ export default function QuizScreen({ signupParams, onSignupComplete, onQuizCompl
     try {
       const { data, error } = await getQuizBookPair();
       if (error) {
-        Alert.alert('Error', error.message);
+        handleApiError(error, 'load quiz');
         return;
       }
       if (data) {
@@ -123,12 +125,11 @@ export default function QuizScreen({ signupParams, onSignupComplete, onQuizCompl
         handleQuizComplete();
       }
     } catch (error) {
-      console.error('Error loading quiz pair:', error);
-      Alert.alert('Error', 'Failed to load quiz. Please try again.');
+      handleApiError(error, 'load quiz', loadNextPair);
     } finally {
       setLoading(false);
     }
-  }, [handleQuizComplete, signupComplete, user]);
+  }, [handleQuizComplete, signupComplete, user, handleApiError]);
 
   useEffect(() => {
     if (user && signupComplete) {
@@ -148,7 +149,7 @@ export default function QuizScreen({ signupParams, onSignupComplete, onQuizCompl
       });
 
       if (error) {
-        Alert.alert('Error', error.message);
+        handleApiError(error, 'save comparison');
         setSubmitting(false);
         return;
       }
@@ -162,8 +163,7 @@ export default function QuizScreen({ signupParams, onSignupComplete, onQuizCompl
         loadNextPair();
       }
     } catch (error) {
-      console.error('Error creating comparison:', error);
-      Alert.alert('Error', 'Failed to save comparison. Please try again.');
+      handleApiError(error, 'save comparison');
     } finally {
       setSubmitting(false);
     }
@@ -197,15 +197,12 @@ export default function QuizScreen({ signupParams, onSignupComplete, onQuizCompl
             try {
               const { error } = await skipQuiz();
               if (error) {
-                Alert.alert('Error', error.message);
+                handleApiError(error, 'skip quiz');
                 return;
               }
               onQuizComplete?.();
-              // After skipping, user will be logged in and AuthContext will navigate to main app
-              // No need to navigate manually - App.tsx will handle it
             } catch (error) {
-              console.error('Error skipping quiz:', error);
-              Alert.alert('Error', 'Failed to skip quiz. Please try again.');
+              handleApiError(error, 'skip quiz');
             } finally {
               setLoading(false);
             }
@@ -283,12 +280,11 @@ export default function QuizScreen({ signupParams, onSignupComplete, onQuizCompl
 
       setQuizComplete(true);
     } catch (error) {
-      console.error('Error completing quiz:', error);
-      Alert.alert('Error', 'Failed to complete quiz. Please try again.');
+      handleApiError(error, 'complete quiz');
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, handleApiError]);
 
   const handleContinueToRecommendations = async () => {
     if (!user) return;
@@ -298,8 +294,7 @@ export default function QuizScreen({ signupParams, onSignupComplete, onQuizCompl
       // Generate initial recommendations
       const { error } = await generateRecommendations();
       if (error) {
-        console.error('Error generating recommendations:', error);
-        Alert.alert('Recommendations', 'We could not save recommendations yet. You can refresh later.');
+        handleApiError(error, 'generate recommendations');
       } else {
         Alert.alert('Recommendations Ready', 'Your recommendations are saved and ready to view.');
       }
@@ -308,7 +303,7 @@ export default function QuizScreen({ signupParams, onSignupComplete, onQuizCompl
       // App.tsx will automatically show TabNavigator when user exists
       // The recommendations will be available when user navigates to that screen
     } catch (error) {
-      console.error('Error:', error);
+      handleApiError(error, 'generate recommendations');
     } finally {
       setLoading(false);
     }

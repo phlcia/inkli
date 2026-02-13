@@ -7,11 +7,11 @@ import {
   TouchableOpacity,
   Image,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { colors, typography } from '../../../config/theme';
 import { UserBook, getUserBooksByRating, updateTierScoresBatch } from '../../../services/books';
 import { useAuth } from '../../../contexts/AuthContext';
+import { useErrorHandler } from '../../../contexts/ErrorHandlerContext';
 import { useBookRanking } from '../../../hooks/useBookRanking';
 import { RankedBook } from '../../../utils/bookRanking';
 import { supabase } from '../../../config/supabase';
@@ -55,6 +55,7 @@ export default function BookComparisonModal({
   onComplete,
 }: BookComparisonModalProps) {
   const { user } = useAuth();
+  const { handleApiError, showClientError } = useErrorHandler();
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [showRankedConfirmation, setShowRankedConfirmation] = useState(false);
@@ -136,25 +137,13 @@ export default function BookComparisonModal({
               .single();
             
             if (updateError) {
-              console.error('=== RANKING DEBUG: ERROR setting default rank_score ===', updateError);
-              Alert.alert('Error', 'Failed to set ranking score');
+              handleApiError(updateError, 'save ranking');
               setProcessing(false);
               return;
             }
             
-            // Verify the update worked
-            if (!updateData) {
-              console.error('=== RANKING DEBUG: ERROR - No data returned from update ===');
-              Alert.alert('Error', 'Failed to set ranking score');
-              setProcessing(false);
-              return;
-            }
-            
-            if (updateData.rank_score !== defaultScore) {
-              console.error('=== RANKING DEBUG: ERROR - Score mismatch ===');
-              console.error('Expected:', defaultScore);
-              console.error('Got:', updateData.rank_score);
-              Alert.alert('Error', 'Failed to set ranking score');
+            if (!updateData || updateData.rank_score !== defaultScore) {
+              showClientError('Failed to set ranking score');
               setProcessing(false);
               return;
             }
@@ -166,8 +155,7 @@ export default function BookComparisonModal({
               onComplete();
             }, 1500);
           } catch (error) {
-            console.error('=== RANKING DEBUG: ERROR setting default score ===', error);
-            Alert.alert('Error', 'Failed to set ranking score');
+            handleApiError(error, 'save ranking');
             setProcessing(false);
           }
         }
@@ -182,12 +170,11 @@ export default function BookComparisonModal({
       reset(rankedBooks);
       setShouldStartInsertion(true);
     } catch (error) {
-      console.error('Error loading existing books:', error);
-      Alert.alert('Error', 'Failed to load books for ranking');
+      handleApiError(error, 'load ranking', loadExistingBooks);
     } finally {
       setLoading(false);
     }
-  }, [currentBook.id, onComplete, rating, reset, user]);
+  }, [currentBook.id, onComplete, rating, reset, user, handleApiError, showClientError]);
 
   // Load existing liked books and initialize ranking
   useEffect(() => {
@@ -215,8 +202,7 @@ export default function BookComparisonModal({
       if (result) {
         
         if (!currentBook.id || currentBook.id === '') {
-          console.error('=== RANKING DEBUG: ERROR - Empty book ID ===');
-          Alert.alert('Error', 'Book ID is missing');
+          showClientError('Book ID is missing');
           return;
         }
         
@@ -235,9 +221,8 @@ export default function BookComparisonModal({
             }, 2000);
           })
           .catch((error) => {
-            console.error('=== RANKING DEBUG: ERROR saving final rank ===', error);
             setProcessing(false);
-            Alert.alert('Error', 'Failed to save ranking');
+            handleApiError(error, 'save ranking');
           });
       } else {
         console.error('=== RANKING DEBUG: ERROR - result is null/undefined ===');
@@ -266,8 +251,7 @@ export default function BookComparisonModal({
       setProcessing(false);
       
     } catch (error) {
-      console.error('=== RANKING DEBUG: ERROR in handlePreference ===', error);
-      Alert.alert('Error', 'Failed to save preference');
+      handleApiError(error, 'save ranking');
       setProcessing(false);
     }
   };
@@ -281,9 +265,7 @@ export default function BookComparisonModal({
     try {
       
       if (!currentBook.id || currentBook.id === '' || currentBook.id.trim() === '') {
-        console.error('=== RANKING DEBUG: ERROR - Empty or invalid book ID ===');
-        console.error('Current book object:', currentBook);
-        Alert.alert('Error', 'Book ID is missing. Please try again.');
+        showClientError('Book ID is missing. Please try again.');
         throw new Error('Book ID is empty or invalid');
       }
       
@@ -372,8 +354,7 @@ export default function BookComparisonModal({
       }
       
     } catch (error) {
-      console.error('=== RANKING DEBUG: ERROR in saveFinalRank ===', error);
-      Alert.alert('Error', 'Failed to save ranking, but your comparison was saved.');
+      handleApiError(error, 'save ranking');
       // Don't throw - let user continue
     }
   };
@@ -384,8 +365,7 @@ export default function BookComparisonModal({
       // Complete insertion at bottom using the normal ranking safeguards
       skipToBottom();
     } catch (error) {
-      console.error('=== RANKING DEBUG: ERROR in handleSkip ===', error);
-      Alert.alert('Error', 'Failed to save ranking');
+      handleApiError(error, 'save ranking');
     } finally {
       setProcessing(false);
     }

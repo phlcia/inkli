@@ -20,6 +20,7 @@ import {
   markRecommendationClicked,
 } from '../../../services/recommendations';
 import { useAuth } from '../../../contexts/AuthContext';
+import { useErrorHandler } from '../../../contexts/ErrorHandlerContext';
 import { getBookCircles, BookCircleStats, formatCount } from '../../../services/books';
 import { supabase } from '../../../config/supabase';
 import { isBookSparse } from '../../../utils/bookHelpers';
@@ -33,6 +34,7 @@ const LAST_SEEN_RECS_KEY = 'last_seen_recs';
 
 export default function RecommendationsList({ showHeader = true }: RecommendationsListProps) {
   const { user } = useAuth();
+  const { handleApiError } = useErrorHandler();
   const navigation = useNavigation<any>();
   const pageSize = 30;
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
@@ -278,8 +280,7 @@ export default function RecommendationsList({ showHeader = true }: Recommendatio
         },
       });
     } catch (error) {
-      console.error('Error loading book details:', error);
-      Alert.alert('Error', 'Could not load book details');
+      handleApiError(error, 'load book');
     }
   }, [user, navigation]);
 

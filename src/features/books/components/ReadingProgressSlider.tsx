@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, TextInput } from 'react-native';
 import { colors, typography } from '../../../config/theme';
+import { useErrorHandler } from '../../../contexts/ErrorHandlerContext';
 import { updateReadingProgress } from '../../../services/books';
 
 type ReadingProgressSliderProps = {
@@ -28,6 +29,7 @@ export default function ReadingProgressSlider({
   onProgressChange,
   disabled = false,
 }: ReadingProgressSliderProps) {
+  const { handleApiError } = useErrorHandler();
   const [displayProgress, setDisplayProgress] = useState(clampProgress(initialProgress));
   const [inputValue, setInputValue] = useState(String(clampProgress(initialProgress)));
   const [pendingProgress, setPendingProgress] = useState<number | null>(null);
@@ -56,7 +58,7 @@ export default function ReadingProgressSlider({
         lastSavedRef.current = pendingProgress;
         onProgressChange?.(pendingProgress);
       } catch (error) {
-        console.error('Error saving reading progress:', error);
+        handleApiError(error, 'update book');
       } finally {
         setSaving(false);
         setPendingProgress(null);
@@ -68,7 +70,7 @@ export default function ReadingProgressSlider({
         clearTimeout(debounceRef.current);
       }
     };
-  }, [pendingProgress, userId, bookId, onProgressChange]);
+  }, [pendingProgress, userId, bookId, onProgressChange, handleApiError]);
 
   const handleInputChange = (text: string) => {
     if (disabled) return;
