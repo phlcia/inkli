@@ -123,7 +123,8 @@ BEGIN
   SET global_rank = NULL
   WHERE books_read_count = 0;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql
+SET search_path = public, pg_catalog;
 
 -- Backfill: Run full recalculation to fix existing data
 SELECT recalculate_all_ranks();

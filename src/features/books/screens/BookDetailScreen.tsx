@@ -24,6 +24,7 @@ import { SearchStackParamList } from '../../../navigation/SearchStackNavigator';
 import ReadingProgressSlider from '../components/ReadingProgressSlider';
 import FriendsRankingsSection from '../components/FriendsRankingsSection';
 import BookThoughtsSection from '../components/BookThoughtsSection';
+import BookFeedbackForm from '../components/BookFeedbackForm';
 import { useBookStats } from '../hooks/useBookStats';
 import { useFriendsRankings } from '../hooks/useFriendsRankings';
 import { useBookThoughts } from '../hooks/useBookThoughts';
@@ -56,6 +57,7 @@ export default function BookDetailScreen() {
   const [readingProgress, setReadingProgress] = useState<number>(0);
   const [showRankingActionSheet, setShowRankingActionSheet] = useState(false);
   const [resolvedBookId, setResolvedBookId] = useState<string | null>(book.id || null);
+  const [showFeedbackForm, setShowFeedbackForm] = useState(false);
 
   const coverUrl = book.cover_url;
   const hasCover =
@@ -916,6 +918,13 @@ export default function BookDetailScreen() {
               </Text>
             )}
           </View>
+          <TouchableOpacity
+            style={styles.reportLink}
+            onPress={() => setShowFeedbackForm(true)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.reportLinkText}>Report incorrect info</Text>
+          </TouchableOpacity>
         </View>
 
         <BookThoughtsSection
@@ -978,14 +987,12 @@ export default function BookDetailScreen() {
       {/* Toast Message */}
       {toastMessage && (
         <Animated.View
-          style={[
-            styles.toast,
-            {
-              opacity: fadeAnim,
-            },
-          ]}
+          style={[styles.toastWrapper, { opacity: fadeAnim }]}
+          pointerEvents="none"
         >
-          <Text style={styles.toastText}>{toastMessage}</Text>
+          <View style={styles.toast}>
+            <Text style={styles.toastText}>{toastMessage}</Text>
+          </View>
         </Animated.View>
       )}
 
@@ -1045,6 +1052,12 @@ export default function BookDetailScreen() {
         </View>
       </Modal>
 
+      <BookFeedbackForm
+        visible={showFeedbackForm}
+        onClose={() => setShowFeedbackForm(false)}
+        bookId={(resolvedBookId ?? book.id ?? book.open_library_id ?? book.google_books_id ?? '') as string}
+        bookTitle={book.title}
+      />
     </View>
   );
 }
@@ -1289,16 +1302,36 @@ const styles = StyleSheet.create({
   infoLabel: {
     fontWeight: '600',
   },
-  toast: {
+  reportLink: {
+    marginTop: 12,
+    alignSelf: 'flex-start',
+    backgroundColor: colors.primaryBlue,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reportLinkText: {
+    fontSize: 12,
+    fontFamily: typography.body,
+    color: colors.white,
+    fontWeight: '600',
+  },
+  toastWrapper: {
     position: 'absolute',
-    bottom: 100,
-    left: 24,
-    right: 24,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  toast: {
     backgroundColor: colors.brownText,
     paddingVertical: 12,
     paddingHorizontal: 20,
     borderRadius: 8,
-    alignItems: 'center',
     shadowColor: colors.brownText,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
