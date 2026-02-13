@@ -142,7 +142,7 @@ export default function FilterPanel({
               // Clear from local selection if currently selected
               setSelectedCustomLabels((prev) => prev.filter((l) => l !== label));
             } catch (_error) {
-              Alert.alert('Error', 'Failed to delete shelf');
+              // Error already shown by parent (ShelfScreen)
             }
           },
         },

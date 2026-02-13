@@ -29,6 +29,7 @@ import {
 } from '../../../services/userProfile';
 import { SearchStackParamList } from '../../../navigation/SearchStackNavigator';
 import { useAuth } from '../../../contexts/AuthContext';
+import { useErrorHandler } from '../../../contexts/ErrorHandlerContext';
 import { supabase } from '../../../config/supabase';
 
 type SearchScreenNavigationProp = StackNavigationProp<SearchStackParamList, 'SearchMain'>;
@@ -178,6 +179,7 @@ const RECENT_MEMBER_SEARCHES_KEY = 'recent_member_searches';
 export default function SearchScreen() {
   const navigation = useNavigation<SearchScreenNavigationProp>();
   const { user } = useAuth();
+  const { handleApiError } = useErrorHandler();
   const [query, setQuery] = useState('');
   const [activeTab, setActiveTab] = useState<TabType>('books');
   const [bookResults, setBookResults] = useState<any[]>([]);
@@ -407,15 +409,15 @@ export default function SearchScreen() {
       if (requestId !== searchRequestIdRef.current) return;
       setBookResults(books);
     } catch (error) {
-      console.error('Error searching books:', error);
       if (requestId !== searchRequestIdRef.current) return;
+      handleApiError(error, 'load search', () => performBookSearch(searchQuery, showLoading));
       setBookResults([]);
     } finally {
       if (requestId === searchRequestIdRef.current && showLoading) {
         setLoading(false);
       }
     }
-  }, []);
+  }, [handleApiError]);
 
   const performMemberSearch = useCallback(async (searchQuery: string, showLoading = true) => {
     if (!searchQuery.trim() || searchQuery.trim().length < 2) {
@@ -435,7 +437,7 @@ export default function SearchScreen() {
       const { members, error } = await searchMembers(searchQuery);
       if (requestId !== searchRequestIdRef.current) return;
       if (error) {
-        console.error('Error searching members:', error);
+        handleApiError(error, 'load search');
         setMemberResults([]);
       } else {
         const filtered = user?.id
@@ -444,15 +446,15 @@ export default function SearchScreen() {
         setMemberResults(filtered);
       }
     } catch (error) {
-      console.error('Error searching members:', error);
       if (requestId !== searchRequestIdRef.current) return;
+      handleApiError(error, 'load search', () => performMemberSearch(searchQuery, showLoading));
       setMemberResults([]);
     } finally {
       if (requestId === searchRequestIdRef.current && showLoading) {
         setLoading(false);
       }
     }
-  }, [user?.id]);
+  }, [user?.id, handleApiError]);
 
   const handleSearch = async () => {
     if (debounceTimerRef.current) {
@@ -545,11 +547,11 @@ export default function SearchScreen() {
         const savedBook = await saveBookToDatabase(enrichedBook);
         navigation.navigate('BookDetail', { book: savedBook });
       } catch (saveError) {
-        console.error('Error saving book:', saveError);
+        handleApiError(saveError, 'add to shelf');
         navigation.navigate('BookDetail', { book: enrichedBook });
       }
     } catch (error) {
-      console.error('Error loading book details:', error);
+      handleApiError(error, 'load book');
       navigation.navigate('BookDetail', { book });
     } finally {
       setEnrichingBookId(null);
@@ -593,7 +595,7 @@ export default function SearchScreen() {
         }
       }
     } catch (error) {
-      console.error('Error toggling follow:', error);
+      handleApiError(error, 'follow action');
     } finally {
       setFollowLoading(prev => {
         const newSet = new Set(prev);

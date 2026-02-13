@@ -13,6 +13,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { colors, typography } from '../../../config/theme';
 import { useAuth } from '../../../contexts/AuthContext';
+import { useErrorHandler } from '../../../contexts/ErrorHandlerContext';
 import { fetchFollowedActivityCards } from '../../../services/activityFeed';
 import { fetchUnreadNotificationsCount } from '../../../services/notifications';
 import { ActivityFeedCursor, ActivityFeedItem } from '../../../types/activityCards';
@@ -36,8 +37,8 @@ export default function HomeScreen() {
   const [initialLoading, setInitialLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [paginating, setPaginating] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
+  const { handleApiError } = useErrorHandler();
   const [viewerShelfMap, setViewerShelfMap] = useState<Record<string, { id: string; status: UserBook['status'] }>>({});
 
   const handleToggleWantToRead = useToggleWantToRead({
@@ -79,7 +80,7 @@ export default function HomeScreen() {
       }
 
       const map: Record<string, { id: string; status: UserBook['status'] }> = {};
-      (data || []).forEach((item: any) => {
+      (data || []).forEach((item: { book_id: string; id: string; status: UserBook['status'] }) => {
         map[item.book_id] = { id: item.id, status: item.status };
       });
 
@@ -91,7 +92,6 @@ export default function HomeScreen() {
   const loadInitial = useCallback(async () => {
     if (!user) return;
     setInitialLoading(true);
-    setErrorMessage(null);
 
     try {
       const result = await fetchFollowedActivityCards(user.id, { limit: 20 });
@@ -100,19 +100,11 @@ export default function HomeScreen() {
       setHasMore(result.cards.length === 20);
       await hydrateViewerShelfMap(result.cards, true);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      const offlineHint =
-        message.toLowerCase().includes('network') ||
-        message.toLowerCase().includes('fetch');
-      setErrorMessage(
-        offlineHint
-          ? "You're offline. Connect to the internet and try again."
-          : 'Unable to load feed. Please try again.'
-      );
+      handleApiError(error, 'load feed', loadInitial);
     } finally {
       setInitialLoading(false);
     }
-  }, [user, hydrateViewerShelfMap]);
+  }, [user, hydrateViewerShelfMap, handleApiError]);
 
   useEffect(() => {
     loadInitial();
@@ -138,8 +130,8 @@ export default function HomeScreen() {
         .then((count) => {
           if (isActive) setUnreadCount(count);
         })
-        .catch((error) => {
-          console.error('Error fetching unread notifications:', error);
+        .catch(() => {
+          // Non-critical; silently ignore
         });
 
       return () => {
@@ -151,7 +143,6 @@ export default function HomeScreen() {
   const handleRefresh = useCallback(async () => {
     if (!user) return;
     setRefreshing(true);
-    setErrorMessage(null);
 
     try {
       const result = await fetchFollowedActivityCards(user.id, { limit: 20 });
@@ -160,19 +151,11 @@ export default function HomeScreen() {
       setHasMore(result.cards.length === 20);
       await hydrateViewerShelfMap(result.cards, true);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      const offlineHint =
-        message.toLowerCase().includes('network') ||
-        message.toLowerCase().includes('fetch');
-      setErrorMessage(
-        offlineHint
-          ? "You're offline. Connect to the internet and try again."
-          : 'Unable to refresh feed. Please try again.'
-      );
+      handleApiError(error, 'load feed', loadInitial);
     } finally {
       setRefreshing(false);
     }
-  }, [user, hydrateViewerShelfMap]);
+  }, [user, hydrateViewerShelfMap, handleApiError, loadInitial]);
 
   const handleLoadMore = useCallback(async () => {
     if (!user || !hasMore || paginating || refreshing || initialLoading) return;
@@ -188,19 +171,11 @@ export default function HomeScreen() {
       setHasMore(result.cards.length === 20);
       await hydrateViewerShelfMap(result.cards, false);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      const offlineHint =
-        message.toLowerCase().includes('network') ||
-        message.toLowerCase().includes('fetch');
-      setErrorMessage(
-        offlineHint
-          ? "You're offline. Connect to the internet and try again."
-          : 'Unable to load more posts.'
-      );
+      handleApiError(error, 'load feed', loadInitial);
     } finally {
       setPaginating(false);
     }
-  }, [user, hasMore, paginating, refreshing, initialLoading, cursor, hydrateViewerShelfMap]);
+  }, [user, hasMore, paginating, refreshing, initialLoading, cursor, hydrateViewerShelfMap, handleApiError, loadInitial]);
 
   const formatDateRange = useCallback(
     (startDate: string | null, endDate: string | null): string | null =>
@@ -231,10 +206,10 @@ export default function HomeScreen() {
           },
         });
       } catch (error) {
-        console.error('Error loading book details:', error);
+        handleApiError(error, 'load book');
       }
     },
-    [navigation, user?.id]
+    [navigation, user?.id, handleApiError]
   );
 
   const renderItem = useCallback(
@@ -296,25 +271,13 @@ export default function HomeScreen() {
       );
     }
 
-    if (errorMessage) {
-      return (
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyTitle}>Home</Text>
-          <Text style={styles.emptySubtitle}>{errorMessage}</Text>
-          <Pressable style={styles.retryButton} onPress={loadInitial}>
-            <Text style={styles.retryButtonText}>Try again</Text>
-          </Pressable>
-        </View>
-      );
-    }
-
     return (
       <View style={styles.emptyState}>
         <Text style={styles.emptyTitle}>Home</Text>
         <Text style={styles.emptySubtitle}>No posts to see!</Text>
       </View>
     );
-  }, [errorMessage, initialLoading, loadInitial, user]);
+  }, [initialLoading, user]);
 
   const listFooterComponent = useMemo(() => {
     if (!paginating) return null;

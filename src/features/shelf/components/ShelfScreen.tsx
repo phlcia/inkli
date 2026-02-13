@@ -14,6 +14,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, typography } from '../../../config/theme';
 import { useAuth } from '../../../contexts/AuthContext';
+import { useErrorHandler } from '../../../contexts/ErrorHandlerContext';
 import { getUserBooks, UserBook, removeCustomLabelFromAllBooks } from '../../../services/books';
 import { getScoreColor, formatScore } from '../../../utils/rankScoreColors';
 import { supabase } from '../../../config/supabase';
@@ -44,6 +45,7 @@ export default function ShelfScreen({
   refreshKey,
 }: ShelfScreenProps) {
   const { user: currentUser } = useAuth();
+  const { handleApiError } = useErrorHandler();
   const navigation = useNavigation<ShelfNavigationProp>();
   const [books, setBooks] = useState<UserBook[]>([]);
   const [loading, setLoading] = useState(true);
@@ -81,13 +83,13 @@ export default function ShelfScreen({
       });
       setCustomLabelSuggestions(Array.from(allLabels).sort());
     } catch (error) {
-      console.error('Error loading books:', error);
+      handleApiError(error, 'load shelf', () => loadBooks(showLoading));
     } finally {
       if (showLoading) {
         setLoading(false);
       }
     }
-  }, [ownerUserId]);
+  }, [ownerUserId, handleApiError]);
 
   useFocusEffect(
     useCallback(() => {
@@ -209,10 +211,10 @@ export default function ShelfScreen({
       await trackCustomLabelDeleted(label, affectedCount, 'filter_panel', currentUser.id);
 
     } catch (error) {
-      console.error('Error deleting custom label:', error);
-      throw error; // Re-throw so FilterPanel can show error alert
+      handleApiError(error, 'delete shelf');
+      throw error; // Re-throw so FilterPanel can handle UI state
     }
-  }, [currentUser?.id, loadBooks]);
+  }, [currentUser?.id, loadBooks, handleApiError]);
 
   const handleBookPress = async (userBook: UserBook) => {
     if (!userBook.book) return;
@@ -244,8 +246,7 @@ export default function ShelfScreen({
         },
       });
     } catch (error) {
-      console.error('Error loading book details:', error);
-      Alert.alert('Error', 'Could not load book details');
+      handleApiError(error, 'load book');
     }
   };
 

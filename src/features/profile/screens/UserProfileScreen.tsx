@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { colors, typography } from '../../../config/theme';
 import { useAuth } from '../../../contexts/AuthContext';
+import { useErrorHandler } from '../../../contexts/ErrorHandlerContext';
 import {
   getUserBookCounts,
   getRecentUserBooks,
@@ -54,6 +55,7 @@ type UserProfileRouteParams = {
 
 export default function UserProfileScreen() {
   const { user: currentUser } = useAuth();
+  const { handleApiError } = useErrorHandler();
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<{ params: UserProfileRouteParams }, 'params'>>();
   const { userId, username: initialUsername } = route.params;
@@ -121,8 +123,7 @@ export default function UserProfileScreen() {
         .single();
 
       if (profileError) {
-        console.error('Error fetching user profile:', profileError);
-        Alert.alert('Error', 'Could not load user profile');
+        handleApiError(profileError, 'load profile');
         navigation.goBack();
         return;
       }
@@ -178,14 +179,13 @@ export default function UserProfileScreen() {
     }
 
   } catch (error) {
-    console.error('Error loading user profile:', error);
-    Alert.alert('Error', 'Failed to load profile data');
+    handleApiError(error, 'load profile', loadUserProfile);
   } finally {
     if (showLoading) {
       setLoading(false);
     }
   }
-  }, [currentUser?.id, navigation, userId]);
+  }, [currentUser?.id, navigation, userId, handleApiError]);
 
   useEffect(() => {
     loadUserProfile();
@@ -222,7 +222,7 @@ export default function UserProfileScreen() {
     setFollowerCount,
     setFollowingCount,
     setFollowLoading,
-    onError: (message) => Alert.alert('Error', message),
+    onError: (message) => handleApiError(new Error(message), 'follow action'),
   });
 
   const getJoinDate = () => {
@@ -295,8 +295,7 @@ export default function UserProfileScreen() {
       }
       (navigation as any).navigate('Search', { screen: 'BookDetail', params: target });
     } catch (error) {
-      console.error('Error loading book details:', error);
-      Alert.alert('Error', 'Could not load book details');
+      handleApiError(error, 'load book');
     }
   };
 

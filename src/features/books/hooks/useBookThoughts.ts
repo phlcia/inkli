@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
+import { useErrorHandler } from '../../../contexts/ErrorHandlerContext';
 import type { ReadSession } from '../../../services/books';
 import {
   addBookToShelf,
@@ -15,9 +16,9 @@ export function useBookThoughts(params: {
   userBookId: string | null;
   setUserBookId: (id: string | null) => void;
   refreshBookStatusRef: MutableRefObject<() => void>;
-  setToastMessage: (message: string | null) => void;
 }) {
-  const { user, book, userBookId, setUserBookId, refreshBookStatusRef, setToastMessage } = params;
+  const { user, book, userBookId, setUserBookId, refreshBookStatusRef } = params;
+  const { handleApiError, showClientError } = useErrorHandler();
 
   const [userNotes, setUserNotes] = useState<string>('');
   const [userCustomLabels, setUserCustomLabels] = useState<string[]>([]);
@@ -88,8 +89,7 @@ export function useBookThoughts(params: {
         });
 
         if (error) {
-          console.error('Error saving notes:', error);
-          setToastMessage("Couldn't save your notes. Please try again.");
+          handleApiError(error, 'save notes', () => saveNotes(notesText));
           setSavingNotes(false);
           return;
         }
@@ -103,12 +103,11 @@ export function useBookThoughts(params: {
 
         refreshBookStatusRef.current?.();
       } catch (error) {
-        console.error('Error saving notes:', error);
-        setToastMessage("Couldn't save your notes. Please try again.");
+        handleApiError(error, 'save notes', () => saveNotes(notesText));
         setSavingNotes(false);
       }
     },
-    [user, userBookId, refreshBookStatusRef, setToastMessage]
+    [user, userBookId, refreshBookStatusRef, handleApiError]
   );
 
   const handleNotesChange = useCallback(
@@ -137,7 +136,7 @@ export function useBookThoughts(params: {
   const handleAddReadSession = useCallback(
     async (newStartDate: string | null, newEndDate: string | null) => {
       if (!user || !userBookId) {
-        setToastMessage('Please add this book to your shelf first');
+        showClientError('Please add this book to your shelf first');
         return;
       }
 
@@ -150,8 +149,9 @@ export function useBookThoughts(params: {
         });
 
         if (error) {
-          console.error('Error adding read session:', error);
-          setToastMessage(error.message || "Couldn't save dates. Please try again.");
+          handleApiError(error, 'save dates', () =>
+            handleAddReadSession(newStartDate, newEndDate)
+          );
           setSavingDates(false);
           return;
         }
@@ -163,12 +163,13 @@ export function useBookThoughts(params: {
 
         refreshBookStatusRef.current?.();
       } catch (error) {
-        console.error('Error adding read session:', error);
-        setToastMessage("Couldn't save dates. Please try again.");
+        handleApiError(error, 'save dates', () =>
+          handleAddReadSession(newStartDate, newEndDate)
+        );
         setSavingDates(false);
       }
     },
-    [user, userBookId, refreshBookStatusRef, setToastMessage]
+    [user, userBookId, refreshBookStatusRef, handleApiError, showClientError]
   );
 
   const handleUpdateReadSession = useCallback(
@@ -184,8 +185,9 @@ export function useBookThoughts(params: {
         });
 
         if (error) {
-          console.error('Error updating read session:', error);
-          setToastMessage(error.message || "Couldn't update dates. Please try again.");
+          handleApiError(error, 'update dates', () =>
+            handleUpdateReadSession(sessionId, newStartDate, newEndDate)
+          );
           setSavingDates(false);
           return;
         }
@@ -199,12 +201,13 @@ export function useBookThoughts(params: {
 
         refreshBookStatusRef.current?.();
       } catch (error) {
-        console.error('Error updating read session:', error);
-        setToastMessage("Couldn't update dates. Please try again.");
+        handleApiError(error, 'update dates', () =>
+          handleUpdateReadSession(sessionId, newStartDate, newEndDate)
+        );
         setSavingDates(false);
       }
     },
-    [user, refreshBookStatusRef, setToastMessage]
+    [user, refreshBookStatusRef, handleApiError]
   );
 
   const handleDeleteReadSession = useCallback(
@@ -217,8 +220,9 @@ export function useBookThoughts(params: {
         const { error } = await deleteReadSession(sessionId);
 
         if (error) {
-          console.error('Error deleting read session:', error);
-          setToastMessage("Couldn't delete dates. Please try again.");
+          handleApiError(error, 'delete dates', () =>
+            handleDeleteReadSession(sessionId)
+          );
           setSavingDates(false);
           return;
         }
@@ -228,12 +232,13 @@ export function useBookThoughts(params: {
 
         refreshBookStatusRef.current?.();
       } catch (error) {
-        console.error('Error deleting read session:', error);
-        setToastMessage("Couldn't delete dates. Please try again.");
+        handleApiError(error, 'delete dates', () =>
+          handleDeleteReadSession(sessionId)
+        );
         setSavingDates(false);
       }
     },
-    [user, refreshBookStatusRef, setToastMessage]
+    [user, refreshBookStatusRef, handleApiError]
   );
 
   const handleDateRangeSelected = useCallback(
@@ -299,12 +304,11 @@ export function useBookThoughts(params: {
 
         setSavingTags(false);
       } catch (error) {
-        console.error('Error removing genre:', error);
-        setToastMessage("Couldn't remove genre. Please try again.");
+        handleApiError(error, 'remove genre');
         setSavingTags(false);
       }
     },
-    [user, userBookId, userGenres, setToastMessage]
+    [user, userBookId, userGenres, handleApiError]
   );
 
   const handleRemoveCustomLabel = useCallback(
@@ -327,19 +331,18 @@ export function useBookThoughts(params: {
 
         setSavingTags(false);
       } catch (error) {
-        console.error('Error removing custom label:', error);
-        setToastMessage("Couldn't remove label. Please try again.");
+        handleApiError(error, 'remove label');
         setSavingTags(false);
       }
     },
-    [user, userBookId, userCustomLabels, setToastMessage]
+    [user, userBookId, userCustomLabels, handleApiError, showClientError]
   );
 
   const handleSaveTags = useCallback(
     async (genres: string[], customLabels: string[]) => {
 
       if (!user) {
-        setToastMessage('Please log in to save tags');
+        showClientError('Please log in to save tags');
         return;
       }
 
@@ -368,7 +371,6 @@ export function useBookThoughts(params: {
           });
 
           if (error) {
-            console.error('=== updateUserBookDetails FAILED ===', error);
             setUserGenres(previousUserGenres);
             setUserCustomLabels(previousCustomLabels);
             throw error;
@@ -377,16 +379,14 @@ export function useBookThoughts(params: {
 
         await refreshBookStatusRef.current?.();
         setSavingTags(false);
-        setToastMessage('Tags updated!');
       } catch (error) {
-        console.error('Error saving tags:', error);
         setUserGenres(previousUserGenres);
         setUserCustomLabels(previousCustomLabels);
-        setToastMessage("Couldn't save tags. Please try again.");
+        handleApiError(error, 'save tags');
         setSavingTags(false);
       }
     },
-    [user, userBookId, userGenres, userCustomLabels, refreshBookStatusRef, book, setUserBookId, setToastMessage]
+    [user, userBookId, userGenres, userCustomLabels, refreshBookStatusRef, book, setUserBookId, handleApiError, showClientError]
   );
 
   return {

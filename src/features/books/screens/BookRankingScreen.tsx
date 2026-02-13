@@ -19,6 +19,7 @@ import { colors, typography } from '../../../config/theme';
 import { formatDateForDisplay } from '../../../utils/dateRanges';
 import { updateUserBookDetails, removeBookFromShelf, updateBookStatus, getReadSessions, addReadSession, updateReadSession, deleteReadSession, ReadSession, getUserBooks } from '../../../services/books';
 import { useAuth } from '../../../contexts/AuthContext';
+import { useErrorHandler } from '../../../contexts/ErrorHandlerContext';
 import BookComparisonModal from '../components/BookComparisonModal';
 import DateRangePickerModal from '../../../components/ui/DateRangePickerModal';
 import GenreLabelPicker from '../../../components/books/GenreLabelPicker';
@@ -33,6 +34,7 @@ type BookRankingScreenNavigationProp = NativeStackNavigationProp<SearchStackPara
 
 export default function BookRankingScreen() {
   const { user } = useAuth();
+  const { handleApiError, showClientError } = useErrorHandler();
   const userId = user?.id;
   const navigation = useNavigation<BookRankingScreenNavigationProp>();
   const route = useRoute<BookRankingScreenRouteProp>();
@@ -332,7 +334,7 @@ export default function BookRankingScreen() {
       console.error('Error message:', error?.message);
       // Only show alert for unexpected errors
       if (error?.message && !error.message.includes('cancelled')) {
-        Alert.alert('Error', `Failed to save book details: ${error.message}`);
+        handleApiError(error, 'update book');
       }
       setSaving(false);
       return false;
@@ -361,7 +363,7 @@ export default function BookRankingScreen() {
       const ensuredUserBookId = await ensureUserBookId();
       if (!ensuredUserBookId || ensuredUserBookId.trim() === '') {
         console.error('=== RANKING DEBUG: ERROR - Cannot open comparison modal with empty userBookId ===');
-        Alert.alert('Error', 'Book ID is missing. Please try adding the book again.');
+        showClientError('Book ID is missing. Please try adding the book again.');
         return;
       }
 
@@ -397,7 +399,7 @@ export default function BookRankingScreen() {
         const { error } = await removeBookFromShelf(userBookId);
         if (error) {
           console.error('Error removing book from shelf:', error);
-          Alert.alert('Error', 'Failed to revert changes');
+          handleApiError(error, 'update book');
         }
       } else if (previousStatus === null && initialStatus === 'read') {
         // Book existed without a shelf status - revert back to null status
@@ -496,7 +498,7 @@ export default function BookRankingScreen() {
       }
     } catch (error) {
       console.error('Error reverting book state:', error);
-      Alert.alert('Error', 'Failed to revert changes');
+      handleApiError(error, 'update book');
     }
   }, [
     currentReadSession,
@@ -668,7 +670,7 @@ export default function BookRankingScreen() {
         });
         if (error) {
           console.error('Error updating read session:', error);
-          Alert.alert('Error', 'Failed to update read session');
+          handleApiError(error, 'update book');
           return;
         }
         setReadSessions((previous) =>
@@ -734,7 +736,7 @@ export default function BookRankingScreen() {
               }
             } catch (error) {
               console.error('Error deleting read session:', error);
-              Alert.alert('Error', 'Failed to delete read session');
+              handleApiError(error, 'update book');
             }
           },
         },
@@ -759,7 +761,7 @@ export default function BookRankingScreen() {
       
       if (error) {
         console.error('updateUserBookDetails error:', error);
-        Alert.alert('Error', 'Failed to save tags. Please try again.');
+        handleApiError(error, 'save tags');
         setSavingTags(false);
         return;
       }
@@ -770,7 +772,7 @@ export default function BookRankingScreen() {
       setSavingTags(false);
     } catch (error) {
       console.error('Error saving tags:', error);
-      Alert.alert('Error', 'Something went wrong. Please try again.');
+      handleApiError(error, 'save tags');
       setSavingTags(false);
     }
   };

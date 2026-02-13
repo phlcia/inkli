@@ -16,6 +16,9 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { colors } from './src/config/theme';
 import TabNavigator from './src/navigation/TabNavigator';
 import { AuthProvider, useAuth } from './src/contexts/AuthContext';
+import { ErrorHandlerProvider } from './src/contexts/ErrorHandlerContext';
+import { useNetworkStatus } from './src/hooks/useNetworkStatus';
+import { OfflineBanner } from './src/components/OfflineBanner';
 import AuthStackNavigator from './src/navigation/AuthStackNavigator';
 import { supabase } from './src/config/supabase';
 import 'react-native-get-random-values';
@@ -23,6 +26,7 @@ import 'react-native-url-polyfill/auto';
 
 function AppContent() {
   const { user, loading } = useAuth();
+  const { isOnline } = useNetworkStatus();
   const isLoading = Boolean(loading);
   const hasUser = Boolean(user);
   const [profileLoading, setProfileLoading] = useState(false);
@@ -108,9 +112,11 @@ function AppContent() {
   }
 
   return (
-    <GestureHandlerRootView style={styles.appRoot}>
-      <NavigationContainer key="main-navigator">
-        {hasUser ? (
+    <ErrorHandlerProvider>
+      <GestureHandlerRootView style={styles.appRoot}>
+        <OfflineBanner visible={!isOnline} />
+        <NavigationContainer key="main-navigator">
+          {hasUser ? (
           needsOnboardingQuiz ? (
             <AuthStackNavigator
               initialRouteName="Quiz"
@@ -122,8 +128,9 @@ function AppContent() {
         ) : (
           <AuthStackNavigator />
         )}
-      </NavigationContainer>
-    </GestureHandlerRootView>
+        </NavigationContainer>
+      </GestureHandlerRootView>
+    </ErrorHandlerProvider>
   );
 }
 
