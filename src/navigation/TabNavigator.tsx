@@ -11,7 +11,7 @@ import SearchStackNavigator from './SearchStackNavigator';
 import LeaderboardStackNavigator from './LeaderboardStackNavigator';
 import ProfileStackNavigator from './ProfileStackNavigator';
 import homeIcon from '../../assets/home.png';
-import yourShelfIcon from '../../assets/your shelf.png';
+import yourShelfIcon from '../../assets/shelf.png';
 import searchIcon from '../../assets/search.png';
 import leaderboardIcon from '../../assets/leaderboard.png';
 

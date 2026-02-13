@@ -1531,7 +1531,8 @@ BEGIN
   SET global_rank = NULL
   WHERE books_read_count = 0;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql
+SET search_path = public, pg_catalog;
 
 -- Weekly streak functions
 CREATE OR REPLACE FUNCTION calculate_weekly_streak(user_uuid uuid)
