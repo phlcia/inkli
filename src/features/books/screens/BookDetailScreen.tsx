@@ -10,6 +10,7 @@ import {
   StatusBar,
   Modal,
   Alert,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navigation/native';
@@ -664,11 +665,18 @@ export default function BookDetailScreen() {
         </TouchableOpacity>
       </SafeAreaView>
 
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
+      <KeyboardAvoidingView
+        style={styles.keyboardAvoidingView}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 20}
       >
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+        >
         {/* Book Cover */}
         {hasCover ? (
           <Image source={{ uri: coverUrl }} style={styles.coverImage} resizeMode="contain" />
@@ -960,7 +968,8 @@ export default function BookDetailScreen() {
           FriendsRankingSkeletonCard={FriendsRankingSkeletonCard}
           loadingIndicatorColor={colors.white}
         />
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
 
       <Modal
         visible={showRankingActionSheet}
@@ -1040,6 +1049,9 @@ const styles = StyleSheet.create({
     right: 0,
     zIndex: 10,
   },
+  keyboardAvoidingView: {
+    flex: 1,
+  },
   backButton: {
     marginTop: Platform.OS === 'ios' ? 8 : 16,
     marginLeft: 16,
@@ -1065,7 +1077,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingTop: 80,
-    paddingBottom: 100,
+    paddingBottom: 200,
     paddingHorizontal: 24,
   },
   coverImage: {

@@ -7,6 +7,8 @@ import {
   TouchableOpacity,
   TextInput,
   ScrollView,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { colors, typography } from '../../../config/theme';
 import { submitBookFeedback } from '../../../services/bookFeedback';
@@ -93,14 +95,23 @@ export default function BookFeedbackForm({
       animationType="fade"
       onRequestClose={handleCancel}
     >
-      <View style={styles.overlay}>
+      <KeyboardAvoidingView
+        style={styles.overlay}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+      >
         <TouchableOpacity
           style={styles.backdrop}
           activeOpacity={1}
           onPress={handleCancel}
         />
         <View style={styles.sheet}>
-          <View style={styles.sheetContent}>
+          <ScrollView
+            style={styles.sheetScroll}
+            contentContainerStyle={styles.sheetContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
               <Text style={styles.title}>Report incorrect information</Text>
 
               <Text style={styles.label}>Issue type</Text>
@@ -156,9 +167,9 @@ export default function BookFeedbackForm({
                       <Text style={styles.cancelButtonText}>Cancel</Text>
                     </TouchableOpacity>
                   </View>
-                </View>
+          </ScrollView>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -178,6 +189,10 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     marginHorizontal: 24,
     maxWidth: 400,
+    maxHeight: '90%',
+  },
+  sheetScroll: {
+    maxHeight: '100%',
   },
   sheetContent: {
     padding: 24,

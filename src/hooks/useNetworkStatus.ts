@@ -1,30 +1,22 @@
 import { useEffect, useState } from 'react';
+import NetInfo from '@react-native-community/netinfo';
 
 /**
- * Tracks network connectivity via navigator.onLine.
- * On React Native, navigator.onLine exists but may not reflect actual connectivity
- * on all devices. For production robustness, consider @react-native-community/netinfo.
+ * Tracks network connectivity via @react-native-community/netinfo.
+ * Uses native APIs on iOS/Android for reliable detection (navigator.onLine
+ * is unreliable on React Native, especially in TestFlight builds).
  */
 export function useNetworkStatus(): { isOnline: boolean } {
-  const [isOnline, setIsOnline] = useState(() => {
-    if (typeof navigator === 'undefined' || navigator === null) return true;
-    return navigator.onLine;
-  });
+  const [isOnline, setIsOnline] = useState(true);
 
   useEffect(() => {
-    const w = typeof window !== 'undefined' ? window : null;
-    if (!w?.addEventListener) return;
+    const unsubscribe = NetInfo.addEventListener((state) => {
+      // isConnected can be boolean | null; null means unknown
+      const connected = state.isConnected ?? true;
+      setIsOnline(connected);
+    });
 
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-
-    w.addEventListener('online', handleOnline);
-    w.addEventListener('offline', handleOffline);
-
-    return () => {
-      w.removeEventListener('online', handleOnline);
-      w.removeEventListener('offline', handleOffline);
-    };
+    return () => unsubscribe();
   }, []);
 
   return { isOnline };

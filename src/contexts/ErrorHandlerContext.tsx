@@ -4,6 +4,7 @@ import {
   classifyError,
   getErrorMessage,
 } from '../utils/errorHandling';
+import { useNetworkStatus } from '../hooks/useNetworkStatus';
 import { ErrorToast } from '../components/ErrorToast';
 
 const RETRY_THROTTLE_MS = 2000;
@@ -24,6 +25,7 @@ const ErrorHandlerContext = createContext<ErrorHandlerContextType | undefined>(
 );
 
 export function ErrorHandlerProvider({ children }: { children: React.ReactNode }) {
+  const { isOnline } = useNetworkStatus();
   const [toast, setToast] = useState<ToastState | null>(null);
   const lastRetryAtRef = React.useRef<number>(0);
 
@@ -42,7 +44,7 @@ export function ErrorHandlerProvider({ children }: { children: React.ReactNode }
 
   const handleApiError = useCallback(
     (error: unknown, context: string, onRetry?: () => void) => {
-      const tier = classifyError(error);
+      const tier = classifyError(error, isOnline);
       const message = getErrorMessage(error, tier, context);
 
       switch (tier) {
@@ -71,7 +73,7 @@ export function ErrorHandlerProvider({ children }: { children: React.ReactNode }
           break;
       }
     },
-    [showServerError, showClientError]
+    [isOnline, showServerError, showClientError]
   );
 
   const value: ErrorHandlerContextType = {

@@ -12,8 +12,9 @@ interface SupabaseFunctionsError {
   name?: string;
 }
 
-/** Check if we're offline (call before making requests) */
-export function isOffline(): boolean {
+/** Check if we're offline (call before making requests). Prefer passing isOnline from useNetworkStatus. */
+export function isOffline(isOnline?: boolean): boolean {
+  if (typeof isOnline === 'boolean') return !isOnline;
   if (typeof navigator === 'undefined' || navigator === null) return false;
   return !navigator.onLine;
 }
@@ -42,9 +43,9 @@ function getFunctionsErrorStatus(error: unknown): number | null {
   return typeof status === 'number' ? status : null;
 }
 
-/** Classify error into offline, server (5xx), or client (4xx) */
-export function classifyError(error: unknown): ErrorTier {
-  if (isOffline()) return 'offline';
+/** Classify error into offline, server (5xx), or client (4xx). Pass isOnline from useNetworkStatus for reliable detection. */
+export function classifyError(error: unknown, isOnline?: boolean): ErrorTier {
+  if (isOffline(isOnline)) return 'offline';
 
   const message = error instanceof Error ? error.message : String(error ?? '');
   if (isNetworkErrorMessage(message)) return 'offline';

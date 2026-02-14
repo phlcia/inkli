@@ -9,6 +9,8 @@ import {
   ActivityIndicator,
   Animated,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { colors, typography } from '../../config/theme';
@@ -202,7 +204,11 @@ export default function GenreLabelPicker({
       transparent
       onRequestClose={onClose}
     >
-      <View style={styles.overlay}>
+      <KeyboardAvoidingView
+        style={styles.overlay}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+      >
         <TouchableOpacity
           style={styles.backdrop}
           activeOpacity={1}
@@ -242,6 +248,7 @@ export default function GenreLabelPicker({
             style={styles.content}
             contentContainerStyle={styles.contentContainer}
             showsVerticalScrollIndicator={true}
+            keyboardShouldPersistTaps="handled"
           >
             {/* API Categories Reference (if available) */}
             {apiCategories && apiCategories.length > 0 && (
@@ -317,7 +324,7 @@ export default function GenreLabelPicker({
             </View>
           </ScrollView>
         </Animated.View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
