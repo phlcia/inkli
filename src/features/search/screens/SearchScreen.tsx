@@ -751,7 +751,7 @@ export default function SearchScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}
+        keyboardVerticalOffset={0}
         style={styles.keyboardAvoidingView}
       >
         {/* Header */}

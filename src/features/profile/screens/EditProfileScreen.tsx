@@ -5,14 +5,12 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  ScrollView,
   Image,
   Alert,
   ActivityIndicator,
   StatusBar,
-  KeyboardAvoidingView,
-  Platform,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -301,18 +299,15 @@ export default function EditProfileScreen() {
         </TouchableOpacity>
       </View>
 
-      <KeyboardAvoidingView
-        style={styles.keyboardAvoidingView}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 20}
+      <KeyboardAwareScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        enableOnAndroid={true}
+        extraScrollHeight={20}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
       >
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-        >
         {/* Profile Photo Section */}
         <View style={styles.profilePhotoSection}>
           <TouchableOpacity
@@ -400,8 +395,7 @@ export default function EditProfileScreen() {
             </View>
           </View>
         </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+      </KeyboardAwareScrollView>
 
       {/* Profile Photo Action Sheet */}
       <ProfilePhotoActionSheet
@@ -455,14 +449,8 @@ const styles = StyleSheet.create({
   saveButtonDisabled: {
     opacity: 0.5,
   },
-  keyboardAvoidingView: {
-    flex: 1,
-  },
-  scrollView: {
-    flex: 1,
-  },
   scrollContent: {
-    paddingBottom: 200,
+    paddingBottom: 80,
   },
   profilePhotoSection: {
     alignItems: 'center',

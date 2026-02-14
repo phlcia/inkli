@@ -233,7 +233,7 @@ export default function FollowersFollowingScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}
+        keyboardVerticalOffset={0}
         style={styles.keyboardAvoidingView}
       >
         <View style={styles.header}>

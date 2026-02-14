@@ -207,7 +207,7 @@ export default function GenreLabelPicker({
       <KeyboardAvoidingView
         style={styles.overlay}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        keyboardVerticalOffset={0}
       >
         <TouchableOpacity
           style={styles.backdrop}
