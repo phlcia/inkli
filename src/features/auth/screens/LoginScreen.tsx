@@ -8,6 +8,7 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
 } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { useAuth } from '../../../contexts/AuthContext';
@@ -82,8 +83,14 @@ export default function LoginScreen() {
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.keyboardAvoidingView}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
     >
-      <View style={styles.container}>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.container}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
         <Text style={styles.logo}>inkli</Text>
         <Text style={styles.title}>{isSignUp ? 'Sign Up' : 'Sign In'}</Text>
 
@@ -140,7 +147,7 @@ export default function LoginScreen() {
             {isSignUp ? 'Already have an account? Sign In' : "Don't have an account? Sign Up"}
           </Text>
         </TouchableOpacity>
-      </View>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
@@ -149,10 +156,14 @@ const styles = StyleSheet.create({
   keyboardAvoidingView: {
     flex: 1,
   },
-  container: {
+  scrollView: {
     flex: 1,
+  },
+  container: {
+    flexGrow: 1,
     backgroundColor: colors.creamBackground,
     padding: 24,
+    paddingVertical: 48,
     justifyContent: 'center',
   },
   logo: {
