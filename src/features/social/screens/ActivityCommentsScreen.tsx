@@ -270,7 +270,7 @@ export default function ActivityCommentsScreen() {
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}
+        keyboardVerticalOffset={0}
       >
         <View style={styles.inputBar}>
           {currentUserAvatarUrl ? (

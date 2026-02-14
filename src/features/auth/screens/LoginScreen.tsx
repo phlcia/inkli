@@ -6,10 +6,8 @@ import {
   TouchableOpacity,
   StyleSheet,
   Alert,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import * as WebBrowser from 'expo-web-browser';
 import { useAuth } from '../../../contexts/AuthContext';
 import { colors, typography } from '../../../config/theme';
@@ -80,17 +78,14 @@ export default function LoginScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.keyboardAvoidingView}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+    <KeyboardAwareScrollView
+      style={{ flex: 1 }}
+      contentContainerStyle={styles.container}
+      keyboardShouldPersistTaps="handled"
+      showsVerticalScrollIndicator={false}
+      enableOnAndroid={true}
+      extraScrollHeight={20}
     >
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.container}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
         <Text style={styles.logo}>inkli</Text>
         <Text style={styles.title}>{isSignUp ? 'Sign Up' : 'Sign In'}</Text>
 
@@ -147,18 +142,11 @@ export default function LoginScreen() {
             {isSignUp ? 'Already have an account? Sign In' : "Don't have an account? Sign Up"}
           </Text>
         </TouchableOpacity>
-      </ScrollView>
-    </KeyboardAvoidingView>
+    </KeyboardAwareScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  keyboardAvoidingView: {
-    flex: 1,
-  },
-  scrollView: {
-    flex: 1,
-  },
   container: {
     flexGrow: 1,
     backgroundColor: colors.creamBackground,

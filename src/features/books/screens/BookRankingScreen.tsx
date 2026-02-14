@@ -4,14 +4,13 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  ScrollView,
   TextInput,
   Image,
   Alert,
   Platform,
   StatusBar,
-  KeyboardAvoidingView,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, useFocusEffect, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -782,17 +781,14 @@ export default function BookRankingScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar barStyle="dark-content" backgroundColor={colors.creamBackground} />
-      <KeyboardAvoidingView
+      <KeyboardAwareScrollView
         style={styles.content}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        enableOnAndroid={true}
+        extraScrollHeight={20}
+        keyboardShouldPersistTaps="handled"
       >
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-        >
           {/* Book Cover */}
           {coverUrl && (
             <Image source={{ uri: coverUrl }} style={styles.coverImage} resizeMode="cover" />
@@ -982,26 +978,25 @@ export default function BookRankingScreen() {
               <Text style={styles.notesIcon}>✏️</Text>
             </View>
           </View>
-        </ScrollView>
+      </KeyboardAwareScrollView>
 
-        {/* Bottom Button - Show for "read" status with any rating (liked, fine, or disliked) */}
-        {initialStatus === 'read' && rating && (
-          <TouchableOpacity
-            style={styles.shelveButton}
-            onPress={handleShelveBook}
-            disabled={saving}
-          >
-            <Text style={styles.shelveButtonText}>
-              {isNewInstance ? 'Rank New Instance' : "Let's shelve your book!"}
-            </Text>
-          </TouchableOpacity>
-        )}
-
-        {/* Close Button */}
-        <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
-          <Text style={styles.closeButtonText}>×</Text>
+      {/* Bottom Button - Show for "read" status with any rating (liked, fine, or disliked) */}
+      {initialStatus === 'read' && rating && (
+        <TouchableOpacity
+          style={styles.shelveButton}
+          onPress={handleShelveBook}
+          disabled={saving}
+        >
+          <Text style={styles.shelveButtonText}>
+            {isNewInstance ? 'Rank New Instance' : "Let's shelve your book!"}
+          </Text>
         </TouchableOpacity>
-      </KeyboardAvoidingView>
+      )}
+
+      {/* Close Button */}
+      <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
+        <Text style={styles.closeButtonText}>×</Text>
+      </TouchableOpacity>
 
       {/* Comparison Modal - Shows after rating "I liked it!" */}
       {rating && comparisonUserBookId && comparisonUserBookId.trim() !== '' ? (
@@ -1067,9 +1062,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.creamBackground,
   },
   content: {
-    flex: 1,
-  },
-  scrollView: {
     flex: 1,
   },
   scrollContent: {

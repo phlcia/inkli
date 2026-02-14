@@ -9,10 +9,8 @@ import {
   Alert,
   ActivityIndicator,
   Image,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography } from '../../../config/theme';
 import { checkUsernameAvailability } from '../../../services/userProfile';
@@ -98,17 +96,14 @@ export default function SignUpEmailScreen({ onNext, onBack: _onBack }: SignUpEma
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <StatusBar barStyle="dark-content" backgroundColor={colors.creamBackground} />
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.keyboardAvoidingView}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+      <KeyboardAwareScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        enableOnAndroid={true}
+        extraScrollHeight={20}
       >
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={styles.content}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
           {/* Logo */}
           <View style={styles.logoContainer}>
             <Image
@@ -208,8 +203,7 @@ export default function SignUpEmailScreen({ onNext, onBack: _onBack }: SignUpEma
           <TouchableOpacity style={styles.nextButton} onPress={handleNext}>
             <Text style={styles.nextButtonText}>Next</Text>
           </TouchableOpacity>
-        </ScrollView>
-      </KeyboardAvoidingView>
+      </KeyboardAwareScrollView>
     </SafeAreaView>
   );
 }
@@ -218,12 +212,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.creamBackground,
-  },
-  keyboardAvoidingView: {
-    flex: 1,
-  },
-  scrollView: {
-    flex: 1,
   },
   content: {
     flexGrow: 1,

@@ -7,9 +7,8 @@ import {
   TouchableOpacity,
   TextInput,
   ScrollView,
-  KeyboardAvoidingView,
-  Platform,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { colors, typography } from '../../../config/theme';
 import { submitBookFeedback } from '../../../services/bookFeedback';
 
@@ -95,22 +94,22 @@ export default function BookFeedbackForm({
       animationType="fade"
       onRequestClose={handleCancel}
     >
-      <KeyboardAvoidingView
-        style={styles.overlay}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
-      >
+      <View style={styles.overlay}>
         <TouchableOpacity
           style={styles.backdrop}
           activeOpacity={1}
           onPress={handleCancel}
         />
         <View style={styles.sheet}>
-          <ScrollView
+          <KeyboardAwareScrollView
             style={styles.sheetScroll}
             contentContainerStyle={styles.sheetContent}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
+            enableOnAndroid
+            extraScrollHeight={16}
+            extraHeight={0}
+            enableResetScrollToCoords={false}
           >
               <Text style={styles.title}>Report incorrect information</Text>
 
@@ -167,9 +166,9 @@ export default function BookFeedbackForm({
                       <Text style={styles.cancelButtonText}>Cancel</Text>
                     </TouchableOpacity>
                   </View>
-          </ScrollView>
+          </KeyboardAwareScrollView>
         </View>
-      </KeyboardAvoidingView>
+      </View>
     </Modal>
   );
 }
@@ -190,12 +189,15 @@ const styles = StyleSheet.create({
     marginHorizontal: 24,
     maxWidth: 400,
     maxHeight: '90%',
+    alignSelf: 'center',
   },
   sheetScroll: {
-    maxHeight: '100%',
+    flexGrow: 0,
   },
   sheetContent: {
-    padding: 24,
+    paddingHorizontal: 24,
+    paddingTop: 24,
+    paddingBottom: 16,
   },
   title: {
     fontSize: 20,

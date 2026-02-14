@@ -10,8 +10,8 @@ import {
   StatusBar,
   Modal,
   Alert,
-  KeyboardAvoidingView,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -665,18 +665,15 @@ export default function BookDetailScreen() {
         </TouchableOpacity>
       </SafeAreaView>
 
-      <KeyboardAvoidingView
-        style={styles.keyboardAvoidingView}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 20}
+      <KeyboardAwareScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        enableOnAndroid={true}
+        extraScrollHeight={20}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
       >
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-        >
         {/* Book Cover */}
         {hasCover ? (
           <Image source={{ uri: coverUrl }} style={styles.coverImage} resizeMode="contain" />
@@ -968,8 +965,7 @@ export default function BookDetailScreen() {
           FriendsRankingSkeletonCard={FriendsRankingSkeletonCard}
           loadingIndicatorColor={colors.white}
         />
-        </ScrollView>
-      </KeyboardAvoidingView>
+      </KeyboardAwareScrollView>
 
       <Modal
         visible={showRankingActionSheet}
@@ -1049,9 +1045,6 @@ const styles = StyleSheet.create({
     right: 0,
     zIndex: 10,
   },
-  keyboardAvoidingView: {
-    flex: 1,
-  },
   backButton: {
     marginTop: Platform.OS === 'ios' ? 8 : 16,
     marginLeft: 16,
@@ -1072,12 +1065,9 @@ const styles = StyleSheet.create({
     color: colors.brownText,
     fontWeight: 'bold',
   },
-  scrollView: {
-    flex: 1,
-  },
   scrollContent: {
     paddingTop: 80,
-    paddingBottom: 200,
+    paddingBottom: 80,
     paddingHorizontal: 24,
   },
   coverImage: {
