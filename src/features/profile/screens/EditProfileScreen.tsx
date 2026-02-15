@@ -40,7 +40,6 @@ export default function EditProfileScreen() {
 
   // Form fields
   const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
   const [bio, setBio] = useState('');
   const [profilePhotoUrl, setProfilePhotoUrl] = useState<string | null>(null);
@@ -69,15 +68,12 @@ export default function EditProfileScreen() {
       if (profile) {
         const fullName = `${profile.first_name || ''} ${profile.last_name || ''}`.trim();
         setName(fullName || '');
-        setEmail(user.email || '');
         setUsername(profile.username || '');
         setOriginalUsername(profile.username || '');
         setBio(profile.bio || '');
         setProfilePhotoUrl(profile.profile_photo_url);
       } else {
-        // Set defaults if no profile
         setName('');
-        setEmail(user.email || '');
         setUsername('');
         setBio('');
       }
@@ -264,7 +260,7 @@ export default function EditProfileScreen() {
       return name.charAt(0).toUpperCase();
     }
     if (user?.email) {
-      return user.email.charAt(0).toUpperCase();
+      return user.email?.charAt(0).toUpperCase() ?? 'U';
     }
     return 'U';
   };
@@ -350,21 +346,6 @@ export default function EditProfileScreen() {
           </View>
 
           <View style={styles.inputContainer}>
-            <Text style={styles.label}>Email</Text>
-            <View style={styles.inputWrapper}>
-              <TextInput
-                style={[styles.input, styles.inputReadOnly]}
-                value={email}
-                editable={false}
-                placeholder="Email"
-                placeholderTextColor={colors.brownText}
-                autoCapitalize="none"
-                keyboardType="email-address"
-              />
-            </View>
-          </View>
-
-          <View style={styles.inputContainer}>
             <Text style={styles.label}>Username</Text>
             <View style={styles.inputWrapper}>
               <TextInput
@@ -394,6 +375,13 @@ export default function EditProfileScreen() {
               />
             </View>
           </View>
+
+          <TouchableOpacity
+            style={styles.accountPrivacyButton}
+            onPress={() => navigation.navigate('AccountSettings')}
+          >
+            <Text style={styles.accountPrivacyButtonText}>Account & privacy</Text>
+          </TouchableOpacity>
         </View>
       </KeyboardAwareScrollView>
 
@@ -505,6 +493,21 @@ const styles = StyleSheet.create({
     borderColor: colors.brownText,
     paddingHorizontal: 18,
   },
+  accountPrivacyButton: {
+    marginTop: 24,
+    paddingVertical: 16,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.brownText,
+    borderRadius: 12,
+    backgroundColor: colors.white,
+  },
+  accountPrivacyButtonText: {
+    fontFamily: typography.body,
+    fontSize: 16,
+    color: colors.primaryBlue,
+    fontWeight: '600',
+  },
   input: {
     flex: 1,
     height: 50,
@@ -512,9 +515,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.brownText,
     paddingVertical: 0,
-  },
-  inputReadOnly: {
-    opacity: 0.6,
   },
   bioInput: {
     height: 100,
