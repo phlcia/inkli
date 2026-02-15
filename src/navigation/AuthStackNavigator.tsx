@@ -20,6 +20,7 @@ export type AuthStackParamList = {
         firstName: string;
         lastName: string;
         username: string;
+        phone?: string | null;
       }
     | undefined;
 };
@@ -104,13 +105,14 @@ export default function AuthStackNavigator({
         {(props) => (
           <SignUpEmailScreen
             {...props}
-            onNext={(email, password, firstName, lastName, username) => {
+            onNext={(email, password, firstName, lastName, username, phone) => {
               props.navigation.navigate('Quiz', {
                 email,
                 password,
                 firstName,
                 lastName,
                 username,
+                phone: phone ?? null,
               });
             }}
           />

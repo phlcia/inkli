@@ -14,10 +14,11 @@ import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography } from '../../../config/theme';
 import { checkUsernameAvailability } from '../../../services/userProfile';
+import { normalizePhone } from '../../../utils/phone';
 import iconImage from '../../../../assets/icon.png';
 
 interface SignUpEmailScreenProps {
-  onNext: (email: string, password: string, firstName: string, lastName: string, username: string) => void;
+  onNext: (email: string, password: string, firstName: string, lastName: string, username: string, phone: string | null) => void;
   onBack?: () => void;
 }
 
@@ -30,6 +31,8 @@ export default function SignUpEmailScreen({ onNext, onBack: _onBack }: SignUpEma
   const [username, setUsername] = useState('');
   const [usernameError, setUsernameError] = useState('');
   const [checkingUsername, setCheckingUsername] = useState(false);
+  const [phone, setPhone] = useState('');
+  const [phoneError, setPhoneError] = useState('');
 
   const validateUsername = async (value: string) => {
     if (value.length < 3) {
@@ -90,7 +93,17 @@ export default function SignUpEmailScreen({ onNext, onBack: _onBack }: SignUpEma
       return;
     }
 
-    onNext(email, password, firstName, lastName, username);
+    let normalizedPhone: string | null = null;
+    if (phone.trim()) {
+      normalizedPhone = normalizePhone(phone.trim());
+      if (!normalizedPhone) {
+        setPhoneError('Please enter a valid phone number');
+        return;
+      }
+      setPhoneError('');
+    }
+
+    onNext(email, password, firstName, lastName, username, normalizedPhone);
   };
 
   return (
@@ -175,6 +188,34 @@ export default function SignUpEmailScreen({ onNext, onBack: _onBack }: SignUpEma
           autoCorrect={false}
         />
 
+        {/* Phone Input (optional) */}
+        <View>
+          <View style={styles.phoneRow}>
+            <View style={styles.areaCodeBox}>
+              <Text style={styles.areaCodeText}>+1</Text>
+            </View>
+            <TextInput
+              style={[styles.phoneInput, phoneError ? styles.inputError : null]}
+              placeholder="Enter your phone number"
+              placeholderTextColor={colors.brownText}
+              value={phone}
+              onChangeText={(v) => {
+                setPhone(v);
+                if (phoneError) setPhoneError('');
+              }}
+              keyboardType="phone-pad"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+          </View>
+          <Text style={styles.phoneNote}>
+            We only support US numbers (+1) right now.
+          </Text>
+          {phoneError ? (
+            <Text style={styles.errorText}>{phoneError}</Text>
+          ) : null}
+        </View>
+
         {/* Password Input */}
         <TextInput
           style={styles.input}
@@ -251,6 +292,47 @@ const styles = StyleSheet.create({
     color: colors.brownText,
     borderWidth: 1,
     borderColor: colors.brownText,
+  },
+  phoneRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  areaCodeBox: {
+    height: 50,
+    minWidth: 56,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.brownText,
+    backgroundColor: colors.white,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 6,
+  },
+  areaCodeText: {
+    fontFamily: typography.body,
+    fontSize: 16,
+    color: colors.brownText,
+  },
+  phoneInput: {
+    flex: 1,
+    backgroundColor: colors.white,
+    height: 50,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    fontFamily: typography.body,
+    fontSize: 16,
+    color: colors.brownText,
+    borderWidth: 1,
+    borderColor: colors.brownText,
+  },
+  phoneNote: {
+    fontFamily: typography.body,
+    fontSize: 12,
+    color: colors.brownText,
+    opacity: 0.8,
+    marginBottom: 12,
+    marginLeft: 4,
   },
   nextButton: {
     backgroundColor: colors.primaryBlue,

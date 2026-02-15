@@ -5,6 +5,7 @@ import * as AppleAuthentication from 'expo-apple-authentication';
 import * as WebBrowser from 'expo-web-browser';
 import { Platform } from 'react-native';
 import { getAuthRedirectUri } from '../utils/authRedirect';
+import { looksLikePhone, normalizePhone } from '../utils/phone';
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
 
 // Complete auth session for better UX
@@ -63,9 +64,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signIn = async (identifier: string, password: string) => {
     const trimmedIdentifier = identifier.trim();
-    let email = trimmedIdentifier;
+    let email: string;
 
-    if (!trimmedIdentifier.includes('@')) {
+    if (trimmedIdentifier.includes('@')) {
+      email = trimmedIdentifier;
+    } else if (looksLikePhone(trimmedIdentifier)) {
+      const normalized = normalizePhone(trimmedIdentifier);
+      if (!normalized) {
+        throw new Error('Please enter a valid phone number');
+      }
+      const { data, error } = await supabase.functions.invoke('resolve-phone', {
+        body: { phone: normalized },
+      });
+      if (error) throw error;
+      email = data?.email ?? '';
+      if (!email) {
+        throw new Error('No account found with that phone number');
+      }
+    } else {
       const { data, error } = await supabase.functions.invoke('resolve-username', {
         body: { username: trimmedIdentifier },
       });

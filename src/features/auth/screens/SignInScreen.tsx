@@ -67,10 +67,10 @@ export default function SignInScreen({ onSignUp }: SignInScreenProps) {
         {/* Tagline */}
         <Text style={styles.tagline}>you read it,{"\n"}you rank it!</Text>
 
-        {/* Email or Username Input */}
+        {/* Username, email, or phone Input */}
         <TextInput
           style={styles.input}
-          placeholder="Username or email"
+          placeholder="Username, email, or phone"
           placeholderTextColor={colors.brownText}
           value={identifier}
           onChangeText={setIdentifier}

@@ -29,7 +29,6 @@ import { getActionText } from '../../../utils/activityText';
 import { useToggleWantToRead } from '../../books/hooks/useToggleWantToRead';
 import {
   acceptFollowRequest,
-  getAccountType,
   getBlockedUsers,
   getFollowerCount,
   getFollowingCount,
@@ -38,15 +37,13 @@ import {
   rejectFollowRequest,
   unblockUser,
   unmuteUser,
-  updateAccountType,
 } from '../../../services/userProfile';
-import type { AccountType, UserSummary } from '../../../services/userProfile';
+import type { UserSummary } from '../../../services/userProfile';
 import RecentActivityCard from '../../social/components/RecentActivityCard';
 import { supabase } from '../../../config/supabase';
 import { ProfileShelfCard, ProfileStatCard } from '../components/ProfileCards';
 import ProfileInfoSection from '../components/ProfileInfoSection';
 import ProfileHeader from '../components/ProfileHeader';
-import dropdownIcon from '../../../../assets/dropdown.png';
 import addIcon from '../../../../assets/add.png';
 import readingIcon from '../../../../assets/reading.png';
 import bookmarkIcon from '../../../../assets/bookmark.png';
@@ -87,9 +84,6 @@ export default function ProfileScreen() {
   } | null>(null);
   const [followerCount, setFollowerCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
-  const [accountType, setAccountType] = useState<AccountType>('public');
-  const [privacyUpdating, setPrivacyUpdating] = useState(false);
-  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [incomingRequests, setIncomingRequests] = useState<Array<{
     id: string;
     requester: UserSummary;
@@ -187,7 +181,6 @@ export default function ProfileScreen() {
         profile,
         followers,
         following,
-        accountTypeResult,
         incomingRequestsResult,
         blockedUsersResult,
         mutedUsersResult,
@@ -197,7 +190,6 @@ export default function ProfileScreen() {
         fetchUserProfile(user.id),
         getFollowerCount(user.id),
         getFollowingCount(user.id),
-        getAccountType(user.id),
         getIncomingFollowRequests(user.id),
         getBlockedUsers(user.id),
         getMutedUsers(user.id),
@@ -213,7 +205,6 @@ export default function ProfileScreen() {
       setViewerShelfMap(map);
       setFollowerCount(followers.count);
       setFollowingCount(following.count);
-      setAccountType(accountTypeResult.accountType);
       setBlockedUsers(blockedUsersResult.users);
       setMutedUsers(mutedUsersResult.users);
       const hydratedRequests = await hydrateRequesters(
@@ -287,22 +278,6 @@ export default function ProfileScreen() {
     const month = date.toLocaleString('default', { month: 'long' });
     const year = date.getFullYear();
     return `${month} ${year}`;
-  };
-
-  const handleAccountTypeSelect = async (nextType: AccountType) => {
-    if (!user || privacyUpdating) return;
-    setProfileMenuOpen(false);
-    if (nextType === accountType) return;
-    setPrivacyUpdating(true);
-    try {
-      const result = await updateAccountType(user.id, nextType);
-      if (result.error) throw result.error;
-      setAccountType(nextType);
-    } catch (error) {
-      handleApiError(error, 'update privacy');
-    } finally {
-      setPrivacyUpdating(false);
-    }
   };
 
   const handleAcceptRequest = async (requestId: string) => {
@@ -491,45 +466,11 @@ export default function ProfileScreen() {
           <View style={styles.actionButtons}>
             <View style={styles.followGroup}>
               <TouchableOpacity
-                style={[styles.followButton, styles.followButtonConnected]}
+                style={[styles.followButton]}
                 onPress={() => navigation.navigate('EditProfile')}
               >
                 <Text style={styles.followButtonText}>Edit profile</Text>
               </TouchableOpacity>
-              <>
-                <TouchableOpacity
-                  style={styles.followMenuTrigger}
-                  onPress={() => setProfileMenuOpen((prev) => !prev)}
-                  activeOpacity={0.8}
-                  disabled={privacyUpdating}
-                >
-                  <Image
-                    source={dropdownIcon}
-                    style={styles.followMenuTriggerIcon}
-                    resizeMode="contain"
-                  />
-                </TouchableOpacity>
-                {profileMenuOpen && (
-                  <View style={styles.followMenu}>
-                    <TouchableOpacity
-                      style={styles.followMenuItem}
-                      onPress={() => handleAccountTypeSelect('public')}
-                    >
-                      <Text style={styles.followMenuItemText}>
-                        {accountType === 'public' ? '✓ ' : ''}Public account
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.followMenuItem}
-                      onPress={() => handleAccountTypeSelect('private')}
-                    >
-                      <Text style={styles.followMenuItemText}>
-                        {accountType === 'private' ? '✓ ' : ''}Private account
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-              </>
             </View>
           </View>
         </ProfileInfoSection>
@@ -1058,10 +999,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: colors.white,
-  },
-  followButtonConnected: {
-    borderTopRightRadius: 0,
-    borderBottomRightRadius: 0,
   },
   followButtonText: {
     fontSize: 14,

@@ -22,6 +22,7 @@ import { supabase } from '../../../config/supabase';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useErrorHandler } from '../../../contexts/ErrorHandlerContext';
 import { AuthStackParamList } from '../../../navigation/AuthStackNavigator';
+import { updatePrivateData } from '../../../services/userPrivateData';
 
 const QUIZ_COMPARISON_COUNT = 12; // Default number of comparisons
 
@@ -34,6 +35,7 @@ interface QuizScreenProps {
     firstName: string;
     lastName: string;
     username: string;
+    phone?: string | null;
   };
   onSignupComplete?: () => void;
   onQuizComplete?: () => void;
@@ -84,6 +86,25 @@ export default function QuizScreen({ signupParams, onSignupComplete, onQuizCompl
           finalSignupParams.lastName,
           [] // No reading interests - we'll use quiz instead
         );
+        // Save phone to user_private_data if provided (unverified)
+        const phone = finalSignupParams.phone?.trim();
+        if (phone) {
+          const { data: sessionData } = await supabase.auth.getSession();
+          const userId = sessionData?.session?.user?.id;
+          if (userId) {
+            const { error: updateError } = await updatePrivateData(userId, {
+              phone_number: phone,
+            });
+            if (updateError) {
+              if ((updateError as { code?: string })?.code === '23505') {
+                // Uniqueness: phone already registered; non-blocking for sign-up
+                console.warn('Phone already registered, skipping save');
+              } else {
+                console.warn('Failed to save phone to private data:', updateError);
+              }
+            }
+          }
+        }
         setSignupComplete(true);
         if (onSignupComplete) {
           onSignupComplete();

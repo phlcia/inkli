@@ -3,6 +3,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { colors } from '../config/theme';
 import ProfileScreen from '../features/profile/screens/ProfileScreen';
 import EditProfileScreen from '../features/profile/screens/EditProfileScreen';
+import AccountSettingsScreen from '../features/profile/screens/AccountSettingsScreen';
 import BookDetailScreen from '../features/books/screens/BookDetailScreen';
 import BookRankingScreen from '../features/books/screens/BookRankingScreen';
 import FollowersFollowingScreen from '../features/social/screens/FollowersFollowingScreen';
@@ -19,6 +20,7 @@ import {
 export type ProfileStackParamList = {
   ProfileMain: undefined;
   EditProfile: undefined;
+  AccountSettings: undefined;
   BookDetail: { book: any }; // Enriched book data
   BookRanking: BookRankingParams;
   FollowersFollowing: FollowersFollowingParams;
@@ -43,6 +45,14 @@ export default function ProfileStackNavigator() {
       <Stack.Screen
         name="EditProfile"
         component={EditProfileScreen}
+        options={{
+          presentation: 'card',
+          animation: 'slide_from_right',
+        }}
+      />
+      <Stack.Screen
+        name="AccountSettings"
+        component={AccountSettingsScreen}
         options={{
           presentation: 'card',
           animation: 'slide_from_right',
