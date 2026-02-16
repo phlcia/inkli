@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,16 +6,42 @@ import {
   TouchableOpacity,
   StyleSheet,
   StatusBar,
-  Alert,
   ActivityIndicator,
   Image,
+  Platform,
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as Haptics from 'expo-haptics';
 import { colors, typography } from '../../../config/theme';
 import { checkUsernameAvailability } from '../../../services/userProfile';
 import { normalizePhone } from '../../../utils/phone';
 import iconImage from '../../../../assets/icon.png';
+
+// Validation constants
+const MAX_USERNAME_LENGTH = 30;
+const USERNAME_REGEX = /^[a-zA-Z][a-zA-Z0-9_]*$/;
+const DEBOUNCE_MS = 300;
+const SUCCESS_GREEN = '#34C759';
+const ERROR_RED = '#FF3B30';
+
+// Basic email format validation
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Password requirements
+const PASSWORD_REQUIREMENTS = [
+  { key: 'length', label: 'At least 8 characters', check: (p: string) => p.length >= 8 },
+  { key: 'uppercase', label: 'Contains uppercase letter', check: (p: string) => /[A-Z]/.test(p) },
+  { key: 'lowercase', label: 'Contains lowercase letter', check: (p: string) => /[a-z]/.test(p) },
+  { key: 'number', label: 'Contains number', check: (p: string) => /[0-9]/.test(p) },
+  {
+    key: 'special',
+    label: 'Contains special character',
+    check: (p: string) => /[!@#$%^&*(),.?":{}|<>_\-+=[\]\\;'`~]/.test(p),
+  },
+] as const;
+
+type UsernameStatus = 'idle' | 'checking' | 'available' | 'taken' | 'error';
 
 interface SignUpEmailScreenProps {
   onNext: (email: string, password: string, name: string, username: string, phone: string | null) => void;
@@ -26,69 +52,237 @@ export default function SignUpEmailScreen({ onNext, onBack: _onBack }: SignUpEma
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [confirmPasswordTouched, setConfirmPasswordTouched] = useState(false);
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
-  const [usernameError, setUsernameError] = useState('');
-  const [checkingUsername, setCheckingUsername] = useState(false);
   const [phone, setPhone] = useState('');
+
+  // Validation state
+  const [usernameStatus, setUsernameStatus] = useState<UsernameStatus>('idle');
+  const [usernameFormatError, setUsernameFormatError] = useState('');
+  const [usernameRequiredError, setUsernameRequiredError] = useState('');
+  const [nameError, setNameError] = useState('');
+  const [emailError, setEmailError] = useState('');
+  const [passwordError, setPasswordError] = useState('');
   const [phoneError, setPhoneError] = useState('');
 
-  const validateUsername = async (value: string) => {
-    if (value.length < 3) {
-      setUsernameError('Username must be at least 3 characters');
-      return false;
+  const debounceRef = useRef<NodeJS.Timeout | null>(null);
+  const usernameRef = useRef(username);
+  const prevUsernameStatusRef = useRef<UsernameStatus>('idle');
+  const prevPasswordMatchRef = useRef<boolean | null>(null);
+
+  usernameRef.current = username;
+
+  const runUsernameCheck = useCallback(async (value: string) => {
+    const trimmed = value.trim().toLowerCase();
+    if (trimmed.length < 3 || trimmed.length > MAX_USERNAME_LENGTH || !USERNAME_REGEX.test(value)) {
+      return;
     }
 
-    if (!/^[a-zA-Z0-9_]+$/.test(value)) {
-      setUsernameError('Username can only contain letters, numbers, and underscores');
-      return false;
-    }
+    setUsernameStatus('checking');
 
-    setCheckingUsername(true);
-    const { available, error } = await checkUsernameAvailability(value);
-    setCheckingUsername(false);
+    const valueToCheck = trimmed;
+    const { available, error } = await checkUsernameAvailability(valueToCheck);
+
+    // Stale response guard: user may have typed something else while we were fetching
+    if (valueToCheck !== usernameRef.current.trim().toLowerCase()) {
+      return;
+    }
 
     if (error) {
-      setUsernameError('Error checking username availability');
-      return false;
+      setUsernameStatus('error');
+      return;
     }
 
-    if (!available) {
-      setUsernameError('Username already taken');
-      return false;
+    const newStatus: UsernameStatus = available ? 'available' : 'taken';
+    setUsernameStatus(newStatus);
+
+    // Haptic on state transition
+    if (prevUsernameStatusRef.current !== newStatus) {
+      if (Platform.OS === 'ios') {
+        void Haptics.notificationAsync(
+          available
+            ? Haptics.NotificationFeedbackType.Success
+            : Haptics.NotificationFeedbackType.Error
+        );
+      }
+      prevUsernameStatusRef.current = newStatus;
     }
+  }, []);
 
-    setUsernameError('');
-    return true;
-  };
+  const scheduleUsernameCheck = useCallback(
+    (value: string) => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+        debounceRef.current = null;
+      }
 
-  const handleUsernameChange = async (value: string) => {
+      const trimmed = value.trim().toLowerCase();
+      if (trimmed.length < 3) {
+        setUsernameStatus('idle');
+        setUsernameFormatError(trimmed.length > 0 ? 'Username must be at least 3 characters' : '');
+        return;
+      }
+      if (trimmed.length > MAX_USERNAME_LENGTH) {
+        setUsernameStatus('idle');
+        setUsernameFormatError(`Username must be ${MAX_USERNAME_LENGTH} characters or less`);
+        return;
+      }
+      if (!USERNAME_REGEX.test(value)) {
+        setUsernameStatus('idle');
+        setUsernameFormatError('Username must start with a letter and contain only letters, numbers, and underscores');
+        return;
+      }
+
+      setUsernameFormatError('');
+      debounceRef.current = setTimeout(() => {
+        debounceRef.current = null;
+        void runUsernameCheck(value);
+      }, DEBOUNCE_MS);
+    },
+    [runUsernameCheck]
+  );
+
+  const handleUsernameChange = (value: string) => {
     setUsername(value);
-    setUsernameError('');
+    if (usernameRequiredError) setUsernameRequiredError('');
 
-    if (value.length >= 3 && /^[a-zA-Z0-9_]+$/.test(value)) {
-      await validateUsername(value);
+    if (value.trim().length < 3) {
+      setUsernameStatus('idle');
+      setUsernameFormatError(value.length > 0 ? 'Username must be at least 3 characters' : '');
+      return;
+    }
+    if (!USERNAME_REGEX.test(value)) {
+      setUsernameStatus('idle');
+      setUsernameFormatError(
+        value.length > 0
+          ? 'Username must start with a letter and contain only letters, numbers, and underscores'
+          : ''
+      );
+      return;
+    }
+
+    setUsernameFormatError('');
+    scheduleUsernameCheck(value);
+  };
+
+  const handleUsernameBlur = () => {
+    if (!username.trim()) {
+      setUsernameRequiredError('Username is required');
+      return;
+    }
+    setUsernameRequiredError('');
+    if (username.trim().length >= 3 && USERNAME_REGEX.test(username)) {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+        debounceRef.current = null;
+      }
+      void runUsernameCheck(username);
     }
   };
+
+  const handleRetryUsernameCheck = () => {
+    if (usernameStatus === 'error' && username.trim().length >= 3 && USERNAME_REGEX.test(username)) {
+      void runUsernameCheck(username);
+    }
+  };
+
+  const validateNameBlur = () => {
+    const err = name.trim() ? '' : 'Name is required';
+    setNameError(err);
+  };
+
+  const validateEmailBlur = () => {
+    if (!email.trim()) {
+      setEmailError('Email is required');
+      return;
+    }
+    setEmailError(EMAIL_REGEX.test(email.trim()) ? '' : 'Please enter a valid email');
+  };
+
+  const validatePhoneBlur = () => {
+    if (!phone.trim()) {
+      setPhoneError('');
+      return;
+    }
+    const normalized = normalizePhone(phone.trim());
+    setPhoneError(normalized ? '' : 'Please enter a valid US phone number');
+  };
+
+  const validatePasswordBlur = () => {
+    setPasswordError(password.trim() ? '' : 'Password is required');
+  };
+
+  const passwordsMatch = password === confirmPassword && confirmPassword.length > 0;
+  const showPasswordMatchFeedback = confirmPasswordTouched && confirmPassword.length > 0;
+
+  useEffect(() => {
+    if (!showPasswordMatchFeedback) {
+      prevPasswordMatchRef.current = null;
+      return;
+    }
+    const prev = prevPasswordMatchRef.current;
+    prevPasswordMatchRef.current = passwordsMatch;
+    if (prev !== null && prev !== passwordsMatch && Platform.OS === 'ios') {
+      void Haptics.notificationAsync(
+        passwordsMatch
+          ? Haptics.NotificationFeedbackType.Success
+          : Haptics.NotificationFeedbackType.Error
+      );
+    }
+  }, [passwordsMatch, showPasswordMatchFeedback]);
+
+  const passwordRequirementsMet = PASSWORD_REQUIREMENTS.every((r) => r.check(password));
+  const isFormValid =
+    name.trim().length > 0 &&
+    !nameError &&
+    username.trim().length >= 3 &&
+    username.length <= MAX_USERNAME_LENGTH &&
+    USERNAME_REGEX.test(username) &&
+    usernameStatus === 'available' &&
+    EMAIL_REGEX.test(email.trim()) &&
+    !emailError &&
+    (phone.trim() === '' || !!normalizePhone(phone.trim())) &&
+    !phoneError &&
+    passwordRequirementsMet &&
+    password === confirmPassword &&
+    confirmPassword.length > 0;
 
   const handleNext = async () => {
-    if (!email || !password || !confirmPassword || !name || !username) {
-      Alert.alert('Error', 'Please fill in all fields');
+    validateNameBlur();
+    handleUsernameBlur();
+    validateEmailBlur();
+    validatePasswordBlur();
+    validatePhoneBlur();
+
+    if (!name.trim()) {
+      setNameError('Name is required');
       return;
     }
-
-    if (password !== confirmPassword) {
-      Alert.alert('Error', 'Passwords do not match');
+    if (!username.trim()) {
+      setUsernameRequiredError('Username is required');
       return;
     }
-
-    if (password.length < 6) {
-      Alert.alert('Error', 'Password must be at least 6 characters');
+    if (!email.trim()) {
+      setEmailError('Email is required');
       return;
     }
-
-    const isValid = await validateUsername(username);
-    if (!isValid) {
+    if (!password.trim()) {
+      setPasswordError('Password is required');
+      return;
+    }
+    if (!EMAIL_REGEX.test(email.trim())) {
+      setEmailError('Please enter a valid email');
+      return;
+    }
+    if (phone.trim() && !normalizePhone(phone.trim())) {
+      setPhoneError('Please enter a valid US phone number');
+      return;
+    }
+    if (usernameStatus !== 'available') {
+      return;
+    }
+    if (!passwordRequirementsMet || password !== confirmPassword) {
       return;
     }
 
@@ -99,10 +293,9 @@ export default function SignUpEmailScreen({ onNext, onBack: _onBack }: SignUpEma
         setPhoneError('Please enter a valid phone number');
         return;
       }
-      setPhoneError('');
     }
 
-    onNext(email, password, name, username, normalizedPhone);
+    onNext(email.trim(), password, name.trim(), username.trim().toLowerCase(), normalizedPhone);
   };
 
   return (
@@ -116,65 +309,107 @@ export default function SignUpEmailScreen({ onNext, onBack: _onBack }: SignUpEma
         enableOnAndroid={true}
         extraScrollHeight={20}
       >
-          {/* Logo */}
-          <View style={styles.logoContainer}>
-            <Image
-              source={iconImage}
-              style={styles.logoImage}
-              resizeMode="contain"
-            />
-          </View>
+        {/* Logo */}
+        <View style={styles.logoContainer}>
+          <Image source={iconImage} style={styles.logoImage} resizeMode="contain" />
+        </View>
 
-        {/* Title */}
         <Text style={styles.title}>sign up with email</Text>
 
         {/* Name Input */}
-        <TextInput
-          style={styles.input}
-          placeholder="Name"
-          placeholderTextColor={colors.brownText}
-          value={name}
-          onChangeText={setName}
-          autoCapitalize="words"
-          autoCorrect={false}
-        />
+        <View>
+          <TextInput
+            style={[styles.input, nameError ? styles.inputError : null]}
+            placeholder="Name"
+            placeholderTextColor={colors.brownText}
+            value={name}
+            onChangeText={(v) => {
+              setName(v);
+              if (nameError) setNameError('');
+            }}
+            onBlur={validateNameBlur}
+            autoCapitalize="words"
+            autoCorrect={false}
+            accessibilityLabel="Name"
+            accessibilityHint={nameError ? nameError : undefined}
+          />
+          {nameError ? <Text style={styles.errorText}>{nameError}</Text> : null}
+        </View>
 
         {/* Username Input */}
         <View>
           <View style={styles.usernameInputContainer}>
             <TextInput
-              style={[styles.input, usernameError ? styles.inputError : null]}
+              style={[
+                styles.input,
+                (usernameRequiredError ||
+                  usernameFormatError ||
+                  usernameStatus === 'taken' ||
+                  usernameStatus === 'error')
+                  ? styles.inputError
+                  : null,
+              ]}
               placeholder="Username"
               placeholderTextColor={colors.brownText}
               value={username}
               onChangeText={handleUsernameChange}
+              onBlur={handleUsernameBlur}
               autoCapitalize="none"
               autoCorrect={false}
+              maxLength={MAX_USERNAME_LENGTH}
+              accessibilityLabel="Username"
+              accessibilityHint={
+                usernameRequiredError ||
+                (usernameStatus === 'available'
+                  ? 'Username available'
+                  : usernameStatus === 'taken'
+                    ? 'Username taken'
+                    : usernameStatus === 'error'
+                      ? 'Unable to check availability'
+                      : usernameFormatError || undefined)
+              }
             />
-            {checkingUsername && (
-              <ActivityIndicator
-                size="small"
-                color={colors.primaryBlue}
-                style={styles.checkingIndicator}
-              />
+            {usernameStatus === 'checking' && (
+              <ActivityIndicator size="small" color={colors.primaryBlue} style={styles.checkingIndicator} />
             )}
           </View>
-          {usernameError ? (
-            <Text style={styles.errorText}>{usernameError}</Text>
+          {usernameRequiredError ? (
+            <Text style={styles.errorText}>{usernameRequiredError}</Text>
+          ) : usernameFormatError ? (
+            <Text style={styles.errorText}>{usernameFormatError}</Text>
+          ) : usernameStatus === 'available' ? (
+            <Text style={styles.successText}>✓ Username available</Text>
+          ) : usernameStatus === 'taken' ? (
+            <Text style={styles.errorText}>✗ Username taken</Text>
+          ) : usernameStatus === 'error' ? (
+            <TouchableOpacity onPress={handleRetryUsernameCheck} accessible accessibilityRole="button">
+              <Text style={[styles.errorText, styles.retryText]}>
+                Unable to check availability. Try again.
+              </Text>
+            </TouchableOpacity>
           ) : null}
         </View>
 
         {/* Email Input */}
-        <TextInput
-          style={styles.input}
-          placeholder="Email"
-          placeholderTextColor={colors.brownText}
-          value={email}
-          onChangeText={setEmail}
-          keyboardType="email-address"
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
+        <View>
+          <TextInput
+            style={[styles.input, emailError ? styles.inputError : null]}
+            placeholder="Email"
+            placeholderTextColor={colors.brownText}
+            value={email}
+            onChangeText={(v) => {
+              setEmail(v);
+              if (emailError) setEmailError('');
+            }}
+            onBlur={validateEmailBlur}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoCorrect={false}
+            accessibilityLabel="Email"
+            accessibilityHint={emailError || undefined}
+          />
+          {emailError ? <Text style={styles.errorText}>{emailError}</Text> : null}
+        </View>
 
         {/* Phone Input (optional) */}
         <View>
@@ -184,54 +419,112 @@ export default function SignUpEmailScreen({ onNext, onBack: _onBack }: SignUpEma
             </View>
             <TextInput
               style={[styles.phoneInput, phoneError ? styles.inputError : null]}
-              placeholder="Enter your phone number"
+              placeholder="Phone (optional)"
               placeholderTextColor={colors.brownText}
               value={phone}
               onChangeText={(v) => {
                 setPhone(v);
                 if (phoneError) setPhoneError('');
               }}
+              onBlur={validatePhoneBlur}
               keyboardType="phone-pad"
               autoCapitalize="none"
               autoCorrect={false}
+              accessibilityLabel="Phone number, optional"
+              accessibilityHint={phoneError ? phoneError : 'US numbers only'}
             />
           </View>
-          <Text style={styles.phoneNote}>
-            We only support US numbers (+1) right now.
-          </Text>
-          {phoneError ? (
-            <Text style={styles.errorText}>{phoneError}</Text>
-          ) : null}
+          <Text style={styles.phoneNote}>We only support US numbers (+1) right now.</Text>
+          {phoneError ? <Text style={styles.errorText}>{phoneError}</Text> : null}
         </View>
 
         {/* Password Input */}
-        <TextInput
-          style={styles.input}
-          placeholder="Password"
-          placeholderTextColor={colors.brownText}
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
+        <View>
+          <TextInput
+            style={[styles.input, passwordError ? styles.inputError : null]}
+            placeholder="Password"
+            placeholderTextColor={colors.brownText}
+            value={password}
+            onChangeText={(v) => {
+              setPassword(v);
+              if (passwordError) setPasswordError('');
+            }}
+            onBlur={validatePasswordBlur}
+            secureTextEntry
+            autoCapitalize="none"
+            autoCorrect={false}
+            accessibilityLabel="Password"
+            accessibilityHint={passwordError || undefined}
+          />
+          {passwordError ? <Text style={styles.errorText}>{passwordError}</Text> : null}
+          <View style={styles.passwordChecklist}>
+            {PASSWORD_REQUIREMENTS.map((req) => {
+              const met = req.check(password);
+              return (
+                <Text
+                  key={req.key}
+                  style={[styles.checklistItem, met ? styles.checklistMet : styles.checklistUnmet]}
+                  accessibilityLabel={req.label}
+                  accessibilityState={{ checked: met }}
+                >
+                  {met ? '✓' : '○'} {req.label}
+                </Text>
+              );
+            })}
+          </View>
+        </View>
 
         {/* Confirm Password Input */}
-        <TextInput
-          style={styles.input}
-          placeholder="Confirm Password"
-          placeholderTextColor={colors.brownText}
-          value={confirmPassword}
-          onChangeText={setConfirmPassword}
-          secureTextEntry
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
+        <View>
+          <TextInput
+            style={[
+              styles.input,
+              confirmPasswordTouched &&
+                confirmPassword.length > 0 &&
+                password !== confirmPassword &&
+                styles.inputError,
+            ]}
+            placeholder="Confirm Password"
+            placeholderTextColor={colors.brownText}
+            value={confirmPassword}
+            onChangeText={(v) => {
+              setConfirmPassword(v);
+              setConfirmPasswordTouched(true);
+            }}
+            secureTextEntry
+            autoCapitalize="none"
+            autoCorrect={false}
+            accessibilityLabel="Confirm password"
+            accessibilityHint={
+              confirmPasswordTouched && confirmPassword.length > 0
+                ? password === confirmPassword
+                  ? 'Passwords match'
+                  : 'Passwords do not match'
+                : undefined
+            }
+          />
+          {confirmPasswordTouched && confirmPassword.length > 0 && (
+            <>
+              {password === confirmPassword ? (
+                <Text style={styles.successText}>✓ Passwords match</Text>
+              ) : (
+                <Text style={styles.errorText}>✗ Passwords don't match</Text>
+              )}
+            </>
+          )}
+        </View>
 
-          {/* Next Button */}
-          <TouchableOpacity style={styles.nextButton} onPress={handleNext}>
-            <Text style={styles.nextButtonText}>Next</Text>
-          </TouchableOpacity>
+        {/* Next Button */}
+        <TouchableOpacity
+          style={[styles.nextButton, !isFormValid && styles.nextButtonDisabled]}
+          onPress={handleNext}
+          disabled={!isFormValid}
+          accessibilityRole="button"
+          accessibilityLabel="Next"
+          accessibilityState={{ disabled: !isFormValid }}
+        >
+          <Text style={styles.nextButtonText}>Next</Text>
+        </TouchableOpacity>
       </KeyboardAwareScrollView>
     </SafeAreaView>
   );
@@ -329,6 +622,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 8,
   },
+  nextButtonDisabled: {
+    opacity: 0.5,
+  },
   nextButtonText: {
     color: colors.white,
     fontFamily: typography.button,
@@ -344,14 +640,42 @@ const styles = StyleSheet.create({
     top: 15,
   },
   inputError: {
-    borderColor: '#FF3B30',
+    borderColor: ERROR_RED,
   },
   errorText: {
-    color: '#FF3B30',
+    color: ERROR_RED,
     fontSize: 12,
     fontFamily: typography.body,
     marginTop: -12,
     marginBottom: 12,
     marginLeft: 4,
+  },
+  successText: {
+    color: SUCCESS_GREEN,
+    fontSize: 12,
+    fontFamily: typography.body,
+    marginTop: -12,
+    marginBottom: 12,
+    marginLeft: 4,
+  },
+  retryText: {
+    textDecorationLine: 'underline',
+  },
+  passwordChecklist: {
+    marginTop: -8,
+    marginBottom: 12,
+    marginLeft: 4,
+  },
+  checklistItem: {
+    fontSize: 12,
+    fontFamily: typography.body,
+    marginBottom: 4,
+  },
+  checklistMet: {
+    color: SUCCESS_GREEN,
+  },
+  checklistUnmet: {
+    color: colors.brownText,
+    opacity: 0.6,
   },
 });
