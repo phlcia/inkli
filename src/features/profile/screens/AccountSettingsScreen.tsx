@@ -10,6 +10,8 @@ import {
   StatusBar,
   ScrollView,
   Switch,
+  Modal,
+  Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -22,6 +24,7 @@ import {
 } from '../../../services/userProfile';
 import type { AccountType } from '../../../services/userProfile';
 import { getPrivateData, updatePrivateData } from '../../../services/userPrivateData';
+import { deactivateAccount, deleteAccount, updatePassword } from '../../../services/account';
 import { normalizePhone } from '../../../utils/phone';
 import { ProfileStackParamList } from '../../../navigation/ProfileStackNavigator';
 
@@ -29,6 +32,41 @@ type AccountSettingsScreenNavigationProp = StackNavigationProp<
   ProfileStackParamList,
   'AccountSettings'
 >;
+
+function isOAuthUser(user: {
+  identities?: Array<{ provider?: string }>;
+  app_metadata?: { provider?: string };
+} | null): boolean {
+  if (!user) return false;
+  const hasOAuthIdentity =
+    user.identities?.some(
+      (i) => i.provider === 'google' || i.provider === 'apple'
+    ) ?? false;
+  const providerFromMeta = user.app_metadata?.provider as string | undefined;
+  return (
+    hasOAuthIdentity ||
+    providerFromMeta === 'google' ||
+    providerFromMeta === 'apple'
+  );
+}
+
+function validatePassword(password: string): string | null {
+  if (password.length < 8) return 'Password must be at least 8 characters';
+  if (!/[A-Z]/.test(password)) return 'Password must contain an uppercase letter';
+  if (!/[a-z]/.test(password)) return 'Password must contain a lowercase letter';
+  if (!/[0-9]/.test(password)) return 'Password must contain a number';
+  return null;
+}
+
+function getPasswordErrorMessage(error: unknown): string {
+  const msg = error instanceof Error ? error.message : String(error ?? '');
+  const lower = msg.toLowerCase();
+  if (lower.includes('rate limit') || lower.includes('too many')) return 'Too many attempts. Try again later.';
+  if (lower.includes('session') || lower.includes('expired') || lower.includes('jwt')) return 'Session expired. Please sign in again.';
+  if (msg.includes('Current password is incorrect')) return msg;
+  if ((error as { status?: number })?.status === 422) return 'Password does not meet requirements.';
+  return 'Failed to change password. Please try again.';
+}
 
 export default function AccountSettingsScreen() {
   const navigation = useNavigation<AccountSettingsScreenNavigationProp>();
@@ -39,6 +77,17 @@ export default function AccountSettingsScreen() {
   const [phone, setPhone] = useState('');
   const [accountType, setAccountType] = useState<AccountType>('public');
   const [privacyUpdating, setPrivacyUpdating] = useState(false);
+  const [deactivating, setDeactivating] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [deleteInputValue, setDeleteInputValue] = useState('');
+  const [changePasswordModalVisible, setChangePasswordModalVisible] = useState(false);
+  const [changePasswordCurrent, setChangePasswordCurrent] = useState('');
+  const [changePasswordNew, setChangePasswordNew] = useState('');
+  const [changePasswordConfirm, setChangePasswordConfirm] = useState('');
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [changePasswordError, setChangePasswordError] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     if (!user) {
@@ -128,12 +177,123 @@ export default function AccountSettingsScreen() {
     }
   };
 
-  const handleDeactivatePlaceholder = () => {
-    Alert.alert('Coming soon', 'Deactivate account will be available in a future update.');
+  const handleDeactivate = () => {
+    Alert.alert(
+      'Deactivate Account',
+      'Your profile will be hidden until you sign in again. You will be signed out immediately.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Deactivate',
+          style: 'destructive',
+          onPress: async () => {
+            if (!user) return;
+            setDeactivating(true);
+            const { error } = await deactivateAccount(user.id);
+            if (error) {
+              setDeactivating(false);
+              Alert.alert('Error', 'Failed to deactivate account. Please try again.');
+              return;
+            }
+          },
+        },
+      ]
+    );
   };
 
-  const handleDeletePlaceholder = () => {
-    Alert.alert('Coming soon', 'Delete account will be available in a future update.');
+  const handleDeletePress = () => {
+    setDeleteError(null);
+    setDeleteInputValue('');
+    setDeleteModalVisible(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    Keyboard.dismiss();
+    if (!user) return;
+    const passwordOrConfirmation = deleteInputValue.trim();
+    if (!passwordOrConfirmation) {
+      setDeleteError(
+        isOAuthUser(user)
+          ? 'Please type DELETE to confirm'
+          : 'Please enter your password'
+      );
+      return;
+    }
+    setDeleting(true);
+    setDeleteError(null);
+    const { error } = await deleteAccount(user.id, passwordOrConfirmation, isOAuthUser(user));
+    if (error) {
+      setDeleting(false);
+      const msg = error instanceof Error ? error.message : 'Failed to delete account. Please try again.';
+      setDeleteError(msg);
+      return;
+    }
+    setDeleteModalVisible(false);
+  };
+
+  const handleDeleteModalClose = () => {
+    if (!deleting) {
+      setDeleteModalVisible(false);
+      setDeleteError(null);
+      setDeleteInputValue('');
+    }
+  };
+
+  const handleChangePasswordPress = () => {
+    setChangePasswordError(null);
+    setChangePasswordCurrent('');
+    setChangePasswordNew('');
+    setChangePasswordConfirm('');
+    setChangePasswordModalVisible(true);
+  };
+
+  const handleChangePasswordClose = () => {
+    if (!changingPassword) {
+      setChangePasswordModalVisible(false);
+      setChangePasswordError(null);
+      setChangePasswordCurrent('');
+      setChangePasswordNew('');
+      setChangePasswordConfirm('');
+    }
+  };
+
+  const handleChangePasswordSubmit = async () => {
+    Keyboard.dismiss();
+    if (!user) return;
+    const current = changePasswordCurrent.trim();
+    if (!current) {
+      setChangePasswordError('Please enter your current password');
+      return;
+    }
+    const validationErr = validatePassword(changePasswordNew);
+    if (validationErr) {
+      setChangePasswordError(validationErr);
+      return;
+    }
+    if (changePasswordNew !== changePasswordConfirm) {
+      setChangePasswordError('New passwords do not match');
+      return;
+    }
+    const userEmail = user.email || email.trim();
+    if (!userEmail) {
+      setChangePasswordError('Email is required to change password');
+      return;
+    }
+    setChangingPassword(true);
+    setChangePasswordError(null);
+    const { error } = await updatePassword(userEmail, current, changePasswordNew);
+    setChangingPassword(false);
+    if (error) {
+      setChangePasswordError(getPasswordErrorMessage(error));
+      return;
+    }
+    setChangePasswordModalVisible(false);
+    setChangePasswordCurrent('');
+    setChangePasswordNew('');
+    setChangePasswordConfirm('');
+    Alert.alert('Success', 'Your password has been updated.', [
+      { text: 'OK', onPress: () => (navigation as any).navigate('ProfileMain') },
+    ]);
   };
 
   if (loading) {
@@ -238,17 +398,205 @@ export default function AccountSettingsScreen() {
           </Text>
         </View>
 
+        {/* Security */}
+        {!isOAuthUser(user) && (
+          <>
+            <Text style={styles.sectionHeader}>Security</Text>
+            <View style={styles.section}>
+              <TouchableOpacity
+                style={styles.actionRow}
+                onPress={handleChangePasswordPress}
+                disabled={changingPassword}
+              >
+                {changingPassword ? (
+                  <ActivityIndicator size="small" color={colors.primaryBlue} />
+                ) : (
+                  <Text style={styles.actionRowText}>Change password</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
+
         {/* Account Actions */}
         <Text style={styles.sectionHeader}>Account Actions</Text>
         <View style={styles.section}>
-          <TouchableOpacity style={styles.actionRow} onPress={handleDeactivatePlaceholder}>
-            <Text style={styles.actionRowText}>Deactivate account</Text>
+          <TouchableOpacity
+            style={styles.actionRow}
+            onPress={handleDeactivate}
+            disabled={deactivating}
+          >
+            {deactivating ? (
+              <ActivityIndicator size="small" color={colors.primaryBlue} />
+            ) : (
+              <Text style={styles.actionRowText}>Deactivate account</Text>
+            )}
           </TouchableOpacity>
-          <TouchableOpacity style={styles.actionRow} onPress={handleDeletePlaceholder}>
-            <Text style={[styles.actionRowText, styles.actionRowTextDanger]}>Delete account</Text>
+          <TouchableOpacity
+            style={styles.actionRow}
+            onPress={handleDeletePress}
+            disabled={deleting}
+          >
+            {deleting ? (
+              <ActivityIndicator size="small" color="#C53030" />
+            ) : (
+              <Text style={[styles.actionRowText, styles.actionRowTextDanger]}>Delete account</Text>
+            )}
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      {/* Delete account confirmation modal */}
+      <Modal
+        visible={deleteModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={handleDeleteModalClose}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={handleDeleteModalClose}
+        >
+          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation()} style={styles.modalContent}>
+            <ScrollView keyboardShouldPersistTaps="always" showsVerticalScrollIndicator={false}>
+            <Text style={styles.modalTitle}>Delete Account</Text>
+            <Text style={styles.modalMessage}>
+              This permanently deletes your account and all data. This cannot be undone.
+            </Text>
+            {isOAuthUser(user) ? (
+              <Text style={styles.modalHint}>Type DELETE to confirm</Text>
+            ) : (
+              <Text style={styles.modalHint}>Enter your password to confirm</Text>
+            )}
+            <TextInput
+              style={styles.modalInput}
+              value={deleteInputValue}
+              onChangeText={setDeleteInputValue}
+              placeholder={isOAuthUser(user) ? 'DELETE' : 'Password'}
+              placeholderTextColor={colors.brownText}
+              secureTextEntry={!isOAuthUser(user)}
+              autoCapitalize="none"
+              autoCorrect={false}
+              editable={!deleting}
+            />
+            {deleteError ? (
+              <Text style={styles.modalError}>{deleteError}</Text>
+            ) : null}
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonCancel]}
+                onPress={handleDeleteModalClose}
+                disabled={deleting}
+              >
+                <Text style={styles.modalButtonCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonDelete]}
+                onPress={handleDeleteConfirm}
+                disabled={deleting}
+              >
+                {deleting ? (
+                  <ActivityIndicator size="small" color={colors.white} />
+                ) : (
+                  <Text style={styles.modalButtonDeleteText}>Delete</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+            </ScrollView>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Change password modal */}
+      <Modal
+        visible={changePasswordModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={handleChangePasswordClose}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={handleChangePasswordClose}
+        >
+          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation()} style={styles.modalContent}>
+            <ScrollView keyboardShouldPersistTaps="always" showsVerticalScrollIndicator={false}>
+              <Text style={styles.modalTitle}>Change password</Text>
+              <Text style={styles.modalMessage}>
+                Enter your current password and choose a new one. At least 8 characters with uppercase, lowercase, and a number.
+              </Text>
+              <Text style={styles.modalHint}>Current password</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={changePasswordCurrent}
+                onChangeText={setChangePasswordCurrent}
+                placeholder="Current password"
+                placeholderTextColor={colors.brownText}
+                secureTextEntry
+                autoCapitalize="none"
+                autoCorrect={false}
+                editable={!changingPassword}
+                accessibilityLabel="Current password"
+                accessibilityHint="Required to verify your identity before changing"
+              />
+              <Text style={styles.modalHint}>New password</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={changePasswordNew}
+                onChangeText={setChangePasswordNew}
+                placeholder="New password"
+                placeholderTextColor={colors.brownText}
+                secureTextEntry
+                autoCapitalize="none"
+                autoCorrect={false}
+                editable={!changingPassword}
+                accessibilityLabel="New password"
+                accessibilityHint="At least 8 characters with uppercase, lowercase, and a number"
+              />
+              <Text style={styles.modalHint}>Confirm new password</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={changePasswordConfirm}
+                onChangeText={setChangePasswordConfirm}
+                placeholder="Confirm new password"
+                placeholderTextColor={colors.brownText}
+                secureTextEntry
+                autoCapitalize="none"
+                autoCorrect={false}
+                editable={!changingPassword}
+                accessibilityLabel="Confirm new password"
+                accessibilityHint="Must match new password"
+              />
+              {changePasswordError ? (
+                <Text style={styles.modalError} accessibilityLiveRegion="polite">
+                  {changePasswordError}
+                </Text>
+              ) : null}
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.modalButtonCancel]}
+                  onPress={handleChangePasswordClose}
+                  disabled={changingPassword}
+                >
+                  <Text style={styles.modalButtonCancelText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.modalButtonUpdate]}
+                  onPress={handleChangePasswordSubmit}
+                  disabled={changingPassword}
+                >
+                  {changingPassword ? (
+                    <ActivityIndicator size="small" color={colors.white} />
+                  ) : (
+                    <Text style={styles.modalButtonUpdateText}>Update</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -431,5 +779,95 @@ const styles = StyleSheet.create({
   },
   actionRowTextDanger: {
     color: '#C53030',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  modalContent: {
+    backgroundColor: colors.creamBackground,
+    borderRadius: 16,
+    padding: 24,
+    width: '100%',
+    maxWidth: 340,
+  },
+  modalTitle: {
+    fontFamily: typography.heroTitle,
+    fontSize: 20,
+    fontWeight: '600',
+    color: colors.brownText,
+    marginBottom: 12,
+  },
+  modalMessage: {
+    fontFamily: typography.body,
+    fontSize: 16,
+    color: colors.brownText,
+    marginBottom: 16,
+    lineHeight: 22,
+  },
+  modalHint: {
+    fontFamily: typography.label,
+    fontSize: 14,
+    color: colors.brownText,
+    marginBottom: 8,
+  },
+  modalInput: {
+    backgroundColor: colors.white,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.brownText,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 16,
+    fontFamily: typography.body,
+    color: colors.brownText,
+    marginBottom: 8,
+  },
+  modalError: {
+    fontFamily: typography.body,
+    fontSize: 14,
+    color: '#C53030',
+    marginBottom: 12,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    marginTop: 8,
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginHorizontal: 4,
+  },
+  modalButtonCancel: {
+    backgroundColor: colors.creamBackground,
+  },
+  modalButtonCancelText: {
+    fontFamily: typography.button,
+    fontSize: 16,
+    color: colors.brownText,
+    fontWeight: '600',
+  },
+  modalButtonDelete: {
+    backgroundColor: '#C53030',
+  },
+  modalButtonDeleteText: {
+    fontFamily: typography.button,
+    fontSize: 16,
+    color: colors.white,
+    fontWeight: '600',
+  },
+  modalButtonUpdate: {
+    backgroundColor: colors.primaryBlue,
+  },
+  modalButtonUpdateText: {
+    fontFamily: typography.button,
+    fontSize: 16,
+    color: colors.white,
+    fontWeight: '600',
   },
 });

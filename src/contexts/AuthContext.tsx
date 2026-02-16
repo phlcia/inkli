@@ -99,6 +99,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (error) throw error;
     setSession(data.session);
     setUser(data.user);
+    supabase.from('user_profiles').update({ deactivated_at: null }).eq('user_id', data.user.id).then(() => {});
   };
 
   const signUp = async (
@@ -225,6 +226,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
           setSession(data.session);
           setUser(data.user);
+          supabase.from('user_profiles').update({ deactivated_at: null }).eq('user_id', data.user.id).then(() => {});
           return;
         } catch (error: any) {
           if (error.code === 'ERR_REQUEST_CANCELED' || error.code === 'ERR_CANCELED') {
@@ -294,6 +296,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Ensure profile is created
         if (sessionData.user) {
           await ensureUserProfile(sessionData.user);
+          supabase.from('user_profiles').update({ deactivated_at: null }).eq('user_id', sessionData.user.id).then(() => {});
         }
 
         setSession(sessionData.session);
@@ -335,6 +338,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       setSession(data.session);
       setUser(data.user);
+      supabase.from('user_profiles').update({ deactivated_at: null }).eq('user_id', data.user.id).then(() => {});
     } catch (error: any) {
       // Handle user cancellation
       if (error.code === 'SIGN_IN_CANCELLED' ||
