@@ -9,8 +9,7 @@ BEGIN
   INSERT INTO public.user_profiles (
     user_id,
     username,
-    first_name,
-    last_name,
+    name,
     member_since,
     books_read_count,
     global_rank,
@@ -19,8 +18,7 @@ BEGIN
   VALUES (
     NEW.id,
     COALESCE(NEW.raw_user_meta_data->>'username', 'user_' || substr(NEW.id::text, 1, 8)),
-    COALESCE(NULLIF(NEW.raw_user_meta_data->>'first_name', ''), 'User'),
-    COALESCE(NULLIF(NEW.raw_user_meta_data->>'last_name', ''), ''),
+    COALESCE(NULLIF(TRIM(NEW.raw_user_meta_data->>'name'), ''), 'User'),
     NOW(),
     0,
     NULL,
@@ -32,8 +30,7 @@ BEGIN
   ON CONFLICT (user_id) DO UPDATE
   SET
     username = EXCLUDED.username,
-    first_name = EXCLUDED.first_name,
-    last_name = EXCLUDED.last_name,
+    name = EXCLUDED.name,
     reading_interests = EXCLUDED.reading_interests;
   RETURN NEW;
 END;

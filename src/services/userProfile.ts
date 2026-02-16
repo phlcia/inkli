@@ -4,8 +4,7 @@ import { supabase } from '../config/supabase';
 export interface UserProfile {
   id: string;
   user_id: string;
-  first_name: string;
-  last_name: string;
+  name: string;
   username: string;
   bio: string | null;
   reading_interests: string[];
@@ -18,8 +17,7 @@ export interface UserProfile {
 export interface UserSummary {
   user_id: string;
   username: string;
-  first_name: string;
-  last_name: string;
+  name: string;
   profile_photo_url: string | null;
 }
 
@@ -107,8 +105,7 @@ export async function checkIfFollowing(
 export async function updateUserProfile(
   userId: string,
   updates: {
-    firstName?: string;
-    lastName?: string;
+    name?: string;
     username?: string;
     bio?: string | null;
     readingInterests?: string[];
@@ -120,8 +117,7 @@ export async function updateUserProfile(
       updated_at: new Date().toISOString(),
     };
 
-    if (updates.firstName !== undefined) updateData.first_name = updates.firstName;
-    if (updates.lastName !== undefined) updateData.last_name = updates.lastName;
+    if (updates.name !== undefined) updateData.name = updates.name;
     if (updates.username !== undefined) updateData.username = updates.username;
     if (updates.bio !== undefined) updateData.bio = updates.bio;
     if (updates.readingInterests !== undefined)
@@ -457,8 +453,7 @@ export function getProfilePictureUrl(profilePicturePathOrUrl: string | null): st
 export async function saveProfileWithPicture(
   userId: string,
   profileData: {
-    firstName?: string;
-    lastName?: string;
+    name?: string;
     username?: string;
     bio?: string | null;
     readingInterests?: string[];
@@ -506,8 +501,7 @@ export async function saveProfileWithPicture(
       updated_at: new Date().toISOString(),
     };
 
-    if (profileData.firstName !== undefined) updateData.first_name = profileData.firstName;
-    if (profileData.lastName !== undefined) updateData.last_name = profileData.lastName;
+    if (profileData.name !== undefined) updateData.name = profileData.name;
     if (profileData.username !== undefined) updateData.username = profileData.username;
     if (profileData.bio !== undefined) updateData.bio = profileData.bio;
     if (profileData.readingInterests !== undefined)
@@ -541,7 +535,7 @@ export async function saveProfileWithPicture(
 }
 
 /**
- * Search members by username, first name, or last name
+ * Search members by username or name
  * Returns public profile fields only
  */
 export async function searchMembers(
@@ -549,20 +543,17 @@ export async function searchMembers(
 ): Promise<{ members: Array<{
   user_id: string;
   username: string;
-  first_name: string;
-  last_name: string;
+  name: string;
   profile_photo_url: string | null;
   account_type: AccountType;
 }>; error: any }> {
   try {
     const searchTerm = `%${query}%`;
     
-    // Use .or() with PostgREST syntax: column.operator.value,column2.operator.value2
-    // Note: ilike is case-insensitive, so we don't need toLowerCase
     const { data, error } = await supabase
       .from('user_profiles')
-      .select('user_id, username, first_name, last_name, profile_photo_url, account_type')
-      .or(`username.ilike.${searchTerm},first_name.ilike.${searchTerm},last_name.ilike.${searchTerm}`)
+      .select('user_id, username, name, profile_photo_url, account_type')
+      .or(`username.ilike.${searchTerm},name.ilike.${searchTerm}`)
       .limit(20);
 
     if (error) {
@@ -1008,7 +999,7 @@ const fetchProfilesByIds = async (
 
   const { data, error } = await supabase
     .from('user_profiles')
-    .select('user_id, username, first_name, last_name, profile_photo_url')
+    .select('user_id, username, name, profile_photo_url')
     .in('user_id', userIds);
 
   if (error) {

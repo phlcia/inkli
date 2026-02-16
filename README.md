@@ -21,7 +21,7 @@ A social book ranking and discovery app built with Expo (React Native), Supabase
 
 #### Authentication & User Profiles
 - **Multi-provider authentication**: Email/password, Apple Sign In, Google Sign In
-- **User profiles**: Username, first/last name, bio, reading interests
+- **User profiles**: Username, name, bio, reading interests
 - **Profile photos**: Upload and manage profile pictures via Supabase Storage
 - **Auto-profile creation**: Automatic profile creation on signup via database triggers
 
@@ -51,7 +51,7 @@ A social book ranking and discovery app built with Expo (React Native), Supabase
 - **Activity cards**: Unified `RecentActivityCard` UI with likes/comments and book context
 - **Leaderboard**: Global rankings based on books read count
 - **User following**: Follow/unfollow other users
-- **Member search**: Search for users by username, first name, or last name
+- **Member search**: Search for users by username or name
 - **Profile viewing**: View other users' profiles and reading stats
 - **Comments & likes**: Activity comments/likes with counts and detail screens
 - **Notifications**: In-app notifications for follow requests, likes, comments, and other interactions

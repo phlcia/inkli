@@ -73,8 +73,7 @@ export default function ProfileScreen() {
   const [viewerShelfMap, setViewerShelfMap] = useState<Record<string, { id: string; status: UserBook['status'] }>>({});
   const [userProfile, setUserProfile] = useState<{
     username: string;
-    first_name: string;
-    last_name: string;
+    name: string;
     books_read_count: number;
     weekly_streak: number;
     global_rank: number | null;
@@ -101,17 +100,15 @@ export default function ProfileScreen() {
     try {
       const { data, error } = await supabase
         .from('user_profiles')
-        .select('username, first_name, last_name, books_read_count, weekly_streak, global_rank, member_since, profile_photo_url, bio')
+        .select('username, name, books_read_count, weekly_streak, global_rank, member_since, profile_photo_url, bio')
         .eq('user_id', userId)
         .single();
       
       if (error) {
         console.warn('Profile not found for user, showing placeholder');
-        // Return placeholder profile if not found
         return {
           username: 'New User',
-          first_name: 'New',
-          last_name: 'User',
+          name: 'New User',
           books_read_count: 0,
           weekly_streak: 0,
           global_rank: null,
@@ -123,11 +120,9 @@ export default function ProfileScreen() {
       return data;
     } catch (error) {
       console.error('Error fetching user profile:', error);
-      // Return placeholder profile on error
       return {
         username: 'New User',
-        first_name: 'New',
-        last_name: 'User',
+        name: 'New User',
         books_read_count: 0,
         weekly_streak: 0,
         global_rank: null,
@@ -150,7 +145,7 @@ export default function ProfileScreen() {
     const requesterIds = requests.map((req) => req.requester_id);
     const { data } = await supabase
       .from('user_profiles')
-      .select('user_id, username, first_name, last_name, profile_photo_url')
+      .select('user_id, username, name, profile_photo_url')
       .in('user_id', requesterIds);
 
     const map = new Map((data || []).map((row: any) => [row.user_id, row]));
@@ -218,8 +213,7 @@ export default function ProfileScreen() {
       // Always set profile (even if placeholder) to prevent errors
       setUserProfile(profile || {
         username: 'New User',
-        first_name: 'New User',
-        last_name: '',
+        name: 'New User',
         books_read_count: 0,
         weekly_streak: 0,
         global_rank: null,
@@ -439,7 +433,7 @@ export default function ProfileScreen() {
         <ProfileInfoSection
           profilePhotoUrl={userProfile?.profile_photo_url}
           avatarFallback={getDisplayUsername()?.charAt(0)?.toUpperCase() || 'U'}
-          displayName={`${userProfile?.first_name || ''} ${userProfile?.last_name || ''}`.trim()}
+          displayName={userProfile?.name || ''}
           memberSinceLabel={`Member since ${getJoinDate()}`}
           bio={userProfile?.bio}
           stats={{
@@ -573,7 +567,7 @@ export default function ProfileScreen() {
                     <View key={request.id} style={styles.requestRow}>
                       <View style={styles.requestInfo}>
                         <Text style={styles.requestName}>
-                          {request.requester.first_name} {request.requester.last_name}
+                          {request.requester.name}
                         </Text>
                         <Text style={styles.requestHandle}>@{request.requester.username}</Text>
                       </View>
@@ -607,7 +601,7 @@ export default function ProfileScreen() {
                     <View key={blocked.user_id} style={styles.requestRow}>
                       <View style={styles.requestInfo}>
                         <Text style={styles.requestName}>
-                          {blocked.first_name} {blocked.last_name}
+                          {blocked.name}
                         </Text>
                         <Text style={styles.requestHandle}>@{blocked.username}</Text>
                       </View>
@@ -633,7 +627,7 @@ export default function ProfileScreen() {
                     <View key={muted.user_id} style={styles.requestRow}>
                       <View style={styles.requestInfo}>
                         <Text style={styles.requestName}>
-                          {muted.first_name} {muted.last_name}
+                          {muted.name}
                         </Text>
                         <Text style={styles.requestHandle}>@{muted.username}</Text>
                       </View>

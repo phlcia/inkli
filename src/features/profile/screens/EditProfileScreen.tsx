@@ -66,8 +66,7 @@ export default function EditProfileScreen() {
       }
 
       if (profile) {
-        const fullName = `${profile.first_name || ''} ${profile.last_name || ''}`.trim();
-        setName(fullName || '');
+        setName(profile.name || '');
         setUsername(profile.username || '');
         setOriginalUsername(profile.username || '');
         setBio(profile.bio || '');
@@ -189,17 +188,11 @@ export default function EditProfileScreen() {
     try {
       setSaving(true);
 
-      // Split name into first and last
-      const nameParts = name.trim().split(' ');
-      const firstName = nameParts[0] || '';
-      const lastName = nameParts.slice(1).join(' ') || '';
-
       // Use the new saveProfileWithPicture function that handles all scenarios
       const { profile, error } = await saveProfileWithPicture(
         user.id,
         {
-          firstName,
-          lastName,
+          name: name.trim(),
           username: username.trim(),
           bio: bio.trim() || null,
         },

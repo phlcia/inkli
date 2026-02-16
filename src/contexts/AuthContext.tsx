@@ -16,7 +16,7 @@ interface AuthContextType {
   session: Session | null;
   loading: boolean;
   signIn: (identifier: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string, username?: string, firstName?: string, lastName?: string, readingInterests?: string[]) => Promise<void>;
+  signUp: (email: string, password: string, username?: string, name?: string, readingInterests?: string[]) => Promise<void>;
   signOut: () => Promise<void>;
   signInWithApple: () => Promise<void>;
   signInWithGoogle: () => Promise<void>;
@@ -106,8 +106,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     email: string,
     password: string,
     username?: string,
-    firstName?: string,
-    lastName?: string,
+    name?: string,
     readingInterests?: string[]
   ) => {
     try {
@@ -119,8 +118,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         options: {
           data: {
             username: username,
-            first_name: firstName,
-            last_name: lastName,
+            name: name,
             reading_interests: readingInterests || [],
           }
         }
@@ -155,8 +153,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           .insert({
             user_id: data.user.id,
             username: username || 'user_' + data.user.id.substring(0, 8),
-            first_name: firstName || '',
-            last_name: lastName || '',
+            name: name || 'User',
             member_since: new Date().toISOString(),
             books_read_count: 0,
             global_rank: null,
@@ -372,10 +369,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         // Extract user info from OAuth metadata
         const metadata = user.user_metadata || {};
-        const fullName = metadata.full_name || metadata.name || '';
-        const nameParts = fullName.split(' ').filter(Boolean);
-        const firstName = nameParts[0] || metadata.first_name || '';
-        const lastName = nameParts.slice(1).join(' ') || metadata.last_name || '';
+        const displayName = metadata.full_name || metadata.name ||
+          [metadata.first_name, metadata.last_name].filter(Boolean).join(' ').trim() || 'User';
         const email = user.email || '';
         const username = metadata.preferred_username ||
           metadata.username ||
@@ -388,8 +383,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           .insert({
             user_id: user.id,
             username: username,
-            first_name: firstName,
-            last_name: lastName,
+            name: displayName,
             member_since: new Date().toISOString(),
             books_read_count: 0,
             global_rank: null,
@@ -404,8 +398,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               .insert({
                 user_id: user.id,
                 username: 'user_' + user.id.substring(0, 8),
-                first_name: firstName,
-                last_name: lastName,
+                name: displayName,
                 member_since: new Date().toISOString(),
                 books_read_count: 0,
                 global_rank: null,

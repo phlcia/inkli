@@ -118,7 +118,7 @@ export default function FollowersFollowingScreen() {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return data;
     return data.filter((item) => {
-      const fullName = `${item.first_name} ${item.last_name}`.trim().toLowerCase();
+      const fullName = (item.name || '').trim().toLowerCase();
       const handle = `@${item.username}`.toLowerCase();
       return fullName.includes(q) || handle.includes(q) || item.username.toLowerCase().includes(q);
     });
@@ -175,7 +175,7 @@ export default function FollowersFollowingScreen() {
     const isFollowing = followingIds.has(item.user_id);
     const isPending = pendingRequestIds.has(item.user_id);
     const isLoading = followLoading.has(item.user_id);
-    const fullName = `${item.first_name} ${item.last_name}`.trim();
+    const fullName = (item.name || '').trim();
     const followsYou = followerIds.has(item.user_id);
     const followLabel = isFollowing ? 'Following' : isPending ? 'Requested' : 'Follow';
 
@@ -196,8 +196,7 @@ export default function FollowersFollowingScreen() {
         ) : (
           <View style={styles.avatarPlaceholder}>
             <Text style={styles.avatarText}>
-              {(item.first_name?.charAt(0) || item.username?.charAt(0) || 'U').toUpperCase()}
-              {(item.last_name?.charAt(0) || '').toUpperCase()}
+              {(item.name?.charAt(0) || item.username?.charAt(0) || 'U').toUpperCase()}
             </Text>
           </View>
         )}

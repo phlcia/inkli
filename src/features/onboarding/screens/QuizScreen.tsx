@@ -32,8 +32,7 @@ interface QuizScreenProps {
   signupParams?: {
     email: string;
     password: string;
-    firstName: string;
-    lastName: string;
+    name: string;
     username: string;
     phone?: string | null;
   };
@@ -82,8 +81,7 @@ export default function QuizScreen({ signupParams, onSignupComplete, onQuizCompl
           finalSignupParams.email,
           finalSignupParams.password,
           finalSignupParams.username,
-          finalSignupParams.firstName,
-          finalSignupParams.lastName,
+          finalSignupParams.name,
           [] // No reading interests - we'll use quiz instead
         );
         // Save phone to user_private_data if provided (unverified)
