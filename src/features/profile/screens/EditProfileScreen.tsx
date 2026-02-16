@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -23,7 +23,16 @@ import {
   getProfilePictureUrl,
   checkUsernameAvailability,
 } from '../../../services/userProfile';
+import {
+  MAX_USERNAME_LENGTH,
+  USERNAME_REGEX,
+  DEBOUNCE_MS,
+  ERROR_RED,
+  SUCCESS_GREEN,
+} from '../../../utils/validation';
 import ProfilePhotoActionSheet from '../components/ProfilePhotoActionSheet';
+
+type UsernameStatus = 'idle' | 'checking' | 'available' | 'taken' | 'error';
 import { ProfileStackParamList } from '../../../navigation/ProfileStackNavigator';
 
 type EditProfileScreenNavigationProp = StackNavigationProp<
@@ -48,6 +57,16 @@ export default function EditProfileScreen() {
 
   // Original values for comparison
   const [originalUsername, setOriginalUsername] = useState('');
+  const [originalName, setOriginalName] = useState('');
+  const [originalBio, setOriginalBio] = useState('');
+  const [usernameStatus, setUsernameStatus] = useState<UsernameStatus>('idle');
+  const [usernameFormatError, setUsernameFormatError] = useState('');
+  const [usernameRequiredError, setUsernameRequiredError] = useState('');
+
+  const debounceRef = useRef<NodeJS.Timeout | null>(null);
+  const usernameRef = useRef(username);
+
+  usernameRef.current = username;
 
   const loadProfileData = useCallback(async () => {
     if (!user) {
@@ -66,14 +85,25 @@ export default function EditProfileScreen() {
       }
 
       if (profile) {
-        setName(profile.name || '');
-        setUsername(profile.username || '');
-        setOriginalUsername(profile.username || '');
-        setBio(profile.bio || '');
+        const n = profile.name || '';
+        const u = profile.username || '';
+        const b = profile.bio || '';
+        setName(n);
+        setUsername(u);
+        setOriginalUsername(u);
+        setOriginalName(n);
+        setOriginalBio(b);
+        setBio(b);
+        setUsernameStatus('available');
+        setUsernameFormatError('');
+        setUsernameRequiredError('');
         setProfilePhotoUrl(profile.profile_photo_url);
       } else {
         setName('');
         setUsername('');
+        setOriginalUsername('');
+        setOriginalName('');
+        setOriginalBio('');
         setBio('');
       }
     } catch (error) {
@@ -146,6 +176,127 @@ export default function EditProfileScreen() {
     setShowActionSheet(false);
   };
 
+  const runUsernameCheck = useCallback(async (value: string) => {
+    const trimmed = value.trim().toLowerCase();
+    if (trimmed.length < 3 || trimmed.length > MAX_USERNAME_LENGTH || !USERNAME_REGEX.test(value)) return;
+    if (trimmed === originalUsername.toLowerCase()) {
+      setUsernameStatus('available');
+      return;
+    }
+    setUsernameStatus('checking');
+    const valueToCheck = trimmed;
+    const { available, error } = await checkUsernameAvailability(valueToCheck);
+    if (valueToCheck !== usernameRef.current.trim().toLowerCase()) return;
+    if (error) {
+      setUsernameStatus('error');
+      return;
+    }
+    setUsernameStatus(available ? 'available' : 'taken');
+  }, [originalUsername]);
+
+  const scheduleUsernameCheck = useCallback(
+    (value: string) => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+        debounceRef.current = null;
+      }
+      const trimmed = value.trim().toLowerCase();
+      if (trimmed === originalUsername.toLowerCase()) {
+        setUsernameStatus('available');
+        setUsernameFormatError('');
+        return;
+      }
+      if (trimmed.length < 3) {
+        setUsernameStatus('idle');
+        setUsernameFormatError(trimmed.length > 0 ? 'Username must be at least 3 characters' : '');
+        return;
+      }
+      if (trimmed.length > MAX_USERNAME_LENGTH) {
+        setUsernameStatus('idle');
+        setUsernameFormatError(`Username must be ${MAX_USERNAME_LENGTH} characters or less`);
+        return;
+      }
+      if (!USERNAME_REGEX.test(value)) {
+        setUsernameStatus('idle');
+        setUsernameFormatError('Username must start with a letter and contain only letters, numbers, and underscores');
+        return;
+      }
+      setUsernameFormatError('');
+      debounceRef.current = setTimeout(() => {
+        debounceRef.current = null;
+        void runUsernameCheck(value);
+      }, DEBOUNCE_MS);
+    },
+    [originalUsername, runUsernameCheck]
+  );
+
+  const handleUsernameChange = (value: string) => {
+    setUsername(value);
+    if (usernameRequiredError) setUsernameRequiredError('');
+    const trimmed = value.trim().toLowerCase();
+    if (trimmed === originalUsername.toLowerCase()) {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+        debounceRef.current = null;
+      }
+      setUsernameStatus('available');
+      setUsernameFormatError('');
+      return;
+    }
+    if (trimmed.length < 3) {
+      setUsernameStatus('idle');
+      setUsernameFormatError(value.length > 0 ? 'Username must be at least 3 characters' : '');
+      return;
+    }
+    if (!USERNAME_REGEX.test(value)) {
+      setUsernameStatus('idle');
+      setUsernameFormatError('Username must start with a letter and contain only letters, numbers, and underscores');
+      return;
+    }
+    setUsernameFormatError('');
+    scheduleUsernameCheck(value);
+  };
+
+  const handleUsernameBlur = () => {
+    if (!username.trim()) {
+      setUsernameRequiredError('Username is required');
+      return;
+    }
+    setUsernameRequiredError('');
+    if (username.trim().length >= 3 && USERNAME_REGEX.test(username)) {
+      if (username.trim().toLowerCase() === originalUsername.toLowerCase()) {
+        setUsernameStatus('available');
+        return;
+      }
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+        debounceRef.current = null;
+      }
+      void runUsernameCheck(username);
+    }
+  };
+
+  const handleRetryUsernameCheck = () => {
+    if (usernameStatus === 'error' && username.trim().length >= 3 && USERNAME_REGEX.test(username)) {
+      void runUsernameCheck(username);
+    }
+  };
+
+  const isUsernameValid =
+    username.trim().length >= 3 &&
+    username.length <= MAX_USERNAME_LENGTH &&
+    USERNAME_REGEX.test(username) &&
+    (usernameStatus === 'available' || username.trim().toLowerCase() === originalUsername.toLowerCase());
+
+  const hasChanges =
+    name.trim() !== originalName ||
+    username.trim().toLowerCase() !== originalUsername.toLowerCase() ||
+    (bio.trim() || '') !== (originalBio || '') ||
+    tempPhotoUri !== null ||
+    deleteProfilePicture;
+
+  const isFormValid = name.trim().length > 0 && !usernameRequiredError && isUsernameValid;
+
   const handleCancel = () => {
     // Reset all photo-related state
     setTempPhotoUri(null);
@@ -155,35 +306,7 @@ export default function EditProfileScreen() {
   };
 
   const handleSave = async () => {
-    if (!user) return;
-
-    // Validation
-    if (!name.trim()) {
-      Alert.alert('Error', 'Please enter your name');
-      return;
-    }
-
-    if (!username.trim()) {
-      Alert.alert('Error', 'Please enter a username');
-      return;
-    }
-
-    // Check username availability if changed
-    if (username.toLowerCase() !== originalUsername.toLowerCase()) {
-      const { available, error: checkError } = await checkUsernameAvailability(
-        username
-      );
-
-      if (checkError) {
-        Alert.alert('Error', 'Failed to check username availability');
-        return;
-      }
-
-      if (!available) {
-        Alert.alert('Error', 'Username is already taken');
-        return;
-      }
-    }
+    if (!user || !isFormValid || !hasChanges) return;
 
     try {
       setSaving(true);
@@ -193,7 +316,7 @@ export default function EditProfileScreen() {
         user.id,
         {
           name: name.trim(),
-          username: username.trim(),
+          username: username.trim().toLowerCase(),
           bio: bio.trim() || null,
         },
         tempPhotoUri, // null if no new image selected
@@ -281,8 +404,8 @@ export default function EditProfileScreen() {
           <Text style={styles.cancelButton}>Cancel</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Settings</Text>
-        <TouchableOpacity onPress={handleSave} disabled={saving}>
-          <Text style={[styles.saveButton, saving && styles.saveButtonDisabled]}>
+        <TouchableOpacity onPress={handleSave} disabled={saving || !isFormValid || !hasChanges}>
+          <Text style={[styles.saveButton, (saving || !isFormValid || !hasChanges) && styles.saveButtonDisabled]}>
             {saving ? 'Saving...' : 'Save'}
           </Text>
         </TouchableOpacity>
@@ -340,17 +463,38 @@ export default function EditProfileScreen() {
 
           <View style={styles.inputContainer}>
             <Text style={styles.label}>Username</Text>
-            <View style={styles.inputWrapper}>
+            <View style={[
+              styles.inputWrapper,
+              (usernameRequiredError || usernameFormatError || usernameStatus === 'taken' || usernameStatus === 'error') && styles.inputWrapperError,
+            ]}>
               <TextInput
                 style={styles.input}
                 value={username}
-                onChangeText={setUsername}
+                onChangeText={handleUsernameChange}
+                onBlur={handleUsernameBlur}
                 placeholder="Enter username"
                 placeholderTextColor={colors.brownText}
                 autoCapitalize="none"
                 autoCorrect={false}
+                maxLength={MAX_USERNAME_LENGTH}
               />
+              {usernameStatus === 'checking' && (
+                <ActivityIndicator size="small" color={colors.primaryBlue} style={styles.usernameSpinner} />
+              )}
             </View>
+            {usernameRequiredError ? (
+              <Text style={styles.inlineError}>{usernameRequiredError}</Text>
+            ) : usernameFormatError ? (
+              <Text style={styles.inlineError}>{usernameFormatError}</Text>
+            ) : usernameStatus === 'available' ? (
+              <Text style={styles.inlineSuccess}>✓ Username available</Text>
+            ) : usernameStatus === 'taken' ? (
+              <Text style={styles.inlineError}>✗ Username taken</Text>
+            ) : usernameStatus === 'error' ? (
+              <TouchableOpacity onPress={handleRetryUsernameCheck}>
+                <Text style={[styles.inlineError, styles.retryText]}>Unable to check availability. Try again.</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
 
           <View style={styles.inputContainer}>
@@ -485,6 +629,31 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.brownText,
     paddingHorizontal: 18,
+    position: 'relative',
+  },
+  inputWrapperError: {
+    borderColor: ERROR_RED,
+  },
+  usernameSpinner: {
+    position: 'absolute',
+    right: 16,
+  },
+  inlineError: {
+    fontSize: 12,
+    fontFamily: typography.body,
+    color: ERROR_RED,
+    marginTop: 4,
+    marginLeft: 4,
+  },
+  inlineSuccess: {
+    fontSize: 12,
+    fontFamily: typography.body,
+    color: SUCCESS_GREEN,
+    marginTop: 4,
+    marginLeft: 4,
+  },
+  retryText: {
+    textDecorationLine: 'underline',
   },
   accountPrivacyButton: {
     marginTop: 24,

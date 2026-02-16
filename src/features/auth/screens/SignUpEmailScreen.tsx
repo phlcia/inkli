@@ -16,30 +16,16 @@ import * as Haptics from 'expo-haptics';
 import { colors, typography } from '../../../config/theme';
 import { checkUsernameAvailability } from '../../../services/userProfile';
 import { normalizePhone } from '../../../utils/phone';
+import {
+  EMAIL_REGEX,
+  MAX_USERNAME_LENGTH,
+  USERNAME_REGEX,
+  DEBOUNCE_MS,
+  SUCCESS_GREEN,
+  ERROR_RED,
+  PASSWORD_REQUIREMENTS,
+} from '../../../utils/validation';
 import iconImage from '../../../../assets/icon.png';
-
-// Validation constants
-const MAX_USERNAME_LENGTH = 30;
-const USERNAME_REGEX = /^[a-zA-Z][a-zA-Z0-9_]*$/;
-const DEBOUNCE_MS = 300;
-const SUCCESS_GREEN = '#34C759';
-const ERROR_RED = '#FF3B30';
-
-// Basic email format validation
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-// Password requirements
-const PASSWORD_REQUIREMENTS = [
-  { key: 'length', label: 'At least 8 characters', check: (p: string) => p.length >= 8 },
-  { key: 'uppercase', label: 'Contains uppercase letter', check: (p: string) => /[A-Z]/.test(p) },
-  { key: 'lowercase', label: 'Contains lowercase letter', check: (p: string) => /[a-z]/.test(p) },
-  { key: 'number', label: 'Contains number', check: (p: string) => /[0-9]/.test(p) },
-  {
-    key: 'special',
-    label: 'Contains special character',
-    check: (p: string) => /[!@#$%^&*(),.?":{}|<>_\-+=[\]\\;'`~]/.test(p),
-  },
-] as const;
 
 type UsernameStatus = 'idle' | 'checking' | 'available' | 'taken' | 'error';
 

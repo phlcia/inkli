@@ -59,6 +59,7 @@ export default function QuizScreen({ signupParams, onSignupComplete, onQuizCompl
   } | null>(null);
   const [signingUp, setSigningUp] = useState(false);
   const [signupComplete, setSignupComplete] = useState(false);
+  const [phoneDuplicateError, setPhoneDuplicateError] = useState<string | null>(null);
 
   // Handle signup if user doesn't exist yet
   useEffect(() => {
@@ -95,8 +96,8 @@ export default function QuizScreen({ signupParams, onSignupComplete, onQuizCompl
             });
             if (updateError) {
               if ((updateError as { code?: string })?.code === '23505') {
-                // Uniqueness: phone already registered; non-blocking for sign-up
-                console.warn('Phone already registered, skipping save');
+                // Uniqueness: phone already registered
+                setPhoneDuplicateError('This phone number is already registered');
               } else {
                 console.warn('Failed to save phone to private data:', updateError);
               }
@@ -395,6 +396,12 @@ export default function QuizScreen({ signupParams, onSignupComplete, onQuizCompl
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <StatusBar barStyle="dark-content" backgroundColor={colors.creamBackground} />
+      {phoneDuplicateError ? (
+        <View style={styles.phoneErrorBanner}>
+          <Text style={styles.phoneErrorText}>{phoneDuplicateError}</Text>
+          <Text style={styles.phoneErrorHint}>You can add a different number in Account Settings later.</Text>
+        </View>
+      ) : null}
       <View style={styles.header}>
         <TouchableOpacity onPress={handleSkipQuiz} style={styles.skipButton}>
           <Text style={styles.skipButtonText}>Skip Quiz</Text>
@@ -447,6 +454,26 @@ const styles = StyleSheet.create({
     fontFamily: typography.body,
     color: colors.brownText,
     marginTop: 16,
+  },
+  phoneErrorBanner: {
+    backgroundColor: '#FEE2E2',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#FECACA',
+  },
+  phoneErrorText: {
+    fontSize: 14,
+    fontFamily: typography.body,
+    color: '#C53030',
+    fontWeight: '500',
+  },
+  phoneErrorHint: {
+    fontSize: 12,
+    fontFamily: typography.body,
+    color: colors.brownText,
+    marginTop: 4,
+    opacity: 0.8,
   },
   header: {
     flexDirection: 'row',
