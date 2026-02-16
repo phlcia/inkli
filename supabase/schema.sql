@@ -51,8 +51,7 @@ CREATE INDEX IF NOT EXISTS idx_books_average_rating ON books(average_rating);
 CREATE TABLE IF NOT EXISTS user_profiles (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL UNIQUE REFERENCES auth.users(id) ON DELETE CASCADE,
-  first_name TEXT NOT NULL,
-  last_name TEXT NOT NULL,
+  name TEXT NOT NULL,
   username TEXT NOT NULL UNIQUE,
   reading_interests TEXT[] DEFAULT '{}',
   bio TEXT,
@@ -1599,12 +1598,27 @@ $$ LANGUAGE plpgsql;
 -- Auth signup profile creation
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
+DECLARE
+  user_name TEXT;
 BEGIN
+  user_name := COALESCE(
+    NULLIF(TRIM(NEW.raw_user_meta_data->>'name'), ''),
+    NULLIF(TRIM(NEW.raw_user_meta_data->>'full_name'), ''),
+    TRIM(CONCAT(
+      COALESCE(NEW.raw_user_meta_data->>'first_name', ''),
+      ' ',
+      COALESCE(NEW.raw_user_meta_data->>'last_name', '')
+    )),
+    'User'
+  );
+  IF user_name = '' THEN
+    user_name := 'User';
+  END IF;
+
   INSERT INTO public.user_profiles (
     user_id,
     username,
-    first_name,
-    last_name,
+    name,
     member_since,
     books_read_count,
     global_rank,
@@ -1613,8 +1627,7 @@ BEGIN
   VALUES (
     NEW.id,
     COALESCE(NEW.raw_user_meta_data->>'username', 'user_' || substr(NEW.id::text, 1, 8)),
-    COALESCE(NULLIF(NEW.raw_user_meta_data->>'first_name', ''), 'User'),
-    COALESCE(NULLIF(NEW.raw_user_meta_data->>'last_name', ''), ''),
+    user_name,
     NOW(),
     0,
     NULL,
@@ -1626,8 +1639,7 @@ BEGIN
   ON CONFLICT (user_id) DO UPDATE
   SET
     username = EXCLUDED.username,
-    first_name = EXCLUDED.first_name,
-    last_name = EXCLUDED.last_name,
+    name = EXCLUDED.name,
     reading_interests = EXCLUDED.reading_interests;
   RETURN NEW;
 END;

@@ -4,8 +4,7 @@
 CREATE TABLE IF NOT EXISTS user_profiles (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL UNIQUE REFERENCES auth.users(id) ON DELETE CASCADE,
-  first_name TEXT NOT NULL,
-  last_name TEXT NOT NULL,
+  name TEXT NOT NULL,
   username TEXT NOT NULL UNIQUE,
   reading_interests TEXT[] DEFAULT '{}',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),

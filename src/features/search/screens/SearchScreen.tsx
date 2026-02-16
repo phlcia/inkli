@@ -39,8 +39,7 @@ type TabType = 'books' | 'members';
 interface MemberResult {
   user_id: string;
   username: string;
-  first_name: string;
-  last_name: string;
+  name: string;
   profile_photo_url: string | null;
   account_type: 'public' | 'private';
 }
@@ -57,8 +56,7 @@ interface RecentSearch {
 interface RecentMemberSearch {
   user_id: string;
   username: string;
-  first_name: string;
-  last_name: string;
+  name: string;
   profile_photo_url: string | null;
   timestamp: number;
 }
@@ -334,8 +332,7 @@ export default function SearchScreen() {
       const newSearch: RecentMemberSearch = {
         user_id: member.user_id,
         username: member.username,
-        first_name: member.first_name,
-        last_name: member.last_name,
+        name: member.name,
         profile_photo_url: member.profile_photo_url,
         timestamp: Date.now(),
       };
@@ -646,7 +643,7 @@ export default function SearchScreen() {
     const isFollowing = followingIds.has(item.user_id);
     const isPending = pendingRequestIds.has(item.user_id);
     const isLoading = followLoading.has(item.user_id);
-    const fullName = `${item.first_name} ${item.last_name}`;
+    const fullName = item.name || '';
     const followLabel = isFollowing
       ? 'Following'
       : isPending
@@ -668,7 +665,7 @@ export default function SearchScreen() {
         ) : (
           <View style={styles.memberPhotoPlaceholder}>
             <Text style={styles.memberPhotoPlaceholderText}>
-              {item.first_name.charAt(0)}{item.last_name.charAt(0)}
+              {(item.name?.charAt(0) || item.username?.charAt(0) || 'U').toUpperCase()}
             </Text>
           </View>
         )}
@@ -704,7 +701,7 @@ export default function SearchScreen() {
   };
 
   const renderRecentMemberItem = ({ item }: { item: RecentMemberSearch }) => {
-    const fullName = `${item.first_name} ${item.last_name}`;
+    const fullName = item.name || '';
 
     return (
       <TouchableOpacity
@@ -719,7 +716,7 @@ export default function SearchScreen() {
         ) : (
           <View style={styles.memberPhotoPlaceholder}>
             <Text style={styles.memberPhotoPlaceholderText}>
-              {item.first_name.charAt(0)}{item.last_name.charAt(0)}
+              {(item.name?.charAt(0) || item.username?.charAt(0) || 'U').toUpperCase()}
             </Text>
           </View>
         )}

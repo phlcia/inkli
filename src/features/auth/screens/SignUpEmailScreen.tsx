@@ -18,7 +18,7 @@ import { normalizePhone } from '../../../utils/phone';
 import iconImage from '../../../../assets/icon.png';
 
 interface SignUpEmailScreenProps {
-  onNext: (email: string, password: string, firstName: string, lastName: string, username: string, phone: string | null) => void;
+  onNext: (email: string, password: string, name: string, username: string, phone: string | null) => void;
   onBack?: () => void;
 }
 
@@ -26,8 +26,7 @@ export default function SignUpEmailScreen({ onNext, onBack: _onBack }: SignUpEma
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
+  const [name, setName] = useState('');
   const [username, setUsername] = useState('');
   const [usernameError, setUsernameError] = useState('');
   const [checkingUsername, setCheckingUsername] = useState(false);
@@ -73,7 +72,7 @@ export default function SignUpEmailScreen({ onNext, onBack: _onBack }: SignUpEma
   };
 
   const handleNext = async () => {
-    if (!email || !password || !confirmPassword || !firstName || !lastName || !username) {
+    if (!email || !password || !confirmPassword || !name || !username) {
       Alert.alert('Error', 'Please fill in all fields');
       return;
     }
@@ -103,7 +102,7 @@ export default function SignUpEmailScreen({ onNext, onBack: _onBack }: SignUpEma
       setPhoneError('');
     }
 
-    onNext(email, password, firstName, lastName, username, normalizedPhone);
+    onNext(email, password, name, username, normalizedPhone);
   };
 
   return (
@@ -129,24 +128,13 @@ export default function SignUpEmailScreen({ onNext, onBack: _onBack }: SignUpEma
         {/* Title */}
         <Text style={styles.title}>sign up with email</Text>
 
-        {/* First Name Input */}
+        {/* Name Input */}
         <TextInput
           style={styles.input}
-          placeholder="First Name"
+          placeholder="Name"
           placeholderTextColor={colors.brownText}
-          value={firstName}
-          onChangeText={setFirstName}
-          autoCapitalize="words"
-          autoCorrect={false}
-        />
-
-        {/* Last Name Input */}
-        <TextInput
-          style={styles.input}
-          placeholder="Last Name"
-          placeholderTextColor={colors.brownText}
-          value={lastName}
-          onChangeText={setLastName}
+          value={name}
+          onChangeText={setName}
           autoCapitalize="words"
           autoCorrect={false}
         />

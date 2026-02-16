@@ -72,8 +72,7 @@ export default function UserProfileScreen() {
   const [viewerShelfMap, setViewerShelfMap] = useState<Record<string, { id: string; status: UserBook['status'] }>>({});
   const [userProfile, setUserProfile] = useState<{
     username: string;
-    first_name: string;
-    last_name: string;
+    name: string;
     books_read_count: number;
     weekly_streak: number;
     global_rank: number | null;
@@ -118,7 +117,7 @@ export default function UserProfileScreen() {
       // Fetch user profile
       const { data: profile, error: profileError } = await supabase
         .from('user_profiles')
-        .select('username, first_name, last_name, books_read_count, weekly_streak, global_rank, member_since, profile_photo_url, bio, account_type')
+        .select('username, name, books_read_count, weekly_streak, global_rank, member_since, profile_photo_url, bio, account_type')
         .eq('user_id', userId)
         .single();
 
@@ -305,7 +304,7 @@ export default function UserProfileScreen() {
       userBook={userBook}
       actionText={getActionText({
         status: userBook.status,
-        displayName: userProfile?.first_name || 'User',
+        displayName: userProfile?.name || 'User',
         hasProgressUpdate: !!userBook.last_progress_update,
         progressPercent: userBook.progress_percent,
       })}
@@ -383,7 +382,7 @@ export default function UserProfileScreen() {
         <ProfileInfoSection
           profilePhotoUrl={userProfile?.profile_photo_url}
           avatarFallback={userProfile?.username?.charAt(0).toUpperCase() || 'U'}
-          displayName={`${userProfile?.first_name || ''} ${userProfile?.last_name || ''}`.trim()}
+          displayName={userProfile?.name || ''}
           memberSinceLabel={`Member since ${getJoinDate()}`}
           bio={userProfile?.bio}
           showStats={!isPrivateLocked}
