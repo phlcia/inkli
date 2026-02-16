@@ -53,28 +53,22 @@ export async function getUserProfile(
 }
 
 /**
- * Check if username is available
+ * Check if username is available.
+ * Uses RPC to bypass RLS so anonymous users (during signup) can check availability.
  */
 export async function checkUsernameAvailability(
   username: string
-): Promise<{ available: boolean; error: any }> {
+): Promise<{ available: boolean; error: unknown }> {
   try {
-    const { error } = await supabase
-      .from('user_profiles')
-      .select('username')
-      .eq('username', username.toLowerCase())
-      .single();
+    const { data: available, error } = await supabase.rpc('check_username_available', {
+      p_username: username.trim().toLowerCase(),
+    });
 
     if (error) {
-      // If error is "PGRST116" (no rows returned), username is available
-      if (error.code === 'PGRST116') {
-        return { available: true, error: null };
-      }
       return { available: false, error };
     }
 
-    // If no error, username is taken
-    return { available: false, error: null };
+    return { available: available === true, error: null };
   } catch (error) {
     console.error('Exception checking username:', error);
     return { available: false, error };
