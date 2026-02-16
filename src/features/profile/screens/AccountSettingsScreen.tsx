@@ -26,6 +26,12 @@ import type { AccountType } from '../../../services/userProfile';
 import { getPrivateData, updatePrivateData } from '../../../services/userPrivateData';
 import { deactivateAccount, deleteAccount, updatePassword } from '../../../services/account';
 import { normalizePhone } from '../../../utils/phone';
+import {
+  EMAIL_REGEX,
+  ERROR_RED,
+  PASSWORD_REQUIREMENTS,
+  SUCCESS_GREEN,
+} from '../../../utils/validation';
 import { ProfileStackParamList } from '../../../navigation/ProfileStackNavigator';
 
 type AccountSettingsScreenNavigationProp = StackNavigationProp<
@@ -50,13 +56,6 @@ function isOAuthUser(user: {
   );
 }
 
-function validatePassword(password: string): string | null {
-  if (password.length < 8) return 'Password must be at least 8 characters';
-  if (!/[A-Z]/.test(password)) return 'Password must contain an uppercase letter';
-  if (!/[a-z]/.test(password)) return 'Password must contain a lowercase letter';
-  if (!/[0-9]/.test(password)) return 'Password must contain a number';
-  return null;
-}
 
 function getPasswordErrorMessage(error: unknown): string {
   const msg = error instanceof Error ? error.message : String(error ?? '');
@@ -88,6 +87,10 @@ export default function AccountSettingsScreen() {
   const [changePasswordConfirm, setChangePasswordConfirm] = useState('');
   const [changingPassword, setChangingPassword] = useState(false);
   const [changePasswordError, setChangePasswordError] = useState<string | null>(null);
+  const [emailError, setEmailError] = useState('');
+  const [phoneError, setPhoneError] = useState('');
+  const [changePasswordCurrentError, setChangePasswordCurrentError] = useState('');
+  const [confirmPasswordTouched, setConfirmPasswordTouched] = useState(false);
 
   const loadData = useCallback(async () => {
     if (!user) {
@@ -138,25 +141,36 @@ export default function AccountSettingsScreen() {
   const handleEmailBlur = async () => {
     if (!user) return;
     const trimmed = email.trim();
-    if (!trimmed) return;
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
-      Alert.alert('Invalid email', 'Please enter a valid email address.');
+    if (!trimmed) {
+      setEmailError('Email is required');
       return;
     }
+    if (!EMAIL_REGEX.test(trimmed)) {
+      setEmailError('Please enter a valid email');
+      return;
+    }
+    setEmailError('');
     await updatePrivateData(user.id, { email: trimmed });
   };
 
   const handlePhoneBlur = async () => {
-    if (!user || !phone.trim()) return;
+    if (!user || !phone.trim()) {
+      setPhoneError('');
+      return;
+    }
     const normalized = normalizePhone(phone.trim(), 'US');
-    if (!normalized) return;
+    if (!normalized) {
+      setPhoneError('Please enter a valid US phone number');
+      return;
+    }
+    setPhoneError('');
     const { error: updateErr } = await updatePrivateData(user.id, {
       phone_number: normalized,
     });
     if (updateErr) {
       const code = (updateErr as { code?: string })?.code;
       if (code === '23505') {
-        Alert.alert('Error', 'This phone number is already registered.');
+        setPhoneError('This phone number is already registered');
       }
     }
   };
@@ -241,9 +255,11 @@ export default function AccountSettingsScreen() {
 
   const handleChangePasswordPress = () => {
     setChangePasswordError(null);
+    setChangePasswordCurrentError('');
     setChangePasswordCurrent('');
     setChangePasswordNew('');
     setChangePasswordConfirm('');
+    setConfirmPasswordTouched(false);
     setChangePasswordModalVisible(true);
   };
 
@@ -251,29 +267,31 @@ export default function AccountSettingsScreen() {
     if (!changingPassword) {
       setChangePasswordModalVisible(false);
       setChangePasswordError(null);
+      setChangePasswordCurrentError('');
       setChangePasswordCurrent('');
       setChangePasswordNew('');
       setChangePasswordConfirm('');
+      setConfirmPasswordTouched(false);
     }
   };
+
+  const passwordRequirementsMet = PASSWORD_REQUIREMENTS.every((r) => r.check(changePasswordNew));
+  const passwordsMatch = changePasswordNew === changePasswordConfirm && changePasswordConfirm.length > 0;
+  const isChangePasswordValid =
+    changePasswordCurrent.trim().length > 0 &&
+    passwordRequirementsMet &&
+    passwordsMatch;
 
   const handleChangePasswordSubmit = async () => {
     Keyboard.dismiss();
     if (!user) return;
     const current = changePasswordCurrent.trim();
     if (!current) {
-      setChangePasswordError('Please enter your current password');
+      setChangePasswordCurrentError('Current password is required');
       return;
     }
-    const validationErr = validatePassword(changePasswordNew);
-    if (validationErr) {
-      setChangePasswordError(validationErr);
-      return;
-    }
-    if (changePasswordNew !== changePasswordConfirm) {
-      setChangePasswordError('New passwords do not match');
-      return;
-    }
+    setChangePasswordCurrentError('');
+    if (!passwordRequirementsMet || !passwordsMatch) return;
     const userEmail = user.email || email.trim();
     if (!userEmail) {
       setChangePasswordError('Email is required to change password');
@@ -342,11 +360,14 @@ export default function AccountSettingsScreen() {
         <Text style={styles.sectionHeader}>Contact Information</Text>
         <View style={styles.section}>
           <Text style={styles.label}>Email</Text>
-          <View style={styles.inputWrapper}>
+          <View style={[styles.inputWrapper, emailError ? styles.inputWrapperError : null]}>
             <TextInput
               style={styles.input}
               value={email}
-              onChangeText={setEmail}
+              onChangeText={(v) => {
+                setEmail(v);
+                if (emailError) setEmailError('');
+              }}
               onBlur={handleEmailBlur}
               placeholder="you@example.com"
               placeholderTextColor={colors.brownText}
@@ -356,17 +377,21 @@ export default function AccountSettingsScreen() {
               textContentType="emailAddress"
             />
           </View>
+          {emailError ? <Text style={styles.inlineError}>{emailError}</Text> : null}
 
           <Text style={styles.label}>Phone</Text>
           <View style={styles.phoneRow}>
             <View style={styles.areaCodeBox}>
               <Text style={styles.areaCodeText}>+1</Text>
             </View>
-            <View style={[styles.inputWrapper, styles.phoneInputWrapper]}>
+            <View style={[styles.inputWrapper, styles.phoneInputWrapper, phoneError ? styles.inputWrapperError : null]}>
               <TextInput
                 style={styles.input}
                 value={phone}
-                onChangeText={setPhone}
+                onChangeText={(v) => {
+                  setPhone(v);
+                  if (phoneError) setPhoneError('');
+                }}
                 onBlur={handlePhoneBlur}
                 placeholder="Enter your phone number"
                 placeholderTextColor={colors.brownText}
@@ -375,6 +400,7 @@ export default function AccountSettingsScreen() {
               />
             </View>
           </View>
+          {phoneError ? <Text style={styles.inlineError}>{phoneError}</Text> : null}
           <Text style={styles.phoneNote}>
             We only support US numbers (+1) right now.
           </Text>
@@ -524,13 +550,19 @@ export default function AccountSettingsScreen() {
             <ScrollView keyboardShouldPersistTaps="always" showsVerticalScrollIndicator={false}>
               <Text style={styles.modalTitle}>Change password</Text>
               <Text style={styles.modalMessage}>
-                Enter your current password and choose a new one. At least 8 characters with uppercase, lowercase, and a number.
+                Enter your current password and choose a new one. Use at least 8 characters with uppercase, lowercase, number, and special character.
               </Text>
               <Text style={styles.modalHint}>Current password</Text>
               <TextInput
-                style={styles.modalInput}
+                style={[styles.modalInput, changePasswordCurrentError ? styles.modalInputError : null]}
                 value={changePasswordCurrent}
-                onChangeText={setChangePasswordCurrent}
+                onChangeText={(v) => {
+                  setChangePasswordCurrent(v);
+                  if (changePasswordCurrentError) setChangePasswordCurrentError('');
+                }}
+                onBlur={() => {
+                  setChangePasswordCurrentError(changePasswordCurrent.trim() ? '' : 'Current password is required');
+                }}
                 placeholder="Current password"
                 placeholderTextColor={colors.brownText}
                 secureTextEntry
@@ -554,11 +586,33 @@ export default function AccountSettingsScreen() {
                 accessibilityLabel="New password"
                 accessibilityHint="At least 8 characters with uppercase, lowercase, and a number"
               />
+              <View style={styles.passwordChecklist}>
+                {PASSWORD_REQUIREMENTS.map((req) => {
+                  const met = req.check(changePasswordNew);
+                  return (
+                    <Text
+                      key={req.key}
+                      style={[styles.checklistItem, met ? styles.checklistMet : styles.checklistUnmet]}
+                    >
+                      {met ? '✓' : '○'} {req.label}
+                    </Text>
+                  );
+                })}
+              </View>
               <Text style={styles.modalHint}>Confirm new password</Text>
               <TextInput
-                style={styles.modalInput}
+                style={[
+                  styles.modalInput,
+                  confirmPasswordTouched &&
+                    changePasswordConfirm.length > 0 &&
+                    changePasswordNew !== changePasswordConfirm &&
+                    styles.modalInputError,
+                ]}
                 value={changePasswordConfirm}
-                onChangeText={setChangePasswordConfirm}
+                onChangeText={(v) => {
+                  setChangePasswordConfirm(v);
+                  setConfirmPasswordTouched(true);
+                }}
                 placeholder="Confirm new password"
                 placeholderTextColor={colors.brownText}
                 secureTextEntry
@@ -568,6 +622,14 @@ export default function AccountSettingsScreen() {
                 accessibilityLabel="Confirm new password"
                 accessibilityHint="Must match new password"
               />
+              {changePasswordCurrentError ? (
+                <Text style={styles.modalError}>{changePasswordCurrentError}</Text>
+              ) : null}
+              {confirmPasswordTouched && changePasswordConfirm.length > 0 && (
+                <Text style={changePasswordNew === changePasswordConfirm ? styles.modalSuccess : styles.modalError}>
+                  {changePasswordNew === changePasswordConfirm ? '✓ Passwords match' : '✗ Passwords don\'t match'}
+                </Text>
+              )}
               {changePasswordError ? (
                 <Text style={styles.modalError} accessibilityLiveRegion="polite">
                   {changePasswordError}
@@ -582,9 +644,9 @@ export default function AccountSettingsScreen() {
                   <Text style={styles.modalButtonCancelText}>Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.modalButton, styles.modalButtonUpdate]}
+                  style={[styles.modalButton, styles.modalButtonUpdate, !isChangePasswordValid && styles.modalButtonDisabled]}
                   onPress={handleChangePasswordSubmit}
-                  disabled={changingPassword}
+                  disabled={changingPassword || !isChangePasswordValid}
                 >
                   {changingPassword ? (
                     <ActivityIndicator size="small" color={colors.white} />
@@ -697,6 +759,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     height: 50,
     justifyContent: 'center',
+  },
+  inputWrapperError: {
+    borderColor: ERROR_RED,
+  },
+  inlineError: {
+    fontFamily: typography.body,
+    fontSize: 12,
+    color: ERROR_RED,
+    marginTop: 4,
+    marginLeft: 4,
   },
   phoneRow: {
     flexDirection: 'row',
@@ -826,6 +898,31 @@ const styles = StyleSheet.create({
     color: colors.brownText,
     marginBottom: 8,
   },
+  modalInputError: {
+    borderColor: ERROR_RED,
+  },
+  passwordChecklist: {
+    marginBottom: 12,
+    marginLeft: 4,
+  },
+  checklistItem: {
+    fontSize: 12,
+    fontFamily: typography.body,
+    marginBottom: 4,
+  },
+  checklistMet: {
+    color: SUCCESS_GREEN,
+  },
+  checklistUnmet: {
+    color: colors.brownText,
+    opacity: 0.6,
+  },
+  modalSuccess: {
+    fontFamily: typography.body,
+    fontSize: 14,
+    color: SUCCESS_GREEN,
+    marginBottom: 12,
+  },
   modalError: {
     fontFamily: typography.body,
     fontSize: 14,
@@ -863,6 +960,9 @@ const styles = StyleSheet.create({
   },
   modalButtonUpdate: {
     backgroundColor: colors.primaryBlue,
+  },
+  modalButtonDisabled: {
+    opacity: 0.5,
   },
   modalButtonUpdateText: {
     fontFamily: typography.button,
