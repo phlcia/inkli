@@ -187,11 +187,12 @@ type UserActivityCardRow = {
 
 export async function fetchUserActivityCards(
   userId: string,
-  options?: { limit?: number }
-): Promise<ActivityFeedItem[]> {
+  options?: { limit?: number; cursor?: ActivityFeedCursor | null }
+): Promise<{ cards: ActivityFeedItem[]; nextCursor: ActivityFeedCursor | null }> {
   const limit = options?.limit ?? 20;
+  const cursor = options?.cursor ?? null;
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('activity_cards')
     .select(
       `
@@ -211,11 +212,18 @@ export async function fetchUserActivityCards(
     .order('created_at', { ascending: false })
     .limit(limit);
 
+  if (cursor) {
+    // Use lt filter for timestamp - PostgREST handles ISO timestamps correctly
+    query = query.lt('created_at', cursor.createdAt);
+  }
+
+  const { data, error } = await query;
+
   if (error) {
     throw error;
   }
 
-  const rows = (data as UserActivityCardRow[]) || [];
+  const rows = (data as unknown as UserActivityCardRow[]) || [];
 
   // Fetch read sessions for all user_books to enrich the data with most recent dates
   const userBookIds = rows
@@ -270,7 +278,7 @@ export async function fetchUserActivityCards(
     });
   }
 
-  return dedupeByShelf(rows
+  const cards = dedupeByShelf(rows
     .map((row) => {
       if (!row.user_book || !row.user_book.book) return null;
 
@@ -299,4 +307,8 @@ export async function fetchUserActivityCards(
       } as ActivityFeedItem;
     })
     .filter((item): item is ActivityFeedItem => Boolean(item)));
+
+  const last = cards[cards.length - 1];
+  const nextCursor = last ? { createdAt: last.created_at, id: last.id } : null;
+  return { cards, nextCursor };
 }
