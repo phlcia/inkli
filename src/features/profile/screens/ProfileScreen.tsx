@@ -1,14 +1,13 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  ScrollView,
+  FlatList,
   ActivityIndicator,
   Alert,
   Image,
-  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
@@ -23,7 +22,7 @@ import {
 } from '../../../services/books';
 import { fetchBookWithUserStatus } from '../../../services/bookDetails';
 import { fetchUserActivityCards } from '../../../services/activityFeed';
-import { ActivityFeedItem } from '../../../types/activityCards';
+import { ActivityFeedCursor, ActivityFeedItem } from '../../../types/activityCards';
 import { formatDateRange } from '../../../utils/dateRanges';
 import { getActionText } from '../../../utils/activityText';
 import { useToggleWantToRead } from '../../books/hooks/useToggleWantToRead';
@@ -67,6 +66,9 @@ export default function ProfileScreen() {
     want_to_read: 0,
   });
   const [recentBooks, setRecentBooks] = useState<ActivityFeedItem[]>([]);
+  const [activityCursor, setActivityCursor] = useState<ActivityFeedCursor | null>(null);
+  const [hasMoreActivity, setHasMoreActivity] = useState(true);
+  const [paginating, setPaginating] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<'activity' | 'profile'>('activity');
@@ -172,7 +174,7 @@ export default function ProfileScreen() {
       }
       const [
         counts,
-        recent,
+        activityResult,
         profile,
         followers,
         following,
@@ -190,9 +192,11 @@ export default function ProfileScreen() {
         getMutedUsers(user.id),
       ]);
       setBookCounts(counts);
-      setRecentBooks(recent);
+      setRecentBooks(activityResult.cards);
+      setActivityCursor(activityResult.nextCursor);
+      setHasMoreActivity(activityResult.cards.length === 20);
       const map: Record<string, { id: string; status: UserBook['status'] }> = {};
-      recent.forEach((item) => {
+      activityResult.cards.forEach((item) => {
         if (item.userBook.book_id) {
           map[item.userBook.book_id] = { id: item.userBook.id, status: item.userBook.status };
         }
@@ -254,6 +258,36 @@ export default function ProfileScreen() {
       setRefreshing(false);
     }
   };
+
+  const handleLoadMore = useCallback(async () => {
+    if (!user || !hasMoreActivity || paginating || refreshing || loading) return;
+    setPaginating(true);
+    try {
+      const result = await fetchUserActivityCards(user.id, {
+        limit: 20,
+        cursor: activityCursor,
+      });
+      setRecentBooks((prev) => [...prev, ...result.cards]);
+      setActivityCursor(result.nextCursor);
+      setHasMoreActivity(result.cards.length === 20);
+      setViewerShelfMap((prev) => {
+        const next = { ...prev };
+        result.cards.forEach((item) => {
+          if (item.userBook.book_id) {
+            next[item.userBook.book_id] = {
+              id: item.userBook.id,
+              status: item.userBook.status,
+            };
+          }
+        });
+        return next;
+      });
+    } catch (error) {
+      handleApiError(error, 'load activity', () => handleLoadMore());
+    } finally {
+      setPaginating(false);
+    }
+  }, [user, hasMoreActivity, paginating, refreshing, loading, activityCursor, handleApiError]);
 
   const getUsername = () => {
     if (!user?.email) return 'user';
@@ -379,57 +413,31 @@ export default function ProfileScreen() {
     (navigation as any).navigate('Your Shelf', target);
   };
 
-  const renderRecentActivityItem = (item: ActivityFeedItem) => (
-    <RecentActivityCard
-      key={item.id}
-      userBook={item.userBook}
-      actionText={getActionText({
-        status: item.userBook.status,
-        activityContent: item.content,
-        isSelf: true,
-      })}
-      avatarUrl={userProfile?.profile_photo_url}
-      avatarFallback={getUsername()?.charAt(0)?.toUpperCase() || 'U'}
-      onPressBook={handleBookPress}
-      formatDateRange={formatDateRange}
-      viewerStatus={viewerShelfMap[item.userBook.book_id]?.status || null}
-      onToggleWantToRead={() => handleToggleWantToRead(item.userBook)}
-    />
+  const renderRecentActivityItem = useCallback(
+    ({ item }: { item: ActivityFeedItem }) => (
+      <View style={styles.cardWrapper}>
+        <RecentActivityCard
+          userBook={item.userBook}
+          actionText={getActionText({
+            status: item.userBook.status,
+            activityContent: item.content,
+            isSelf: true,
+          })}
+          avatarUrl={userProfile?.profile_photo_url}
+          avatarFallback={getUsername()?.charAt(0)?.toUpperCase() || 'U'}
+          onPressBook={handleBookPress}
+          formatDateRange={formatDateRange}
+          viewerStatus={viewerShelfMap[item.userBook.book_id]?.status || null}
+          onToggleWantToRead={() => handleToggleWantToRead(item.userBook)}
+        />
+      </View>
+    ),
+    [userProfile?.profile_photo_url, viewerShelfMap, handleBookPress, handleToggleWantToRead]
   );
 
-  if (loading) {
-    return (
-      <View style={styles.container}>
-        <ActivityIndicator size="large" color={colors.primaryBlue} />
-      </View>
-    );
-  }
-
-  return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <ProfileHeader
-        title={`@${getDisplayUsername()}`}
-        styles={styles}
-        rightSlot={(
-          <TouchableOpacity style={styles.signoutButton} onPress={handleSignOut}>
-            <Text style={styles.signoutButtonText}>Sign Out</Text>
-          </TouchableOpacity>
-        )}
-      />
-
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
-            tintColor={colors.primaryBlue}
-          />
-        }
-      >
-        {/* Profile Section */}
+  const listHeaderComponent = useMemo(
+    () => (
+      <>
         <ProfileInfoSection
           profilePhotoUrl={userProfile?.profile_photo_url}
           avatarFallback={getDisplayUsername()?.charAt(0)?.toUpperCase() || 'U'}
@@ -456,7 +464,6 @@ export default function ProfileScreen() {
               }),
           }}
         >
-          {/* Action Buttons */}
           <View style={styles.actionButtons}>
             <View style={styles.followGroup}>
               <TouchableOpacity
@@ -468,8 +475,6 @@ export default function ProfileScreen() {
             </View>
           </View>
         </ProfileInfoSection>
-
-        {/* Shelf Sections */}
         <View style={styles.shelfCardsContainer}>
           <ProfileShelfCard
             iconSource={addIcon}
@@ -511,8 +516,6 @@ export default function ProfileScreen() {
             onPress={handleOpenRecommendations}
           />
         </View>
-
-        {/* Stats Cards */}
         <View style={styles.statsCardsRow}>
           <ProfileStatCard
             iconSource={rankIcon}
@@ -525,126 +528,182 @@ export default function ProfileScreen() {
             value={`${userProfile?.weekly_streak ?? 0} weeks`}
           />
         </View>
-
-        {/* Tabs */}
         <View style={styles.tabs}>
           <TouchableOpacity
             style={[styles.tab, activeTab === 'activity' && styles.tabActive]}
             onPress={() => setActiveTab('activity')}
           >
             <Text
-              style={[
-                styles.tabText,
-                activeTab === 'activity' && styles.tabTextActive,
-              ]}
+              style={[styles.tabText, activeTab === 'activity' && styles.tabTextActive]}
             >
               Recent Activity
             </Text>
           </TouchableOpacity>
         </View>
+        <View style={styles.tabSpacer} />
+      </>
+    ),
+    [
+      userProfile,
+      followerCount,
+      followingCount,
+      userRank,
+      user?.id,
+      navigation,
+      bookCounts,
+      activeTab,
+    ]
+  );
 
-        {/* Tab Content */}
-        <View style={styles.tabContent}>
-          {activeTab === 'activity' && (
-            <View style={styles.activityContent}>
-              {recentBooks.length > 0 ? (
-                recentBooks.map((book) => renderRecentActivityItem(book))
-              ) : (
-                <Text style={styles.emptyText}>No recent activity</Text>
-              )}
-            </View>
-          )}
-          {activeTab === 'profile' && (
-            <View style={styles.profileContent}>
-              <View style={styles.settingsSection}>
-                <Text style={styles.sectionTitle}>
-                  Follow Requests {incomingRequests.length > 0 ? `(${incomingRequests.length})` : ''}
-                </Text>
-                {incomingRequests.length === 0 ? (
-                  <Text style={styles.sectionEmpty}>No pending requests.</Text>
-                ) : (
-                  incomingRequests.map((request) => (
-                    <View key={request.id} style={styles.requestRow}>
-                      <View style={styles.requestInfo}>
-                        <Text style={styles.requestName}>
-                          {request.requester.name}
-                        </Text>
-                        <Text style={styles.requestHandle}>@{request.requester.username}</Text>
-                      </View>
-                      <View style={styles.requestActions}>
-                        <TouchableOpacity
-                          style={[styles.actionPill, styles.acceptPill]}
-                          onPress={() => handleAcceptRequest(request.id)}
-                        >
-                          <Text style={styles.actionPillText}>Accept</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={[styles.actionPill, styles.rejectPill]}
-                          onPress={() => handleRejectRequest(request.id)}
-                        >
-                          <Text style={styles.actionPillText}>Reject</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  ))
-                )}
-              </View>
-
-              <View style={styles.settingsSection}>
-                <Text style={styles.sectionTitle}>
-                  Blocked Users {blockedUsers.length > 0 ? `(${blockedUsers.length})` : ''}
-                </Text>
-                {blockedUsers.length === 0 ? (
-                  <Text style={styles.sectionEmpty}>You have not blocked anyone.</Text>
-                ) : (
-                  blockedUsers.map((blocked) => (
-                    <View key={blocked.user_id} style={styles.requestRow}>
-                      <View style={styles.requestInfo}>
-                        <Text style={styles.requestName}>
-                          {blocked.name}
-                        </Text>
-                        <Text style={styles.requestHandle}>@{blocked.username}</Text>
-                      </View>
-                      <TouchableOpacity
-                        style={[styles.actionPill, styles.neutralPill]}
-                        onPress={() => handleUnblock(blocked.user_id)}
-                      >
-                        <Text style={styles.actionPillText}>Unblock</Text>
-                      </TouchableOpacity>
-                    </View>
-                  ))
-                )}
-              </View>
-
-              <View style={styles.settingsSection}>
-                <Text style={styles.sectionTitle}>
-                  Muted Users {mutedUsers.length > 0 ? `(${mutedUsers.length})` : ''}
-                </Text>
-                {mutedUsers.length === 0 ? (
-                  <Text style={styles.sectionEmpty}>You have not muted anyone.</Text>
-                ) : (
-                  mutedUsers.map((muted) => (
-                    <View key={muted.user_id} style={styles.requestRow}>
-                      <View style={styles.requestInfo}>
-                        <Text style={styles.requestName}>
-                          {muted.name}
-                        </Text>
-                        <Text style={styles.requestHandle}>@{muted.username}</Text>
-                      </View>
-                      <TouchableOpacity
-                        style={[styles.actionPill, styles.neutralPill]}
-                        onPress={() => handleUnmute(muted.user_id)}
-                      >
-                        <Text style={styles.actionPillText}>Unmute</Text>
-                      </TouchableOpacity>
-                    </View>
-                  ))
-                )}
-              </View>
-            </View>
-          )}
+  const listEmptyComponent = useMemo(() => {
+    if (activeTab === 'profile') {
+      return (
+        <View style={styles.profileContent}>
+          <View style={styles.settingsSection}>
+            <Text style={styles.sectionTitle}>
+              Follow Requests {incomingRequests.length > 0 ? `(${incomingRequests.length})` : ''}
+            </Text>
+            {incomingRequests.length === 0 ? (
+              <Text style={styles.sectionEmpty}>No pending requests.</Text>
+            ) : (
+              incomingRequests.map((request) => (
+                <View key={request.id} style={styles.requestRow}>
+                  <View style={styles.requestInfo}>
+                    <Text style={styles.requestName}>{request.requester.name}</Text>
+                    <Text style={styles.requestHandle}>@{request.requester.username}</Text>
+                  </View>
+                  <View style={styles.requestActions}>
+                    <TouchableOpacity
+                      style={[styles.actionPill, styles.acceptPill]}
+                      onPress={() => handleAcceptRequest(request.id)}
+                    >
+                      <Text style={styles.actionPillText}>Accept</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.actionPill, styles.rejectPill]}
+                      onPress={() => handleRejectRequest(request.id)}
+                    >
+                      <Text style={styles.actionPillText}>Reject</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))
+            )}
+          </View>
+          <View style={styles.settingsSection}>
+            <Text style={styles.sectionTitle}>
+              Blocked Users {blockedUsers.length > 0 ? `(${blockedUsers.length})` : ''}
+            </Text>
+            {blockedUsers.length === 0 ? (
+              <Text style={styles.sectionEmpty}>You have not blocked anyone.</Text>
+            ) : (
+              blockedUsers.map((blocked) => (
+                <View key={blocked.user_id} style={styles.requestRow}>
+                  <View style={styles.requestInfo}>
+                    <Text style={styles.requestName}>{blocked.name}</Text>
+                    <Text style={styles.requestHandle}>@{blocked.username}</Text>
+                  </View>
+                  <TouchableOpacity
+                    style={[styles.actionPill, styles.neutralPill]}
+                    onPress={() => handleUnblock(blocked.user_id)}
+                  >
+                    <Text style={styles.actionPillText}>Unblock</Text>
+                  </TouchableOpacity>
+                </View>
+              ))
+            )}
+          </View>
+          <View style={styles.settingsSection}>
+            <Text style={styles.sectionTitle}>
+              Muted Users {mutedUsers.length > 0 ? `(${mutedUsers.length})` : ''}
+            </Text>
+            {mutedUsers.length === 0 ? (
+              <Text style={styles.sectionEmpty}>You have not muted anyone.</Text>
+            ) : (
+              mutedUsers.map((muted) => (
+                <View key={muted.user_id} style={styles.requestRow}>
+                  <View style={styles.requestInfo}>
+                    <Text style={styles.requestName}>{muted.name}</Text>
+                    <Text style={styles.requestHandle}>@{muted.username}</Text>
+                  </View>
+                  <TouchableOpacity
+                    style={[styles.actionPill, styles.neutralPill]}
+                    onPress={() => handleUnmute(muted.user_id)}
+                  >
+                    <Text style={styles.actionPillText}>Unmute</Text>
+                  </TouchableOpacity>
+                </View>
+              ))
+            )}
+          </View>
         </View>
-    </ScrollView>
+      );
+    }
+    return (
+      <View style={styles.activityContent}>
+        <Text style={styles.emptyText}>No recent activity</Text>
+      </View>
+    );
+  }, [
+    activeTab,
+    incomingRequests,
+    blockedUsers,
+    mutedUsers,
+    handleAcceptRequest,
+    handleRejectRequest,
+    handleUnblock,
+    handleUnmute,
+  ]);
+
+  const listFooterComponent = useMemo(() => {
+    if (!paginating) return null;
+    return (
+      <View style={styles.footerLoading}>
+        <ActivityIndicator size="small" color={colors.primaryBlue} />
+      </View>
+    );
+  }, [paginating]);
+
+  const itemSeparator = useCallback(() => <View style={styles.itemSeparator} />, []);
+
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <ActivityIndicator size="large" color={colors.primaryBlue} />
+      </View>
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <ProfileHeader
+        title={`@${getDisplayUsername()}`}
+        styles={styles}
+        rightSlot={(
+          <TouchableOpacity style={styles.signoutButton} onPress={handleSignOut}>
+            <Text style={styles.signoutButtonText}>Sign Out</Text>
+          </TouchableOpacity>
+        )}
+      />
+
+      <FlatList
+        data={activeTab === 'activity' ? recentBooks : []}
+        keyExtractor={(item) => item.id}
+        renderItem={renderRecentActivityItem}
+        ListHeaderComponent={listHeaderComponent}
+        ListEmptyComponent={listEmptyComponent}
+        ListFooterComponent={listFooterComponent}
+        ItemSeparatorComponent={itemSeparator}
+        onEndReached={handleLoadMore}
+        onEndReachedThreshold={0.4}
+        refreshing={refreshing}
+        onRefresh={handleRefresh}
+        contentContainerStyle={styles.listContent}
+        style={styles.scrollView}
+        removeClippedSubviews
+        initialNumToRender={6}
+        windowSize={7}
+      />
     </SafeAreaView>
   );
 }
@@ -701,6 +760,20 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingBottom: 32,
+  },
+  listContent: {
+    paddingTop: 16,
+    paddingBottom: 32,
+  },
+  cardWrapper: {
+    paddingHorizontal: 16,
+  },
+  itemSeparator: {
+    height: 0,
+  },
+  footerLoading: {
+    paddingVertical: 16,
+    alignItems: 'center',
   },
   statItem: {
     fontSize: 14,
@@ -779,6 +852,9 @@ const styles = StyleSheet.create({
   },
   tabContent: {
     padding: 16,
+  },
+  tabSpacer: {
+    height: 16,
   },
   activityContent: {
     gap: 16,
