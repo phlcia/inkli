@@ -341,12 +341,12 @@ export default function AccountSettingsScreen() {
       <StatusBar barStyle="dark-content" backgroundColor={colors.creamBackground} />
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={handleBack}>
-          <Text style={styles.cancelButton}>Back</Text>
+        <TouchableOpacity style={styles.backButton} onPress={handleBack}>
+          <Text style={styles.backButtonText}>←</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Account & privacy</Text>
         <TouchableOpacity onPress={handleDone}>
-          <Text style={styles.doneButton}>Done</Text>
+          <Text style={styles.doneButton}>Save</Text>
         </TouchableOpacity>
       </View>
 
@@ -708,10 +708,23 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: `${colors.brownText}1A`,
   },
-  cancelButton: {
-    fontSize: 16,
-    fontFamily: typography.body,
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.white,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: colors.brownText,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  backButtonText: {
+    fontSize: 24,
     color: colors.brownText,
+    fontWeight: 'bold',
   },
   headerTitle: {
     fontSize: 18,
