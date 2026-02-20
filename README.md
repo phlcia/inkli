@@ -21,9 +21,12 @@ A social book ranking and discovery app built with Expo (React Native), Supabase
 
 #### Authentication & User Profiles
 - **Multi-provider authentication**: Email/password, Apple Sign In, Google Sign In
-- **User profiles**: Username, name, bio, reading interests
+- **Sign-in options**: Sign in with username or email
+- **User profiles**: Username, single name field, bio, reading interests
 - **Profile photos**: Upload and manage profile pictures via Supabase Storage
 - **Auto-profile creation**: Automatic profile creation on signup via database triggers
+- **Account settings**: Private account screen for email/phone, password change, public/private account type, account deactivation, and account deletion (with password or confirmation)
+- **Phone number**: Phone input and validation in sign-up and account settings
 
 #### Book Management
 - **Book search**: Search using Open Library API with Google Books enrichment
@@ -31,11 +34,13 @@ A social book ranking and discovery app built with Expo (React Native), Supabase
 - **Book enrichment**: Automatic merging of data from Open Library and Google Books APIs
 - **Smart book matching**: ISBN and title/author matching between data sources
 - **Book shelf**: Organize books by status (Read, Currently Reading, Want to Read) with tabbed interface
-- **Book details**: View and edit ratings (liked/fine/disliked), notes, start/finish dates
+- **Book details**: View and edit ratings (liked/fine/disliked), notes, start/finish dates, reading progress (input-based)
 - **Auto-save**: Notes and dates automatically save as you type/select them
+- **Book feedback**: Submit feedback (e.g. wrong cover, wrong metadata) from book detail screen
 - **Genre & label filtering**: Filter books by preset genres and custom labels
 - **Custom labels**: Create and manage custom labels for book organization
 - **Read sessions**: Track multiple read sessions with start/finish dates for each book
+- **Reading progress**: Input-based progress (e.g. percentage or page) on book detail
 - **Community stats**: See average scores and member counts for books
 - **Secure catalog writes**: `public.books` is read-only to clients; inserts handled by Edge Function
 
@@ -67,10 +72,12 @@ A social book ranking and discovery app built with Expo (React Native), Supabase
 
 #### Navigation & UI
 - **Tab navigation**: Home, Your Shelf, Search, Leaderboard, Profile
-- **Stack navigation**: Nested navigation for search results and profile editing
+- **Stack navigation**: Nested navigation for search results, profile editing, and account settings
 - **Onboarding flow**: Welcome screen, account creation, profile setup, taste quiz
-- **Responsive design**: Safe area handling, proper keyboard avoidance
+- **Responsive design**: Safe area handling, keyboard avoidance (KeyboardAwareScrollView, debouncing)
 - **Haptic feedback**: Tactile feedback for interactions (expo-haptics)
+- **Error handling**: Error handling context and user feedback across sign-up, account settings, and quiz
+- **Profile activity feed**: Paginated user activity feed on profile screen
 
 ### 🚧 In Progress / Needs Work
 
@@ -89,6 +96,7 @@ A social book ranking and discovery app built with Expo (React Native), Supabase
 - ✅ Auto-save functionality for notes and dates
 - ✅ Database precision fixed to support scores up to 10.0
 - ✅ Drag-to-reorder alternative to binary search (for users who prefer it)
+- ✅ Reading progress (input-based) on book detail
 - Ranking history/undo functionality
 - Export rankings feature
 
@@ -104,7 +112,7 @@ A social book ranking and discovery app built with Expo (React Native), Supabase
 - ✅ Image caching and optimization
 - ✅ Pagination for large book lists
 - Virtualized lists for better scroll performance
-- ✅Optimistic UI updates
+- ✅ Optimistic UI updates
 
 ## 📋 Setup Instructions
 
@@ -129,35 +137,21 @@ npm install
 
 ### 3. Set Up Database Schema
 
-Run all migration files in order in your Supabase SQL Editor:
+Run all migration files in order in your Supabase SQL Editor. The repo contains many migrations in `supabase/` (e.g. user profiles, books, ranking, activity, notifications, privacy, account deactivation, user private data, reading progress, book feedback). Use the consolidated `supabase/schema.sql` if available; otherwise run `supabase/migrate_*.sql` in dependency order. Key areas covered:
 
-1. `supabase/migrate_add_user_profiles.sql` - User profiles table
-2. `supabase/migrate_auto_create_profile.sql` - Auto-create profile trigger
-3. `supabase/migrate_add_book_fields.sql` - Books table with all fields
-4. `supabase/migrate_open_library.sql` - Open Library ID support
-5. `supabase/migrate_unique_user_book.sql` - Unique constraint on user_books
-6. `supabase/migrate_add_book_rating_fields.sql` - Rating, notes, dates fields
-7. `supabase/migrate_rank_score.sql` - Rank score system
-8. `supabase/migrate_add_community_stats_with_triggers.sql` - Community statistics
-9. `supabase/migrate_user_ranking.sql` - User ranking system
-10. `supabase/migrate_add_bio_field.sql` - Bio field for profiles
-11. `supabase/migrate_setup_profile_photos_storage.sql` - Profile photo storage
-12. `supabase/migrate_add_user_follows.sql` - User following system
-13. `supabase/migrate_update_user_profiles_rls.sql` - Row Level Security policies
-14. `supabase/migrate_fix_rank_score_precision.sql` - Fix rank_score precision to allow 10.0 (NUMERIC(4,2))
-15. `supabase/migrate_increase_rank_score_precision_3dp.sql` - Increase precision to NUMERIC(6,3)
-16. `supabase/migrate_add_activity_likes.sql` - Activity likes
-17. `supabase/migrate_add_activity_comments.sql` - Activity comments + likes
-18. `supabase/migrate_add_activity_cards_feed.sql` - Activity cards table
-19. `supabase/migrate_activity_cards_user_book_link.sql` - Link activity cards to user_books + feed RPC
-20. `supabase/migrate_lock_down_books_rls.sql` - Lock down books writes + uniqueness
-
-Or use the consolidated `supabase/schema.sql` if available.
+- User profiles, bio, profile photos, single name field (`migrate_first_last_to_name`)
+- Books, Open Library, ratings, notes, dates, rank score, community stats
+- Activity feed, likes, comments, activity cards
+- User follows, RLS, account type (public/private), block/mute
+- Account deactivation and private data (`migrate_add_deactivated_at`, `migrate_user_private_data`)
+- Reading progress, book feedback, recommendations
 
 ### 4. Deploy Edge Functions
 
 - `supabase/functions/recalculate-ranks` (optional): maintenance rank recalculation
 - `supabase/functions/books-upsert`: authenticated book upsert with validation (required)
+- `supabase/functions/delete-account`: account deletion (required for delete-account flow)
+- `supabase/functions/book-feedback`: submit book feedback from app (optional)
 
 ### 5. Configure Google Books API (Optional)
 
@@ -228,11 +222,13 @@ inkli/
 │   │   │       └── QuizScreen.tsx       # Onboarding quiz screen
 │   │   ├── profile/
 │   │   │   ├── components/
-│   │   │   │   └── ProfilePhotoActionSheet.tsx # Profile photo actions
+│   │   │   │   ├── ProfileHeader.tsx            # Profile header component
+│   │   │   │   └── ProfilePhotoActionSheet.tsx  # Profile photo actions
 │   │   │   └── screens/
+│   │   │       ├── AccountSettingsScreen.tsx    # Private account settings (email, phone, password, deactivate/delete)
 │   │   │       ├── EditProfileScreen.tsx
-│   │   │       ├── ProfileScreen.tsx    # User profile with activity feed
-│   │   │       └── UserProfileScreen.tsx # Public profile view
+│   │   │       ├── ProfileScreen.tsx             # User profile with activity feed
+│   │   │       └── UserProfileScreen.tsx        # Public profile view
 │   │   ├── recommendations/
 │   │   │   └── components/
 │   │   │       └── RecommendationsList.tsx # Book recommendations list
@@ -264,11 +260,13 @@ inkli/
 │   │   ├── YourShelfStackNavigator.tsx  # Your Shelf stack
 │   │   └── types.ts                     # Navigation types
 │   ├── services/
+│   │   ├── account.ts                   # Account deactivation, deletion, password update
 │   │   ├── activityCommentLikes.ts      # Comment likes API
 │   │   ├── activityComments.ts          # Activity comments API
 │   │   ├── activityFeed.ts              # Home feed RPC + pagination
 │   │   ├── activityLikes.ts             # Activity likes API
 │   │   ├── analytics.ts                 # Analytics service
+│   │   ├── bookFeedback.ts              # Book feedback submission (wrong cover, metadata, etc.)
 │   │   ├── books.ts                     # Book-related API functions
 │   │   ├── comparisons.ts               # Book comparison service
 │   │   ├── coverResolver.ts             # Cover URL resolution service
@@ -277,6 +275,7 @@ inkli/
 │   │   ├── quiz.ts                      # Onboarding quiz service
 │   │   ├── recommendations.ts           # Book recommendations service
 │   │   ├── supabase.ts                  # Supabase service exports
+│   │   ├── userPrivateData.ts           # User private data (email, phone) read/update
 │   │   ├── userProfile.ts               # User profile API functions
 │   │   └── users.ts                     # User management service
 │   ├── types/
@@ -380,6 +379,17 @@ Social engagement on activity items:
 - `deleteComment(commentId, userId)` - Delete a comment
 - `likeComment(userId, commentId)` - Like a comment
 - `unlikeComment(userId, commentId)` - Unlike a comment
+
+### Account & Private Data (`src/services/account.ts`, `src/services/userPrivateData.ts`)
+Account lifecycle and private user data:
+- `deactivateAccount(userId)` - Deactivate account (sets deactivated_at, signs out)
+- `deleteAccount(userId, passwordOrConfirmation, isOAuthUser)` - Permanently delete account (Edge Function)
+- `updatePassword(newPassword)` - Update password for email users
+- `getPrivateData(userId)` - Get email, phone for current user
+- `updatePrivateData(userId, updates)` - Update email/phone (RLS-protected)
+
+### Book Feedback (`src/services/bookFeedback.ts`)
+- `submitBookFeedback({ bookId, issueType, description })` - Submit book feedback via Edge Function (e.g. wrong cover, metadata issues)
 
 ### User Profile Services (`src/services/userProfile.ts`)
 Comprehensive user profile and social features:
