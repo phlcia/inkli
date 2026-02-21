@@ -31,10 +31,12 @@ import { SearchStackParamList } from '../../../navigation/SearchStackNavigator';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useErrorHandler } from '../../../contexts/ErrorHandlerContext';
 import { supabase } from '../../../config/supabase';
+import AskScreen from './AskScreen';
 
 type SearchScreenNavigationProp = StackNavigationProp<SearchStackParamList, 'SearchMain'>;
 
 type TabType = 'books' | 'members';
+type SearchMode = 'search' | 'ask';
 
 interface MemberResult {
   user_id: string;
@@ -179,6 +181,7 @@ export default function SearchScreen() {
   const { user } = useAuth();
   const { handleApiError } = useErrorHandler();
   const [query, setQuery] = useState('');
+  const [mode, setMode] = useState<SearchMode>('search');
   const [activeTab, setActiveTab] = useState<TabType>('books');
   const [bookResults, setBookResults] = useState<any[]>([]);
   const [memberResults, setMemberResults] = useState<MemberResult[]>([]);
@@ -746,20 +749,39 @@ export default function SearchScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+      {/* Header with Search / Ask (same style as other tab headers: logo typography) */}
+      <View style={styles.header}>
+        <View style={styles.modeTabs}>
+          <TouchableOpacity
+            style={[styles.modeTab, mode === 'search' && styles.modeTabActive]}
+            onPress={() => setMode('search')}
+          >
+            <Text style={[styles.modeLogo, mode === 'search' && styles.modeLogoActive]}>
+              Search
+            </Text>
+            {mode === 'search' && <View style={styles.tabUnderline} />}
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.modeTab, mode === 'ask' && styles.modeTabActive]}
+            onPress={() => setMode('ask')}
+          >
+            <Text style={[styles.modeLogo, mode === 'ask' && styles.modeLogoActive]}>
+              Ask
+            </Text>
+            {mode === 'ask' && <View style={styles.tabUnderline} />}
+          </TouchableOpacity>
+        </View>
+        <View style={styles.headerRight} />
+      </View>
+
+      {mode === 'ask' ? (
+        <AskScreen />
+      ) : (
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={0}
         style={styles.keyboardAvoidingView}
       >
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.logoContainer}>
-            <Text style={styles.logo}>Search</Text>
-          </View>
-          <View style={styles.headerRight}>
-          </View>
-        </View>
-
         <View style={styles.content}>
           <View style={styles.searchContainer}>
             <TextInput
@@ -884,6 +906,7 @@ export default function SearchScreen() {
         )}
         </View>
       </KeyboardAvoidingView>
+      )}
     </SafeAreaView>
   );
 }
@@ -902,6 +925,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingBottom: 16,
+  },
+  modeTabs: {
+    flexDirection: 'row',
+    flex: 1,
+    alignItems: 'center',
+  },
+  modeTab: {
+    paddingVertical: 4,
+    paddingHorizontal: 12,
+    marginRight: 8,
+    position: 'relative',
+  },
+  modeTabActive: {},
+  modeLogo: {
+    fontSize: 32,
+    fontFamily: typography.logo,
+    color: colors.brownText,
+    opacity: 0.5,
+  },
+  modeLogoActive: {
+    color: colors.primaryBlue,
+    opacity: 1,
   },
   logoContainer: {
     flex: 1,
