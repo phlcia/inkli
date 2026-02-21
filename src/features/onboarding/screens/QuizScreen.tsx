@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   TouchableOpacity,
   ScrollView,
+  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -25,6 +26,9 @@ import { AuthStackParamList } from '../../../navigation/AuthStackNavigator';
 import { updatePrivateData } from '../../../services/userPrivateData';
 
 const QUIZ_COMPARISON_COUNT = 12; // Default number of comparisons
+
+const SCREEN_WIDTH = Dimensions.get('window').width;
+const NARROW = SCREEN_WIDTH < 360;
 
 type QuizScreenRouteProp = RouteProp<AuthStackParamList, 'Quiz'>;
 
@@ -127,6 +131,80 @@ export default function QuizScreen({ signupParams, onSignupComplete, onQuizCompl
 
     handleSignup();
   }, [user, finalSignupParams, signUp, navigation, onSignupComplete]);
+
+  const handleQuizComplete = useCallback(async () => {
+    if (!user) return;
+
+    setLoading(true);
+    try {
+      // Get user's quiz comparisons
+      const { data: comparisons, error: compError } = await supabase
+        .from('comparisons')
+        .select('winner_book_id')
+        .eq('user_id', user.id)
+        .eq('is_onboarding', true);
+
+      if (compError) {
+        console.error('Error fetching comparisons:', compError);
+      }
+
+      // Get top books (most wins)
+      const winnerCounts = new Map<string, number>();
+      if (comparisons) {
+        for (const comp of comparisons) {
+          winnerCounts.set(comp.winner_book_id, (winnerCounts.get(comp.winner_book_id) || 0) + 1);
+        }
+      }
+
+      const topBookIds = Array.from(winnerCounts.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([id]) => id);
+
+      const { data: topBooksData } = await supabase
+        .from('books')
+        .select('id, title')
+        .in('id', topBookIds.length > 0 ? topBookIds : ['00000000-0000-0000-0000-000000000000']);
+
+      // Get top genres from winner books
+      const { data: bookGenres } = await supabase
+        .from('book_genres')
+        .select('book_id, genres!inner(name)')
+        .in('book_id', topBookIds.length > 0 ? topBookIds : ['00000000-0000-0000-0000-000000000000']);
+
+      const genreCounts = new Map<string, number>();
+      if (bookGenres) {
+        for (const bg of bookGenres) {
+          const genreName = (bg.genres as any)?.name;
+          if (genreName) {
+            genreCounts.set(genreName, (genreCounts.get(genreName) || 0) + 1);
+          }
+        }
+      }
+
+      const topGenres = Array.from(genreCounts.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([name]) => name);
+
+      setTasteProfile({
+        topBooks: (topBooksData || []).map(b => ({ id: b.id, title: b.title })),
+        topGenres,
+      });
+
+      // Mark quiz as completed
+      await supabase
+        .from('user_profiles')
+        .update({ completed_onboarding_quiz: true, skipped_onboarding_quiz: false })
+        .eq('user_id', user.id);
+
+      setQuizComplete(true);
+    } catch (error) {
+      handleApiError(error, 'complete quiz');
+    } finally {
+      setLoading(false);
+    }
+  }, [user, handleApiError]);
 
   const loadNextPair = useCallback(async () => {
     if (!user || !signupComplete) return;
@@ -232,80 +310,6 @@ export default function QuizScreen({ signupParams, onSignupComplete, onQuizCompl
     );
   };
 
-  const handleQuizComplete = useCallback(async () => {
-    if (!user) return;
-
-    setLoading(true);
-    try {
-      // Get user's quiz comparisons
-      const { data: comparisons, error: compError } = await supabase
-        .from('comparisons')
-        .select('winner_book_id')
-        .eq('user_id', user.id)
-        .eq('is_onboarding', true);
-
-      if (compError) {
-        console.error('Error fetching comparisons:', compError);
-      }
-
-      // Get top books (most wins)
-      const winnerCounts = new Map<string, number>();
-      if (comparisons) {
-        for (const comp of comparisons) {
-          winnerCounts.set(comp.winner_book_id, (winnerCounts.get(comp.winner_book_id) || 0) + 1);
-        }
-      }
-
-      const topBookIds = Array.from(winnerCounts.entries())
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 3)
-        .map(([id]) => id);
-
-      const { data: topBooksData } = await supabase
-        .from('books')
-        .select('id, title')
-        .in('id', topBookIds.length > 0 ? topBookIds : ['00000000-0000-0000-0000-000000000000']);
-
-      // Get top genres from winner books
-      const { data: bookGenres } = await supabase
-        .from('book_genres')
-        .select('book_id, genres!inner(name)')
-        .in('book_id', topBookIds.length > 0 ? topBookIds : ['00000000-0000-0000-0000-000000000000']);
-
-      const genreCounts = new Map<string, number>();
-      if (bookGenres) {
-        for (const bg of bookGenres) {
-          const genreName = (bg.genres as any)?.name;
-          if (genreName) {
-            genreCounts.set(genreName, (genreCounts.get(genreName) || 0) + 1);
-          }
-        }
-      }
-
-      const topGenres = Array.from(genreCounts.entries())
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 3)
-        .map(([name]) => name);
-
-      setTasteProfile({
-        topBooks: (topBooksData || []).map(b => ({ id: b.id, title: b.title })),
-        topGenres,
-      });
-
-      // Mark quiz as completed
-      await supabase
-        .from('user_profiles')
-        .update({ completed_onboarding_quiz: true, skipped_onboarding_quiz: false })
-        .eq('user_id', user.id);
-
-      setQuizComplete(true);
-    } catch (error) {
-      handleApiError(error, 'complete quiz');
-    } finally {
-      setLoading(false);
-    }
-  }, [user, handleApiError]);
-
   const handleContinueToRecommendations = async () => {
     if (!user) return;
 
@@ -334,7 +338,11 @@ export default function QuizScreen({ signupParams, onSignupComplete, onQuizCompl
     return (
       <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
         <StatusBar barStyle="dark-content" backgroundColor={colors.creamBackground} />
-        <View style={styles.loadingContainer}>
+        <View
+          style={styles.loadingContainer}
+          accessibilityLiveRegion="polite"
+          accessibilityLabel={signingUp ? 'Creating your account' : 'Loading quiz'}
+        >
           <ActivityIndicator size="large" color={colors.primaryBlue} />
           <Text style={styles.loadingText}>
             {signingUp ? 'Creating your account...' : 'Loading quiz...'}
@@ -348,7 +356,11 @@ export default function QuizScreen({ signupParams, onSignupComplete, onQuizCompl
     return (
       <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
         <StatusBar barStyle="dark-content" backgroundColor={colors.creamBackground} />
-        <View style={styles.loadingContainer}>
+        <View
+          style={styles.loadingContainer}
+          accessibilityLiveRegion="polite"
+          accessibilityLabel="Loading quiz"
+        >
           <ActivityIndicator size="large" color={colors.primaryBlue} />
           <Text style={styles.loadingText}>Loading quiz...</Text>
         </View>
@@ -403,23 +415,38 @@ export default function QuizScreen({ signupParams, onSignupComplete, onQuizCompl
         </View>
       ) : null}
       <View style={styles.header}>
-        <TouchableOpacity onPress={handleSkipQuiz} style={styles.skipButton}>
-          <Text style={styles.skipButtonText}>Skip Quiz</Text>
+        <TouchableOpacity
+          onPress={handleSkipQuiz}
+          style={styles.skipButton}
+          accessibilityRole="button"
+          accessibilityLabel="Skip onboarding quiz"
+          accessibilityHint="Exits the quiz and goes to the app without personalised recommendations"
+        >
+          <Text style={styles.skipButtonText}>Skip onboarding</Text>
         </TouchableOpacity>
-        <Text style={styles.progressText}>
+        <Text
+          style={styles.progressText}
+          accessibilityLabel={`Comparison ${comparisonCount} of ${QUIZ_COMPARISON_COUNT}`}
+          accessibilityLiveRegion="polite"
+        >
           {comparisonCount}/{QUIZ_COMPARISON_COUNT}
         </Text>
       </View>
 
       <View style={styles.content}>
-        <Text style={styles.questionText}>Which book do you prefer?</Text>
-        <View style={styles.booksContainer}>
+        <Text style={styles.questionText} accessibilityRole="header">
+          Which book do you prefer?
+        </Text>
+        <View
+          style={[styles.booksContainer, NARROW && styles.booksContainerNarrow]}
+          accessibilityState={{ busy: submitting }}
+        >
           <QuizBookCard
             book={currentPair.book1}
             onChoose={() => handleChoose(currentPair.book1, currentPair.book2)}
             disabled={submitting}
           />
-          <Text style={styles.vsText}>VS</Text>
+          {!NARROW && <Text style={styles.vsText}>VS</Text>}
           <QuizBookCard
             book={currentPair.book2}
             onChoose={() => handleChoose(currentPair.book2, currentPair.book1)}
@@ -430,8 +457,12 @@ export default function QuizScreen({ signupParams, onSignupComplete, onQuizCompl
           style={styles.skipComparisonButton}
           onPress={handleSkipComparison}
           disabled={submitting}
+          accessibilityRole="button"
+          accessibilityLabel="Skip this pair"
+          accessibilityHint="Neither book is chosen; moves to the next comparison"
+          accessibilityState={{ disabled: submitting }}
         >
-          <Text style={styles.skipComparisonText}>Skip this comparison</Text>
+          <Text style={styles.skipComparisonText}>I haven't read either</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -525,6 +556,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'flex-start',
     marginBottom: 24,
+    marginLeft: 24,
+  },
+  booksContainerNarrow: {
+    flexDirection: 'column',
   },
   vsText: {
     fontSize: 18,
@@ -544,6 +579,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 5,
     elevation: 4,
+    alignSelf: 'center',
   },
   skipComparisonText: {
     fontSize: 16,
