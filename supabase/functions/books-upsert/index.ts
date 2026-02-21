@@ -120,6 +120,7 @@ function sanitizeBook(input: Record<string, unknown>) {
 }
 
 Deno.serve(async (req: Request) => {
+  console.log('[books-upsert] request received', req.method, req.url)
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
@@ -148,61 +149,100 @@ Deno.serve(async (req: Request) => {
 
     const body = await req.json().catch(() => null)
     if (!body || typeof body !== 'object') {
+      const errPayload = { error: 'Invalid JSON body' }
+      console.error('[books-upsert] 400 Invalid JSON body', errPayload)
       return new Response(
-        JSON.stringify({ error: 'Invalid JSON body' }),
+        JSON.stringify(errPayload),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
     const rawBook = (body as { book?: Record<string, unknown> }).book
     if (!rawBook || typeof rawBook !== 'object') {
+      const errPayload = { error: 'Missing book payload' }
+      console.error('[books-upsert] 400 Missing book payload', errPayload)
       return new Response(
-        JSON.stringify({ error: 'Missing book payload' }),
+        JSON.stringify(errPayload),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
     const { book, error } = sanitizeBook(rawBook)
     if (error || !book) {
+      const errPayload = { error: error || 'Invalid book data' }
+      console.error('[books-upsert] 400 sanitizeBook', errPayload)
       return new Response(
-        JSON.stringify({ error: error || 'Invalid book data' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-
-    const conflictKey = book.open_library_id
-      ? 'open_library_id'
-      : book.google_books_id
-      ? 'google_books_id'
-      : book.isbn_13
-      ? 'isbn_13'
-      : null
-
-    if (!conflictKey) {
-      return new Response(
-        JSON.stringify({ error: 'No valid conflict key' }),
+        JSON.stringify(errPayload),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
     const adminClient = createClient(supabaseUrl, supabaseServiceKey)
-    
-    // First, check if book already exists
-    const conflictValue = book.open_library_id || book.google_books_id || book.isbn_13
-    const { data: existingBook } = await adminClient
-      .from('books')
-      .select('id, genres')
-      .eq(conflictKey, conflictValue)
-      .single()
-    
+
+    // Find existing row by any identifier so we upsert (update) instead of insert and hit unique violation
+    let existingBook: { id: string; genres: string[] | null } | null = null
+    let conflictKey: string | null = null
+
+    if (book.google_books_id) {
+      const { data } = await adminClient
+        .from('books')
+        .select('id, genres')
+        .eq('google_books_id', book.google_books_id)
+        .maybeSingle()
+      if (data) {
+        existingBook = data
+        conflictKey = 'google_books_id'
+      }
+    }
+    if (!existingBook && book.open_library_id) {
+      const { data } = await adminClient
+        .from('books')
+        .select('id, genres')
+        .eq('open_library_id', book.open_library_id)
+        .maybeSingle()
+      if (data) {
+        existingBook = data
+        conflictKey = 'open_library_id'
+      }
+    }
+    if (!existingBook && book.isbn_13) {
+      const { data } = await adminClient
+        .from('books')
+        .select('id, genres')
+        .eq('isbn_13', book.isbn_13)
+        .maybeSingle()
+      if (data) {
+        existingBook = data
+        conflictKey = 'isbn_13'
+      }
+    }
+
+    // No existing row: prefer open_library_id, then google_books_id, then isbn_13 for conflict target
+    if (!conflictKey) {
+      conflictKey = book.open_library_id
+        ? 'open_library_id'
+        : book.google_books_id
+        ? 'google_books_id'
+        : book.isbn_13
+        ? 'isbn_13'
+        : null
+    }
+
+    if (!conflictKey) {
+      const errPayload = { error: 'No valid conflict key' }
+      console.error('[books-upsert] 400 No valid conflict key', errPayload)
+      return new Response(
+        JSON.stringify(errPayload),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
     let finalBook = book
     if (existingBook) {
-      // Book exists - preserve existing genres (don't overwrite with new auto-mapped ones)
-      // This prevents one user's genre changes from affecting another user
-      // User-specific genres are stored in user_books.user_genres instead
-      finalBook = { ...book, genres: existingBook.genres }
+      // Preserve existing genres (don't overwrite with new auto-mapped ones)
+      finalBook = { ...book, genres: existingBook.genres ?? book.genres }
     }
-    
+
     const { data, error: upsertError } = await adminClient
       .from('books')
       .upsert(finalBook, { onConflict: conflictKey })
@@ -210,8 +250,10 @@ Deno.serve(async (req: Request) => {
       .single()
 
     if (upsertError) {
+      const errPayload = { error: upsertError.message, details: upsertError }
+      console.error('[books-upsert] 400 upsertError', errPayload)
       return new Response(
-        JSON.stringify({ error: upsertError.message, details: upsertError }),
+        JSON.stringify(errPayload),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }

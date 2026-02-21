@@ -17,7 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { colors, typography } from '../../../config/theme';
-import { searchBooksWithStats, enrichBookWithGoogleBooks, checkDatabaseForBook, saveBookToDatabase } from '../../../services/books';
+import { searchBooksWithStats, enrichBookWithGoogleBooks, checkDatabaseForBook, saveBookToDatabase, validateEnrichmentForSearch } from '../../../services/books';
 import { resolveCoverUrl, CoverResolvableBook } from '../../../services/coverResolver';
 import {
   searchMembers,
@@ -543,6 +543,12 @@ export default function SearchScreen() {
       }
       
       const enrichedBook = await enrichBookWithGoogleBooks(book);
+      const enrichmentValid = validateEnrichmentForSearch(enrichedBook, book);
+      if (!enrichmentValid) {
+        setEnrichingBookId(null);
+        navigation.navigate('BookDetail', { book });
+        return;
+      }
       try {
         const savedBook = await saveBookToDatabase(enrichedBook);
         navigation.navigate('BookDetail', { book: savedBook });

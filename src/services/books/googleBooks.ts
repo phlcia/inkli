@@ -1,5 +1,6 @@
 import { supabase } from '../../config/supabase';
 import type { Book } from './types';
+import { lookupOpenLibraryIdByTitleAuthor } from './openLibraryLookup';
 import { upsertBookViaEdge } from './upsert';
 
 const GOOGLE_BOOKS_API_BASE = 'https://www.googleapis.com/books/v1/volumes';
@@ -452,6 +453,205 @@ export async function searchBooksWithStats(query: string): Promise<any[]> {
     console.error('Error searching books with stats:', error);
     return [];
   }
+}
+
+// ============================================================================
+// Ask enrichment: validation and Google Books–first pipeline
+// ============================================================================
+
+const TITLE_REJECT_WORDS = [
+  'summary', 'guide', 'analysis', 'study guide', 'workbook', 'companion',
+  'review', 'overview', 'cliff', 'cliffnotes', 'sparknotes', 'insight',
+];
+
+function getLastName(fullName: string): string {
+  const parts = (fullName || '').trim().split(/\s+/);
+  return parts.length > 0 ? parts[parts.length - 1].toLowerCase() : '';
+}
+
+function titleRejected(title: string): boolean {
+  const t = (title || '').toLowerCase();
+  return TITLE_REJECT_WORDS.some((word) => t.includes(word));
+}
+
+function authorLastNameFuzzyMatch(expectedAuthor: string, actualAuthors: string[]): boolean {
+  const expectedLast = getLastName(expectedAuthor);
+  if (!expectedLast) return true;
+  for (const a of actualAuthors || []) {
+    const actualLast = getLastName(a);
+    if (!actualLast) continue;
+    const dist = levenshteinDistance(expectedLast, actualLast);
+    if (dist <= 4) return true;
+  }
+  return false;
+}
+
+function parseYearFromPublishedDate(publishedDate: string | undefined): number | null {
+  if (!publishedDate || typeof publishedDate !== 'string') return null;
+  const yearMatch = publishedDate.match(/\d{4}/);
+  return yearMatch ? parseInt(yearMatch[0], 10) : null;
+}
+
+/**
+ * Search Google Books by title + author (and optional year). Returns raw API items.
+ */
+export async function searchGoogleBooks(
+  title: string,
+  author: string,
+  year?: number
+): Promise<any[]> {
+  const apiKey = process.env.EXPO_PUBLIC_GOOGLE_BOOKS_API_KEY;
+  const q = [title, author].filter(Boolean).join(' ');
+  const queryParams = new URLSearchParams({
+    q: q.trim(),
+    maxResults: '15',
+  });
+  if (apiKey) queryParams.append('key', apiKey);
+  const url = `${GOOGLE_BOOKS_API_BASE}?${queryParams.toString()}`;
+  const res = await fetch(url);
+  if (!res.ok) return [];
+  const data = await res.json().catch(() => null);
+  if (!data?.items || !Array.isArray(data.items)) return [];
+  return data.items;
+}
+
+function validateAndScoreGbItem(
+  item: any,
+  expectedAuthor: string,
+  expectedYear?: number
+): { valid: boolean; score: number } {
+  const vi = item?.volumeInfo || {};
+  const title = (vi.title || '').trim();
+  const authors: string[] = Array.isArray(vi.authors) ? vi.authors : [];
+  const pageCount = typeof vi.pageCount === 'number' ? vi.pageCount : 0;
+  const printType = (vi.printType || '').toLowerCase();
+  const publishedYear = parseYearFromPublishedDate(vi.publishedDate);
+
+  if (titleRejected(title)) return { valid: false, score: 0 };
+  if (pageCount > 0 && pageCount < 150) return { valid: false, score: 0 };
+  if (!authorLastNameFuzzyMatch(expectedAuthor, authors)) return { valid: false, score: 0 };
+
+  let score = 10;
+  if (expectedYear != null && publishedYear != null) {
+    const diff = Math.abs(publishedYear - expectedYear);
+    if (diff <= 2) score += 20;
+    else if (diff <= 5) score += 10;
+  }
+  if (printType === 'books') score += 15;
+  return { valid: true, score };
+}
+
+function getCoverFromGbItem(item: any): string | null {
+  const vi = item?.volumeInfo || {};
+  const links = vi.imageLinks || {};
+  return (
+    links.extraLarge ||
+    links.large ||
+    links.medium ||
+    (links.thumbnail ? links.thumbnail.replace('zoom=1', 'zoom=2') : null) ||
+    null
+  );
+}
+
+/**
+ * Validates a Google Books–enriched book for use in SearchScreen tap handler.
+ * Rejects summary/companion titles, low page count, and author mismatch.
+ * Does NOT apply year ±2 (we already have the correct book from Open Library).
+ * Returns true if enrichment is safe to save/use; false to use OL data only.
+ */
+export function validateEnrichmentForSearch(
+  enrichedBook: any,
+  originalOlBook: any
+): boolean {
+  if (!enrichedBook) return false;
+  const title = (enrichedBook.title || '').trim();
+  if (titleRejected(title)) return false;
+  const pageCount = enrichedBook.page_count;
+  if (typeof pageCount === 'number' && pageCount < 150) return false;
+  const olAuthors: string[] = Array.isArray(originalOlBook?.authors)
+    ? originalOlBook.authors
+    : [];
+  const enrichedAuthors: string[] = Array.isArray(enrichedBook.authors) ? enrichedBook.authors : [];
+  const atLeastOneAuthorMatches = olAuthors.some((olAuthor: string) =>
+    authorLastNameFuzzyMatch(olAuthor, enrichedAuthors)
+  );
+  if (!atLeastOneAuthorMatches && olAuthors.length > 0) return false;
+  return true;
+}
+
+export interface EnrichForAskResult {
+  cover: string | null;
+  pageCount: number | null;
+  publisher: string | null;
+  publishedYear: number | null;
+  googleBooksId: string | null;
+  open_library_id?: string | null;
+}
+
+/**
+ * Enrich a suggestion (title, author, optional year): try Google Books first, then Open Library.
+ * Returns validated enrichment; if both fail validation, returns { cover: null, pageCount: null, publisher: null, ... }.
+ */
+export async function enrichForAsk(suggestion: {
+  title: string;
+  author: string;
+  year?: number;
+}): Promise<EnrichForAskResult> {
+  const { title, author, year } = suggestion;
+
+  // 1. Try Google Books first
+  const gbItems = await searchGoogleBooks(title, author, year);
+  const scored = gbItems
+    .map((item) => ({
+      item,
+      ...validateAndScoreGbItem(item, author, year),
+    }))
+    .filter((x) => x.valid)
+    .sort((a, b) => b.score - a.score);
+  const bestGb = scored[0];
+  if (bestGb?.item) {
+    const vi = bestGb.item.volumeInfo || {};
+    const openLibraryId = await lookupOpenLibraryIdByTitleAuthor(title, author);
+    return {
+      cover: getCoverFromGbItem(bestGb.item),
+      pageCount: typeof vi.pageCount === 'number' ? vi.pageCount : null,
+      publisher: vi.publisher || null,
+      publishedYear: parseYearFromPublishedDate(vi.publishedDate),
+      googleBooksId: bestGb.item.id || null,
+      open_library_id: openLibraryId ?? null,
+    };
+  }
+
+  // 2. Fallback: Open Library search, then enrich with Google Books and validate
+  const query = [title, author].filter(Boolean).join(' ').trim();
+  const olResults = await searchBooks(query);
+  for (const olBook of olResults) {
+    if (titleRejected(olBook.title || '')) continue;
+    const enriched = await enrichBookWithGoogleBooks(olBook);
+    const gbId = enriched?.google_books_id;
+    const pageCount = enriched?.page_count;
+    const authors = enriched?.authors || [];
+    if (typeof pageCount === 'number' && pageCount < 150) continue;
+    if (!authorLastNameFuzzyMatch(author, authors)) continue;
+    const publishedYear = enriched?.first_published ?? parseYearFromPublishedDate(enriched?.published_date ?? undefined);
+    return {
+      cover: enriched?.cover_url ?? null,
+      pageCount: pageCount ?? null,
+      publisher: enriched?.publisher ?? null,
+      publishedYear: publishedYear ?? null,
+      googleBooksId: gbId || null,
+      open_library_id: enriched?.open_library_id ?? null,
+    };
+  }
+
+  // No valid match: return fallback object per spec (cover/pageCount/publisher null)
+  return {
+    cover: null,
+    pageCount: null,
+    publisher: null,
+    publishedYear: null,
+    googleBooksId: null,
+  };
 }
 
 // ============================================================================
