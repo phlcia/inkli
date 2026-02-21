@@ -14,6 +14,8 @@ export interface GrokBookSuggestion {
   title: string;
   author: string;
   reason: string;
+  /** Original publication year when known (for matching first editions). */
+  year?: number;
 }
 
 export interface GrokBookResponse {
@@ -44,10 +46,19 @@ function parseBooksFromContent(rawContent: string): GrokBookSuggestion[] {
   const books: GrokBookSuggestion[] = [];
   for (const item of parsed) {
     if (item && typeof item.title === 'string' && typeof item.author === 'string') {
+      let year: number | undefined;
+      if (typeof item.year === 'number' && Number.isFinite(item.year)) {
+        year = item.year;
+      } else if (typeof item.publishedYear === 'number' && Number.isFinite(item.publishedYear)) {
+        year = item.publishedYear;
+      } else if (typeof item.year === 'string' && /^\d{4}$/.test(item.year)) {
+        year = parseInt(item.year, 10);
+      }
       books.push({
         title: String(item.title),
         author: String(item.author),
         reason: typeof item.reason === 'string' ? item.reason : '',
+        ...(year != null && year >= 1000 && year <= 2100 ? { year } : {}),
       });
     }
   }

@@ -3,6 +3,7 @@ import { getSuggestedGenres } from '../../utils/genreMapper';
 import type { Book, ReadSession, UserBook } from './types';
 import { upsertBookViaEdge } from './upsert';
 import { onUserAction } from '../recommendationTriggers';
+import { normalizeBookForEdge } from './utils';
 
 /**
  * Check if user already has this book
@@ -61,7 +62,18 @@ export async function addBookToShelf(
       genres: defaultGenres, // Store auto-mapped genres as book defaults
     };
 
-    const { book_id: bookId } = await upsertBookViaEdge(bookDataWithGenres);
+    const { book: normalizedBook, valid, error: validationError } = normalizeBookForEdge(bookDataWithGenres);
+    if (!valid) {
+      console.error('[addBookToShelf] Book invalid for edge:', validationError, {
+        title: normalizedBook.title,
+        open_library_id: normalizedBook.open_library_id,
+        google_books_id: normalizedBook.google_books_id,
+        isbn_13: normalizedBook.isbn_13,
+      });
+      throw new Error(validationError ?? 'Book missing required identifier for save');
+    }
+
+    const { book_id: bookId } = await upsertBookViaEdge(normalizedBook);
 
     // User-selected genres will be stored on user_books.user_genres (per-user)
     // If user selected genres, use those; otherwise null means "use book defaults"

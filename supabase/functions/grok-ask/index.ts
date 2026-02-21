@@ -21,7 +21,12 @@ const GROK_MODEL = 'grok-4-1-fast-non-reasoning'
 const MAX_TOKENS = 500
 const GROK_TIMEOUT_MS = 10_000
 
-const DEFAULT_SYSTEM_PROMPT = `You are a book recommendation assistant. The user will describe a mood or vibe. Respond with a JSON array only, no other text or markdown. Each element must be: { "title": "Book Title", "author": "Author Name", "reason": "One sentence why it matches the mood" }. Give 3 to 5 books. Use well-known, real books.`
+// Grok 4.1 Fast: $0.20/1M input, $0.50/1M output (xAI pricing)
+const COST_PER_1K_INPUT = 0.0002
+const COST_PER_1K_OUTPUT = 0.0005
+const API_USAGE_TRIGGER = 'ask_screen'
+
+const DEFAULT_SYSTEM_PROMPT = `You are a book recommendation assistant. The user will describe a mood or vibe. Respond with a JSON array only, no other text or markdown. Each element must be: { "title": "Book Title", "author": "Author Name", "reason": "One sentence why it matches the mood", "year": 1999 } where year is the original publication year (number, 4 digits) when you know it. Give 3 to 5 books. Use well-known, real novels/books—not summaries, study guides, or companions.`
 
 interface GrokMessage {
   role: 'system' | 'user' | 'assistant'
@@ -161,6 +166,36 @@ Deno.serve(async (req: Request) => {
 
     const content = grokData?.choices?.[0]?.message?.content ?? ''
     const usage = grokData?.usage
+
+    // Log token usage to api_usage for cost tracking (fire-and-forget; don't block response)
+    if (usage && (usage.prompt_tokens != null || usage.completion_tokens != null)) {
+      const promptTokens = usage.prompt_tokens ?? 0
+      const completionTokens = usage.completion_tokens ?? 0
+      const totalTokens = usage.total_tokens ?? promptTokens + completionTokens
+      const estimatedCostUsd =
+        (promptTokens / 1000) * COST_PER_1K_INPUT +
+        (completionTokens / 1000) * COST_PER_1K_OUTPUT
+
+      const serviceRoleKey = Deno.env.get('SERVICE_ROLE_KEY')
+      if (serviceRoleKey) {
+        const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey)
+        supabaseAdmin
+          .from('api_usage')
+          .insert({
+            user_id: user.id,
+            model: GROK_MODEL,
+            prompt_tokens: promptTokens,
+            completion_tokens: completionTokens,
+            total_tokens: totalTokens,
+            estimated_cost_usd: Math.round(estimatedCostUsd * 1e6) / 1e6,
+            trigger: API_USAGE_TRIGGER,
+          })
+          .then(({ error }) => {
+            if (error) console.error('api_usage insert error:', error)
+          })
+          .catch((e) => console.error('api_usage insert failed:', e))
+      }
+    }
 
     return jsonResponse(
       {

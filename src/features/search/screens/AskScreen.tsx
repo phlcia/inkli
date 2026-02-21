@@ -19,11 +19,13 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { useErrorHandler } from '../../../contexts/ErrorHandlerContext';
 import { useNetworkStatus } from '../../../hooks/useNetworkStatus';
 import {
-  searchBooks,
+  enrichForAsk,
   enrichBookWithGoogleBooks,
   checkDatabaseForBook,
   saveBookToDatabase,
   checkUserHasBook,
+  validateEnrichmentForSearch,
+  normalizeBookForEdge,
 } from '../../../services/books';
 import { resolveCoverUrl, CoverResolvableBook } from '../../../services/coverResolver';
 import {
@@ -55,18 +57,29 @@ interface AskMessage {
   error?: string;
 }
 
-const SUGGESTED_CHIPS = [
-  'Something cozy',
-  'Emotionally devastating',
-  'Fast-paced thriller',
-  'Light and funny',
+const EXAMPLE_PROMPTS = [
+  '"something cozy for a rainy day..."',
+  '"a book that will make me ugly cry!"',
+  '"fast-paced, can\'t put it down."',
+  '"funny but also makes you think!"',
 ];
 
-function titleMatch(a: string, b: string): boolean {
-  const na = (a || '').trim().toLowerCase();
-  const nb = (b || '').trim().toLowerCase();
-  if (na === nb) return true;
-  return na.includes(nb) || nb.includes(na);
+/** Normalize card book for BookDetailScreen / addBookToShelf so edge and UI get expected shape. */
+function bookForDetail(book: any): any {
+  const firstPub = book.first_published ?? book.published_date;
+  const published_date =
+    typeof firstPub === 'number' ? String(firstPub) : typeof firstPub === 'string' ? firstPub : null;
+  const base = {
+    ...book,
+    authors: Array.isArray(book.authors) ? book.authors : book.authors ? [book.authors] : [],
+    published_date: published_date || book.published_date || null,
+    first_published: typeof book.first_published === 'number' ? book.first_published : null,
+  };
+  const { book: normalized, valid } = normalizeBookForEdge(base);
+  if (valid) {
+    return { ...base, ...normalized };
+  }
+  return { ...base, ...normalized };
 }
 
 async function hydrateOne(
@@ -74,24 +87,37 @@ async function hydrateOne(
   userId: string | undefined
 ): Promise<HydratedBookResult> {
   try {
-    const query = `${suggestion.title} ${suggestion.author}`.trim();
-    const results = await searchBooks(query);
-    const first = results.find(
-      (r) =>
-        titleMatch(r.title || '', suggestion.title) ||
-        (r.authors && r.authors.some((auth: string) => auth.toLowerCase().includes(suggestion.author.toLowerCase())))
-    ) || results[0];
-    if (!first) {
+    const enrichment = await enrichForAsk({
+      title: suggestion.title,
+      author: suggestion.author,
+      year: suggestion.year,
+    });
+    const noValidMatch = enrichment.cover == null && enrichment.pageCount == null && enrichment.publisher == null;
+    if (noValidMatch) {
       return { book: null, reason: suggestion.reason, onShelf: false };
     }
-    const existing = await checkDatabaseForBook(first.open_library_id, null);
-    const enriched = await enrichBookWithGoogleBooks(first);
-    const coverUrl = await resolveCoverUrl(enriched as CoverResolvableBook);
+    const bookFromEnrichment = {
+      title: suggestion.title,
+      authors: [suggestion.author],
+      cover_url: enrichment.cover,
+      page_count: enrichment.pageCount,
+      publisher: enrichment.publisher,
+      first_published: enrichment.publishedYear,
+      google_books_id: enrichment.googleBooksId,
+      open_library_id: enrichment.open_library_id ?? undefined,
+    };
+    const existing = await checkDatabaseForBook(
+      bookFromEnrichment.open_library_id ?? undefined,
+      bookFromEnrichment.google_books_id ?? undefined
+    );
     const book = existing
-      ? { ...existing, cover_url: coverUrl || existing.cover_url, authors: existing.authors || [] }
-      : { ...enriched, cover_url: coverUrl || enriched.cover_url };
+      ? { ...existing, cover_url: enrichment.cover ?? existing.cover_url, authors: existing.authors || [suggestion.author] }
+      : (await resolveCoverUrl(bookFromEnrichment as CoverResolvableBook).then((url) => ({
+          ...bookFromEnrichment,
+          cover_url: url ?? bookFromEnrichment.cover_url,
+        })));
     let onShelf = false;
-    if (userId && book.id) {
+    if (userId && 'id' in book && book.id) {
       const check = await checkUserHasBook(book.id, userId);
       onShelf = check.exists;
     }
@@ -113,7 +139,7 @@ function AskBookCard({
   if (!book) {
     return (
       <View style={styles.askCard}>
-        <Text style={styles.askCardTitle} numberOfLines={2}>{result.reason || 'Book not found'}</Text>
+        <Text style={styles.askCardTitle}>{result.reason || 'Book not found'}</Text>
         <Text style={styles.askCardReason}>Could not find a matching book</Text>
       </View>
     );
@@ -145,7 +171,7 @@ function AskBookCard({
             {book.authors?.join(', ') || 'Unknown Author'}
           </Text>
           {reason ? (
-            <Text style={styles.askCardReason} numberOfLines={2}>{reason}</Text>
+            <Text style={styles.askCardReason}>{reason}</Text>
           ) : null}
         </View>
       </View>
@@ -203,6 +229,12 @@ export default function AskScreen() {
           return;
         }
         const enriched = await enrichBookWithGoogleBooks(book);
+        const enrichmentValid = validateEnrichmentForSearch(enriched, book);
+        if (!enrichmentValid) {
+          // Re-enrichment failed validation (e.g. summary/companion); use card's book so actions still work
+          navigation.navigate('BookDetail', { book: bookForDetail(book) });
+          return;
+        }
         try {
           const saved = await saveBookToDatabase(enriched);
           navigation.navigate('BookDetail', { book: saved });
@@ -211,7 +243,7 @@ export default function AskScreen() {
         }
       } catch (error) {
         handleApiError(error, 'load book');
-        navigation.navigate('BookDetail', { book });
+        navigation.navigate('BookDetail', { book: bookForDetail(book) });
       }
     },
     [navigation, handleApiError]
@@ -258,7 +290,7 @@ export default function AskScreen() {
         if (cached?.books?.length) {
           if (requestId !== requestIdRef.current) return;
           const hydrated = await hydrateSuggestions(cached.books as GrokBookSuggestion[]);
-          appendAssistant(cached.rawContent || 'Here are some picks:', hydrated);
+          appendAssistant(cached.rawContent || 'Here are some of our picks:', hydrated);
           setIsLoading(false);
           return;
         }
@@ -280,7 +312,7 @@ export default function AskScreen() {
       if (!anyFound) {
         appendAssistant("I couldn't find those exact books—try rephrasing.");
       } else {
-        appendAssistant('Here are some picks:', hydrated);
+        appendAssistant('Here are some of our picks:', hydrated);
       }
 
       if (!shouldSkipCache(text)) {
@@ -296,7 +328,7 @@ export default function AskScreen() {
             if (requestId !== requestIdRef.current) return;
             if (retryResponse.books?.length) {
               const hydrated = await hydrateSuggestions(retryResponse.books);
-              appendAssistant('Here are some picks:', hydrated);
+              appendAssistant('Here are some of our picks:', hydrated);
             } else {
               appendAssistant("Something went wrong with that response—try rephrasing your mood.");
             }
@@ -368,7 +400,7 @@ export default function AskScreen() {
             ) : (
               <>
                 {item.books?.length ? (
-                  <Text style={styles.assistantText}>Here are some picks:</Text>
+                  <Text style={styles.assistantText}>Here are some of our picks:</Text>
                 ) : item.content ? (
                   <Text style={styles.assistantText}>{item.content}</Text>
                 ) : null}
@@ -409,17 +441,9 @@ export default function AskScreen() {
         {isEmpty ? (
           <View style={styles.emptyState}>
             <Text style={styles.emptyTitle}>What are you in the mood for?</Text>
-            <View style={styles.chipsRow}>
-              {SUGGESTED_CHIPS.map((label) => (
-                <TouchableOpacity
-                  key={label}
-                  style={styles.chip}
-                  onPress={() => {
-                    setInputText(label);
-                  }}
-                >
-                  <Text style={styles.chipText}>{label}</Text>
-                </TouchableOpacity>
+            <View style={styles.examplePromptsWrap}>
+              {EXAMPLE_PROMPTS.map((line) => (
+                <Text key={line} style={styles.examplePromptLine}>{line}</Text>
               ))}
             </View>
           </View>
@@ -491,24 +515,18 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 24,
   },
-  chipsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+  examplePromptsWrap: {
+    alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
   },
-  chip: {
-    backgroundColor: colors.white,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: colors.primaryBlue,
-  },
-  chipText: {
+  examplePromptLine: {
     fontFamily: typography.body,
-    fontSize: 14,
+    fontSize: 16,
     color: colors.brownText,
+    opacity: 0.6,
+    fontStyle: 'italic',
+    textAlign: 'center',
+    marginBottom: 6,
   },
   userBubbleWrap: {
     alignItems: 'flex-end',
