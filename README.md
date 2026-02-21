@@ -152,15 +152,28 @@ Run all migration files in order in your Supabase SQL Editor. The repo contains 
 - `supabase/functions/books-upsert`: authenticated book upsert with validation (required)
 - `supabase/functions/delete-account`: account deletion (required for delete-account flow)
 - `supabase/functions/book-feedback`: submit book feedback from app (optional)
+- `supabase/functions/grok-ask`: proxy to xAI Grok API for the Ask feature (required for Ask)
+
+Set secrets for grok-ask (no API key in the app bundle):
+
+```bash
+supabase secrets set GROK_API_KEY=your_xai_api_key_here
+```
+
+Optional: override the default system prompt (e.g. to tune recommendations without redeploying):
+
+```bash
+supabase secrets set GROK_SYSTEM_PROMPT="Your custom prompt..."
+```
 
 ### 5. Configure Google Books API (Optional)
 
 1. Get a Google Books API key from [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
-2. Create a `.env` file in the project root:
+2. Copy `.env.example` to `.env` and fill in values. For Google Books (optional):
    ```
    EXPO_PUBLIC_GOOGLE_BOOKS_API_KEY=your_api_key_here
    ```
-3. The API key is optional - the app works without it but with lower rate limits
+3. The Google Books API key is optional - the app works without it but with lower rate limits
 
 ### 6. Run the App
 
