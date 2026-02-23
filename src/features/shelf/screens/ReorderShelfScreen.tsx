@@ -81,6 +81,7 @@ export default function ReorderShelfScreen() {
   }, []);
 
   const handleTierDragEnd = useCallback((tier: RatingTier, newData: UserBook[]) => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Soft);
     setReorderBooks((prev) => ({ ...prev, [tier]: newData }));
   }, []);
 
@@ -155,7 +156,10 @@ export default function ReorderShelfScreen() {
         <Text style={styles.headerTitle}>Drag to reorder:</Text>
         <TouchableOpacity
           style={[styles.doneButton, isSaving && styles.doneButtonDisabled]}
-          onPress={handleDone}
+          onPress={() => {
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            void handleDone();
+          }}
           disabled={isSaving}
         >
           <Text style={styles.doneButtonText}>{isSaving ? 'Saving...' : 'Done'}</Text>

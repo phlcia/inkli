@@ -1,5 +1,6 @@
 import React from 'react';
 import { TouchableOpacity, Text, StyleSheet } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { colors, typography } from '../../config/theme';
 import { PRESET_GENRES } from '../../utils/genreMapper';
 
@@ -22,7 +23,10 @@ export default function GenreChip({
   return (
     <TouchableOpacity
       style={[styles.chip, selected && styles.chipSelected]}
-      onPress={onPress}
+      onPress={() => {
+        void Haptics.selectionAsync();
+        onPress();
+      }}
       onLongPress={isCustomLabel && onLongPress ? onLongPress : undefined}
       delayLongPress={500}
       activeOpacity={0.7}

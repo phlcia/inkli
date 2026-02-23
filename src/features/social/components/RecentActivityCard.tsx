@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { CompositeNavigationProp, useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { colors, typography } from '../../../config/theme';
@@ -153,6 +154,7 @@ export default function RecentActivityCard({
 
   const handleToggleLike = async () => {
     if (!user?.id || likeLoading) return;
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setLikeLoading(true);
     try {
       const result = await toggleLike(userBook.id, user.id);
@@ -403,7 +405,10 @@ export default function RecentActivityCard({
           ) : (
             <TouchableOpacity
               style={styles.cardFooterIcon}
-              onPress={onToggleWantToRead}
+              onPress={() => {
+                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                onToggleWantToRead?.();
+              }}
               disabled={!onToggleWantToRead}
             >
               <Image

@@ -9,6 +9,7 @@ import {
   Alert,
   Image,
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography } from '../../../config/theme';
@@ -34,10 +35,12 @@ export default function SignInScreen({ onSignUp }: SignInScreenProps) {
       return;
     }
 
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     try {
       setLoading(true);
       await signIn(identifier, password);
     } catch (error: any) {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert('Error', error.message || 'Sign in failed');
     } finally {
       setLoading(false);
@@ -113,11 +116,13 @@ export default function SignInScreen({ onSignUp }: SignInScreenProps) {
         <TouchableOpacity
           style={[styles.appleButton, oauthLoading === 'apple' && styles.buttonDisabled]}
           onPress={async () => {
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             try {
               setOauthLoading('apple');
               await signInWithApple();
             } catch (error: any) {
               if (error.message && !error.message.includes('cancel')) {
+                void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
                 Alert.alert('Error', error.message || 'Apple Sign In failed');
               }
             } finally {
@@ -141,11 +146,13 @@ export default function SignInScreen({ onSignUp }: SignInScreenProps) {
         <TouchableOpacity
           style={[styles.googleButton, oauthLoading === 'google' && styles.buttonDisabled]}
           onPress={async () => {
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             try {
               setOauthLoading('google');
               await signInWithGoogle();
             } catch (error: any) {
               if (error.message && !error.message.includes('cancel')) {
+                void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
                 Alert.alert('Error', error.message || 'Google Sign In failed');
               }
             } finally {

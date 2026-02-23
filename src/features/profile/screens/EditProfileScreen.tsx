@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   StatusBar,
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -308,6 +309,7 @@ export default function EditProfileScreen() {
   const handleSave = async () => {
     if (!user || !isFormValid || !hasChanges) return;
 
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     try {
       setSaving(true);
 
@@ -339,11 +341,13 @@ export default function EditProfileScreen() {
             errorMessage = error.message;
           }
         }
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         Alert.alert('Error', errorMessage);
         setSaving(false);
         return;
       }
 
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       // Reset photo-related state after successful save
       setTempPhotoUri(null);
       setDeleteProfilePicture(false);

@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   Platform,
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -159,6 +160,7 @@ export default function NotificationsScreen() {
 
   const handleRefresh = useCallback(async () => {
     if (!user) return;
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setRefreshing(true);
     try {
       await loadNotifications(false);
@@ -489,7 +491,8 @@ export default function NotificationsScreen() {
               style={[styles.requestIconButton, styles.acceptIconButton]}
               onPress={(e) => {
                 e.stopPropagation();
-                handleAccept();
+                void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                void handleAccept();
               }}
             >
               <Text style={styles.requestIconText}>✓</Text>
@@ -498,7 +501,8 @@ export default function NotificationsScreen() {
               style={[styles.requestIconButton, styles.rejectIconButton]}
               onPress={(e) => {
                 e.stopPropagation();
-                handleReject();
+                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                void handleReject();
               }}
             >
               <Text style={styles.requestIconText}>✕</Text>

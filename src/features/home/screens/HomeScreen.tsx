@@ -8,6 +8,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -142,6 +143,7 @@ export default function HomeScreen() {
 
   const handleRefresh = useCallback(async () => {
     if (!user) return;
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setRefreshing(true);
 
     try {
@@ -297,7 +299,10 @@ export default function HomeScreen() {
         </View>
         <View style={styles.headerRight}>
           <Pressable
-            onPress={() => navigation.navigate('Notifications')}
+            onPress={() => {
+              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              navigation.navigate('Notifications');
+            }}
             style={({ pressed }) => [
               styles.headerIcon,
               pressed && styles.headerIconPressed,
@@ -326,7 +331,10 @@ export default function HomeScreen() {
           styles.searchBar,
           pressed && styles.searchBarPressed,
         ]}
-        onPress={() => navigation.getParent()?.navigate('Search')}
+        onPress={() => {
+          void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          navigation.getParent()?.navigate('Search');
+        }}
         android_ripple={{ color: 'rgba(0, 0, 0, 0.06)' }}
       >
         <Image

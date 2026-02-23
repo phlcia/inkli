@@ -6,6 +6,7 @@ import {
   Modal,
   TouchableOpacity,
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { colors, typography } from '../../../config/theme';
 import { UserBook } from '../../../services/books';
 
@@ -54,6 +55,7 @@ export default function BookActionModal({
             <TouchableOpacity
               style={styles.option}
               onPress={() => {
+                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 onMoveToRead();
                 onClose();
               }}
@@ -64,6 +66,7 @@ export default function BookActionModal({
             <TouchableOpacity
               style={styles.option}
               onPress={() => {
+                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 onMoveToCurrentlyReading();
                 onClose();
               }}
@@ -74,6 +77,7 @@ export default function BookActionModal({
             <TouchableOpacity
               style={styles.option}
               onPress={() => {
+                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 onMoveToWantToRead();
                 onClose();
               }}
@@ -84,6 +88,7 @@ export default function BookActionModal({
             <TouchableOpacity
               style={[styles.option, styles.removeOption]}
               onPress={() => {
+                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
                 onRemove();
                 onClose();
               }}

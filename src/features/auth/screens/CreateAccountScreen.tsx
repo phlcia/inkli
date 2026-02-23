@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, StatusBar, Alert, Image } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography } from '../../../config/theme';
 import iconImage from '../../../../assets/icon.png';
@@ -40,6 +41,7 @@ export default function CreateAccountScreen({
         <TouchableOpacity
           style={[styles.appleButton, oauthLoading === 'apple' && styles.buttonDisabled]}
           onPress={async () => {
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             try {
               setOauthLoading('apple');
               await onAppleSignIn();
@@ -67,6 +69,7 @@ export default function CreateAccountScreen({
         <TouchableOpacity
           style={[styles.googleButton, oauthLoading === 'google' && styles.buttonDisabled]}
           onPress={async () => {
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             try {
               setOauthLoading('google');
               await onGoogleSignIn();
@@ -98,7 +101,10 @@ export default function CreateAccountScreen({
         </View>
 
         {/* Email Sign Up */}
-        <TouchableOpacity style={styles.emailButton} onPress={onEmailSignUp}>
+        <TouchableOpacity style={styles.emailButton} onPress={() => {
+          void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          onEmailSignUp();
+        }}>
           <Image
             source={emailIcon}
             style={styles.oauthIcon}

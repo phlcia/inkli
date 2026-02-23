@@ -9,6 +9,7 @@ import {
   Alert,
   Image,
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -309,6 +310,7 @@ export default function ProfileScreen() {
   };
 
   const handleAcceptRequest = async (requestId: string) => {
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     try {
       const { error } = await acceptFollowRequest(requestId);
       if (error) throw error;
@@ -320,6 +322,7 @@ export default function ProfileScreen() {
   };
 
   const handleRejectRequest = async (requestId: string) => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     try {
       const { error } = await rejectFollowRequest(requestId);
       if (error) throw error;
@@ -363,6 +366,7 @@ export default function ProfileScreen() {
   const userRank = userProfile?.global_rank || null;
 
   const handleSignOut = async () => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     Alert.alert(
       'Sign Out',
       'Are you sure you want to sign out?',
@@ -531,7 +535,10 @@ export default function ProfileScreen() {
         <View style={styles.tabs}>
           <TouchableOpacity
             style={[styles.tab, activeTab === 'activity' && styles.tabActive]}
-            onPress={() => setActiveTab('activity')}
+            onPress={() => {
+              void Haptics.selectionAsync();
+              setActiveTab('activity');
+            }}
           >
             <Text
               style={[styles.tabText, activeTab === 'activity' && styles.tabTextActive]}

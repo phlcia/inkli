@@ -8,6 +8,7 @@ import {
   Image,
   ActivityIndicator,
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { colors, typography } from '../../../config/theme';
 import { UserBook, getUserBooksByRating, updateTierScoresBatch } from '../../../services/books';
 import { useAuth } from '../../../contexts/AuthContext';
@@ -426,7 +427,10 @@ export default function BookComparisonModal({
                 {/* Current Book (New Book) */}
                 <TouchableOpacity
                   style={styles.bookCard}
-                  onPress={() => handlePreference(currentBook.id)}
+                  onPress={() => {
+                    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    void handlePreference(currentBook.id);
+                  }}
                   disabled={processing}
                   activeOpacity={0.8}
                 >
@@ -459,7 +463,10 @@ export default function BookComparisonModal({
                 {/* Comparison Book (Existing Book) */}
                 <TouchableOpacity
                   style={styles.bookCard}
-                  onPress={() => handlePreference(comparisonBook.id)}
+                  onPress={() => {
+                    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    void handlePreference(comparisonBook.id);
+                  }}
                   disabled={processing}
                   activeOpacity={0.8}
                 >
@@ -488,7 +495,10 @@ export default function BookComparisonModal({
               {/* Skip Button */}
               <TouchableOpacity
                 style={styles.skipButton}
-                onPress={handleSkip}
+                onPress={() => {
+                  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  void handleSkip();
+                }}
                 disabled={processing}
               >
                 <Text style={styles.skipButtonText}>

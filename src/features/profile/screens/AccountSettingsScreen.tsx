@@ -13,6 +13,7 @@ import {
   Modal,
   Keyboard,
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -177,6 +178,7 @@ export default function AccountSettingsScreen() {
 
   const handleAccountTypeToggle = async (value: boolean) => {
     if (!user || privacyUpdating) return;
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const nextType: AccountType = value ? 'private' : 'public';
     if (nextType === accountType) return;
     setPrivacyUpdating(true);
@@ -192,6 +194,7 @@ export default function AccountSettingsScreen() {
   };
 
   const handleDeactivate = () => {
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     Alert.alert(
       'Deactivate Account',
       'Your profile will be hidden until you sign in again. You will be signed out immediately.',
@@ -216,12 +219,14 @@ export default function AccountSettingsScreen() {
   };
 
   const handleDeletePress = () => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     setDeleteError(null);
     setDeleteInputValue('');
     setDeleteModalVisible(true);
   };
 
   const handleDeleteConfirm = async () => {
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     Keyboard.dismiss();
     if (!user) return;
     const passwordOrConfirmation = deleteInputValue.trim();
@@ -283,6 +288,7 @@ export default function AccountSettingsScreen() {
     passwordsMatch;
 
   const handleChangePasswordSubmit = async () => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     Keyboard.dismiss();
     if (!user) return;
     const current = changePasswordCurrent.trim();
@@ -302,9 +308,11 @@ export default function AccountSettingsScreen() {
     const { error } = await updatePassword(userEmail, current, changePasswordNew);
     setChangingPassword(false);
     if (error) {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       setChangePasswordError(getPasswordErrorMessage(error));
       return;
     }
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setChangePasswordModalVisible(false);
     setChangePasswordCurrent('');
     setChangePasswordNew('');

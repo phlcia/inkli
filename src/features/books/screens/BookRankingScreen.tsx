@@ -10,6 +10,7 @@ import {
   Platform,
   StatusBar,
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, useFocusEffect, RouteProp } from '@react-navigation/native';
@@ -341,6 +342,7 @@ export default function BookRankingScreen() {
   };
 
   const handleRatingSelect = async (selectedRating: 'liked' | 'fine' | 'disliked') => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     try {
       setRating(selectedRating);
       
@@ -713,6 +715,7 @@ export default function BookRankingScreen() {
   };
 
   const handleDeleteSession = (sessionId: string) => {
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     Alert.alert(
       'Delete Reading Dates',
       'This will remove these reading dates from your history.',
@@ -915,7 +918,10 @@ export default function BookRankingScreen() {
           <View style={styles.section}>
             <TouchableOpacity
               style={styles.dateButton}
-              onPress={handleDateRangePicker}
+              onPress={() => {
+                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                handleDateRangePicker();
+              }}
             >
               <Text style={styles.dateButtonLabel}>
                 {isNewInstance ? 'New reading dates' : 'Read dates'}
@@ -934,7 +940,10 @@ export default function BookRankingScreen() {
           <View style={styles.section}>
             <TouchableOpacity
               style={styles.dateButton}
-              onPress={() => setShowGenreLabelPicker(true)}
+              onPress={() => {
+                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setShowGenreLabelPicker(true);
+              }}
             >
               <Text style={styles.dateButtonLabel}>Shelves</Text>
               {(effectiveGenres.length > 0 || selectedCustomLabels.length > 0) ? (
@@ -984,7 +993,10 @@ export default function BookRankingScreen() {
       {initialStatus === 'read' && rating && (
         <TouchableOpacity
           style={styles.shelveButton}
-          onPress={handleShelveBook}
+          onPress={() => {
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            void handleShelveBook();
+          }}
           disabled={saving}
         >
           <Text style={styles.shelveButtonText}>

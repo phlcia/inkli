@@ -12,6 +12,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -690,7 +691,8 @@ export default function SearchScreen() {
           ]}
           onPress={(e) => {
             e.stopPropagation();
-            handleFollowPress(item.user_id);
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            void handleFollowPress(item.user_id);
           }}
           disabled={isLoading}
         >
@@ -760,7 +762,10 @@ export default function SearchScreen() {
         <View style={styles.modeTabs}>
           <TouchableOpacity
             style={[styles.modeTab, mode === 'search' && styles.modeTabActive]}
-            onPress={() => setMode('search')}
+            onPress={() => {
+              void Haptics.selectionAsync();
+              setMode('search');
+            }}
           >
             <Text style={[styles.modeLogo, mode === 'search' && styles.modeLogoActive]}>
               Search
@@ -769,7 +774,10 @@ export default function SearchScreen() {
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.modeTab, mode === 'ask' && styles.modeTabActive]}
-            onPress={() => setMode('ask')}
+            onPress={() => {
+              void Haptics.selectionAsync();
+              setMode('ask');
+            }}
           >
             <Text style={[styles.modeLogo, mode === 'ask' && styles.modeLogoActive]}>
               Ask
@@ -808,7 +816,10 @@ export default function SearchScreen() {
         <View style={styles.tabsContainer}>
           <TouchableOpacity
             style={[styles.tab, activeTab === 'books' && styles.activeTab]}
-            onPress={() => setActiveTab('books')}
+            onPress={() => {
+              void Haptics.selectionAsync();
+              setActiveTab('books');
+            }}
           >
             <Text style={[styles.tabText, activeTab === 'books' && styles.activeTabText]}>
               Books
@@ -817,7 +828,10 @@ export default function SearchScreen() {
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.tab, activeTab === 'members' && styles.activeTab]}
-            onPress={() => setActiveTab('members')}
+            onPress={() => {
+              void Haptics.selectionAsync();
+              setActiveTab('members');
+            }}
           >
             <Text style={[styles.tabText, activeTab === 'members' && styles.activeTabText]}>
               Members
@@ -831,7 +845,10 @@ export default function SearchScreen() {
           <View style={styles.recentSearchesSection}>
             <View style={styles.recentSearchesHeader}>
               <Text style={styles.recentSearchesTitle}>Recent Searches</Text>
-              <TouchableOpacity onPress={clearAllRecentSearches}>
+              <TouchableOpacity onPress={() => {
+                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                void clearAllRecentSearches();
+              }}>
                 <Text style={styles.clearAllText}>Clear All</Text>
               </TouchableOpacity>
             </View>
@@ -858,7 +875,10 @@ export default function SearchScreen() {
           <View style={styles.recentSearchesSection}>
             <View style={styles.recentSearchesHeader}>
               <Text style={styles.recentSearchesTitle}>Recent Searches</Text>
-              <TouchableOpacity onPress={clearAllRecentMemberSearches}>
+              <TouchableOpacity onPress={() => {
+                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                void clearAllRecentMemberSearches();
+              }}>
                 <Text style={styles.clearAllText}>Clear All</Text>
               </TouchableOpacity>
             </View>

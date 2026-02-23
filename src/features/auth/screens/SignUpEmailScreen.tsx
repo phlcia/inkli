@@ -503,7 +503,10 @@ export default function SignUpEmailScreen({ onNext, onBack: _onBack }: SignUpEma
         {/* Next Button */}
         <TouchableOpacity
           style={[styles.nextButton, !isFormValid && styles.nextButtonDisabled]}
-          onPress={handleNext}
+          onPress={() => {
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            void handleNext();
+          }}
           disabled={!isFormValid}
           accessibilityRole="button"
           accessibilityLabel="Next"

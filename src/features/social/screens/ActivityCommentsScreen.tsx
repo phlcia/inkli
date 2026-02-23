@@ -12,6 +12,7 @@ import {
   Platform,
   Alert,
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   CompositeNavigationProp,
@@ -356,7 +357,10 @@ export default function ActivityCommentsScreen() {
           </View>
           <TouchableOpacity
             style={styles.postButtonContainer}
-            onPress={handlePost}
+            onPress={() => {
+              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              void handlePost();
+            }}
             disabled={posting || !commentText.trim()}
           >
             <Text

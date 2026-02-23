@@ -10,6 +10,7 @@ import {
   ScrollView,
   Dimensions,
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { colors, typography } from '../../../config/theme';
@@ -397,7 +398,10 @@ export default function QuizScreen({ signupParams, onSignupComplete, onQuizCompl
         <StatusBar barStyle="dark-content" backgroundColor={colors.creamBackground} />
         <View style={styles.loadingContainer}>
           <Text style={styles.loadingText}>No more book pairs available</Text>
-          <TouchableOpacity style={styles.continueButton} onPress={handleQuizComplete}>
+          <TouchableOpacity style={styles.continueButton} onPress={() => {
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            handleQuizComplete();
+          }}>
             <Text style={styles.continueButtonText}>Complete Quiz</Text>
           </TouchableOpacity>
         </View>
@@ -416,7 +420,10 @@ export default function QuizScreen({ signupParams, onSignupComplete, onQuizCompl
       ) : null}
       <View style={styles.header}>
         <TouchableOpacity
-          onPress={handleSkipQuiz}
+          onPress={() => {
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            void handleSkipQuiz();
+          }}
           style={styles.skipButton}
           accessibilityRole="button"
           accessibilityLabel="Skip onboarding quiz"
@@ -455,7 +462,10 @@ export default function QuizScreen({ signupParams, onSignupComplete, onQuizCompl
         </View>
         <TouchableOpacity
           style={styles.skipComparisonButton}
-          onPress={handleSkipComparison}
+          onPress={() => {
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            handleSkipComparison();
+          }}
           disabled={submitting}
           accessibilityRole="button"
           accessibilityLabel="Skip this pair"

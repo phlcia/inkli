@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, Image, TouchableOpacity, StyleSheet, Dimensions } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { colors, typography } from '../../../config/theme';
 import { Book } from '../../../services/books';
 
@@ -41,7 +42,10 @@ export default function QuizBookCard({ book, onChoose, disabled }: QuizBookCardP
       </View>
       <TouchableOpacity
         style={styles.button}
-        onPress={onChoose}
+        onPress={() => {
+          void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          onChoose();
+        }}
         disabled={disabled}
         accessibilityRole="button"
         accessibilityLabel={chooseLabel}

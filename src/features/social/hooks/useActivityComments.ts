@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
+import * as Haptics from 'expo-haptics';
 import { supabase } from '../../../config/supabase';
 import type { User } from '@supabase/supabase-js';
 import type { UserBook } from '../../../services/books';
@@ -262,6 +263,7 @@ export function useActivityComments(params: {
       setSelection({ start: 0, end: 0 });
       setActiveMentionIndex(0);
       setReplyTo(null);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setComments((prev) => [...prev, created]);
       setLikeCounts((prev) => {
         const next = new Map(prev);
@@ -269,6 +271,7 @@ export function useActivityComments(params: {
         return next;
       });
     } catch (error) {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       console.error('Error posting comment:', error);
     } finally {
       setPosting(false);

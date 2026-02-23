@@ -10,6 +10,7 @@ import {
   ScrollView,
   FlatList,
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
@@ -480,7 +481,10 @@ export default function AskScreen() {
         />
         <TouchableOpacity
           style={[styles.sendButton, (!inputText.trim() || isLoading) && styles.sendButtonDisabled]}
-          onPress={handleSend}
+          onPress={() => {
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            void handleSend();
+          }}
           disabled={!inputText.trim() || isLoading}
         >
           <Text style={styles.sendButtonText}>Send</Text>

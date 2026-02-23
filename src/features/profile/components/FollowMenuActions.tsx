@@ -1,5 +1,6 @@
 import React from 'react';
 import { ActivityIndicator, Image, Text, TouchableOpacity, View } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { colors } from '../../../config/theme';
 import dropdownIcon from '../../../../assets/dropdown.png';
 
@@ -43,7 +44,10 @@ export default function FollowMenuActions({
             isActive && styles.followingButton,
             styles.followButtonConnected,
           ]}
-          onPress={onToggleFollow}
+          onPress={() => {
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            onToggleFollow();
+          }}
           disabled={followLoading}
         >
           {followLoading ? (
@@ -79,10 +83,16 @@ export default function FollowMenuActions({
           </TouchableOpacity>
           {followMenuOpen && (
             <View style={styles.followMenu}>
-              <TouchableOpacity style={styles.followMenuItem} onPress={onMutePress}>
+              <TouchableOpacity style={styles.followMenuItem} onPress={() => {
+                void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+                onMutePress();
+              }}>
                 <Text style={styles.followMenuItemText}>{isMuted ? 'Unmute' : 'Mute'}</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.followMenuItem} onPress={onBlockPress}>
+              <TouchableOpacity style={styles.followMenuItem} onPress={() => {
+                void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+                onBlockPress();
+              }}>
                 <Text style={styles.followMenuItemText}>{blockedByViewer ? 'Unblock' : 'Block'}</Text>
               </TouchableOpacity>
             </View>

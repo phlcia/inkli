@@ -8,6 +8,7 @@ import {
   TextInput,
   ScrollView,
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { colors, typography } from '../../../config/theme';
 import { submitBookFeedback } from '../../../services/bookFeedback';
@@ -119,7 +120,10 @@ export default function BookFeedbackForm({
                       <TouchableOpacity
                         key={type.value}
                         style={[styles.issueTypeOption, issueType === type.value && styles.issueTypeOptionSelected]}
-                        onPress={() => setIssueType(type.value)}
+                        onPress={() => {
+                          void Haptics.selectionAsync();
+                          setIssueType(type.value);
+                        }}
                         activeOpacity={0.7}
                         disabled={submitting}
                       >
@@ -149,7 +153,10 @@ export default function BookFeedbackForm({
                   <View style={styles.buttonRow}>
                     <TouchableOpacity
                       style={[styles.button, styles.submitButton, submitted && styles.submitButtonSuccess]}
-                      onPress={handleSubmit}
+                      onPress={() => {
+                        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                        void handleSubmit();
+                      }}
                       disabled={submitting || submitted}
                       activeOpacity={0.7}
                     >
