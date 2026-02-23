@@ -11,7 +11,7 @@ import {
   Inter_500Medium,
   Inter_600SemiBold,
 } from '@expo-google-fonts/inter';
-import { ActivityIndicator, View, StyleSheet, Linking } from 'react-native';
+import { ActivityIndicator, AppState, View, StyleSheet, Linking } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { colors } from './src/config/theme';
 import TabNavigator from './src/navigation/TabNavigator';
@@ -21,6 +21,7 @@ import { useNetworkStatus } from './src/hooks/useNetworkStatus';
 import { OfflineBanner } from './src/components/OfflineBanner';
 import AuthStackNavigator from './src/navigation/AuthStackNavigator';
 import { supabase } from './src/config/supabase';
+import { clearBadge, requestBadgePermission } from './src/services/notifications';
 import 'react-native-get-random-values';
 import 'react-native-url-polyfill/auto';
 
@@ -37,6 +38,22 @@ function AppContent() {
     created_at: string | null;
   } | null>(null);
   const [profileRefreshCount, setProfileRefreshCount] = useState(0);
+
+  // Request badge-only notification permission once the user is authenticated.
+  useEffect(() => {
+    if (!user) return;
+    void requestBadgePermission();
+  }, [user]);
+
+  // Clear the app icon badge whenever the app returns to the foreground.
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        void clearBadge();
+      }
+    });
+    return () => subscription.remove();
+  }, []);
 
   useEffect(() => {
     const fetchProfileFlags = async () => {

@@ -1,3 +1,4 @@
+import * as ExpoNotifications from 'expo-notifications';
 import { supabase } from './supabase';
 
 export type NotificationType =
@@ -144,4 +145,30 @@ export async function fetchUnreadNotificationsCount(
   if (error) throw error;
 
   return count ?? 0;
+}
+
+export async function requestBadgePermission(): Promise<void> {
+  await ExpoNotifications.requestPermissionsAsync({
+    ios: {
+      allowBadge: true,
+      allowAlert: false,
+      allowSound: false,
+    },
+  });
+}
+
+export async function setBadgeCount(count: number): Promise<void> {
+  try {
+    await ExpoNotifications.setBadgeCountAsync(count);
+  } catch {
+    // Non-critical; silently ignore
+  }
+}
+
+export async function clearBadge(): Promise<void> {
+  try {
+    await ExpoNotifications.setBadgeCountAsync(0);
+  } catch {
+    // Non-critical; silently ignore
+  }
 }

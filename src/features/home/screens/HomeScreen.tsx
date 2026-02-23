@@ -16,7 +16,7 @@ import { colors, typography } from '../../../config/theme';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useErrorHandler } from '../../../contexts/ErrorHandlerContext';
 import { fetchFollowedActivityCards } from '../../../services/activityFeed';
-import { fetchUnreadNotificationsCount } from '../../../services/notifications';
+import { fetchUnreadNotificationsCount, setBadgeCount } from '../../../services/notifications';
 import { ActivityFeedCursor, ActivityFeedItem } from '../../../types/activityCards';
 import RecentActivityCard from '../../social/components/RecentActivityCard';
 import { HomeStackParamList } from '../../../navigation/HomeStackNavigator';
@@ -129,7 +129,10 @@ export default function HomeScreen() {
 
       fetchUnreadNotificationsCount(user.id)
         .then((count) => {
-          if (isActive) setUnreadCount(count);
+          if (isActive) {
+            setUnreadCount(count);
+            void setBadgeCount(count);
+          }
         })
         .catch(() => {
           // Non-critical; silently ignore

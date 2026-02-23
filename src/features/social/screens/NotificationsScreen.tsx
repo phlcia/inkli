@@ -20,6 +20,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { HomeStackParamList } from '../../../navigation/HomeStackNavigator';
 import { supabase } from '../../../config/supabase';
 import {
+  clearBadge,
   fetchNotifications,
   NotificationItem,
   updateNotificationsLastSeen,
@@ -149,9 +150,13 @@ export default function NotificationsScreen() {
         };
       }
 
-      loadNotifications(true).finally(() => {
-        if (isActive) setLoading(false);
-      });
+      loadNotifications(true)
+        .then(() => {
+          void clearBadge();
+        })
+        .finally(() => {
+          if (isActive) setLoading(false);
+        });
       return () => {
         isActive = false;
       };
