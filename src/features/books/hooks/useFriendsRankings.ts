@@ -11,17 +11,17 @@ export function useFriendsRankings(params: {
 }) {
   const { resolveBookIdForStats, userId, bookCacheKey } = params;
   const [friendsRankings, setFriendsRankings] = useState<
-    Array<UserBook & { user_profile?: { user_id: string; username: string; profile_photo_url: string | null } }>
+    Array<UserBook & { user_profile?: { user_id: string; username: string; name: string; profile_photo_url: string | null } }>
   >([]);
   const [friendsRankingsLoading, setFriendsRankingsLoading] = useState(false);
   const [friendsRankingsError, setFriendsRankingsError] = useState<string | null>(null);
   const [friendsRankingsTotalCount, setFriendsRankingsTotalCount] = useState(0);
   const [friendsRankingsOffset, setFriendsRankingsOffset] = useState(0);
   const friendsRankingsCacheRef = useRef<
-    Map<
+        Map<
       string,
       {
-        rankings: Array<UserBook & { user_profile?: { user_id: string; username: string; profile_photo_url: string | null } }>;
+        rankings: Array<UserBook & { user_profile?: { user_id: string; username: string; name: string; profile_photo_url: string | null } }>;
         totalCount: number;
         timestamp: number;
       }

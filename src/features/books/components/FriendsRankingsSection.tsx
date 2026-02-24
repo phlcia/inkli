@@ -6,7 +6,7 @@ import { formatDateRange } from '../../../utils/dateRanges';
 import type { UserBook } from '../../../services/books';
 
 export type FriendsRankingsSectionProps = {
-  friendsRankings: Array<UserBook & { user_profile?: { user_id: string; username: string; profile_photo_url: string | null } }>;
+  friendsRankings: Array<UserBook & { user_profile?: { user_id: string; username: string; name: string; profile_photo_url: string | null } }>;
   friendsRankingsLoading: boolean;
   friendsRankingsError: string | null;
   friendsRankingsTotalCount: number;

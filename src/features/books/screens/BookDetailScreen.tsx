@@ -10,6 +10,7 @@ import {
   StatusBar,
   Modal,
   Alert,
+  FlatList,
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -18,6 +19,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, typography } from '../../../config/theme';
 import { BookCoverPlaceholder } from '../components/BookCoverPlaceholder';
 import { addBookToShelf, checkUserHasBook, removeBookFromShelf, updateBookStatus, redistributeRanksForRating, formatCount, UserBook, getReadSessions, BookShelfCounts } from '../../../services/books';
+import { getProfilePictureUrl } from '../../../services/userProfile';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useErrorHandler } from '../../../contexts/ErrorHandlerContext';
 import { supabase } from '../../../config/supabase';
@@ -28,6 +30,7 @@ import BookThoughtsSection from '../components/BookThoughtsSection';
 import BookFeedbackForm from '../components/BookFeedbackForm';
 import { useBookStats } from '../hooks/useBookStats';
 import { useFriendsRankings } from '../hooks/useFriendsRankings';
+import { useOtherReaders } from '../hooks/useOtherReaders';
 import { useBookThoughts } from '../hooks/useBookThoughts';
 import addIcon from '../../../../assets/add.png';
 import readingIcon from '../../../../assets/reading.png';
@@ -113,6 +116,12 @@ export default function BookDetailScreen() {
     handleRetryFriendsRankings,
     handleShowMoreFriendsRankings,
   } = useFriendsRankings({
+    resolveBookIdForStats,
+    userId: user?.id,
+    bookCacheKey: `${book.id || ''}-${book.open_library_id || ''}-${book.google_books_id || ''}`,
+  });
+
+  const { otherReaders, otherReadersLoading } = useOtherReaders({
     resolveBookIdForStats,
     userId: user?.id,
     bookCacheKey: `${book.id || ''}-${book.open_library_id || ''}-${book.google_books_id || ''}`,
@@ -965,6 +974,57 @@ export default function BookDetailScreen() {
           FriendsRankingSkeletonCard={FriendsRankingSkeletonCard}
           loadingIndicatorColor={colors.white}
         />
+
+        {/* Other readers: users who ranked this book (excluding people you follow) */}
+        {!otherReadersLoading && otherReaders.length > 0 && (
+          <View style={styles.readersSection}>
+            <Text style={styles.readersSectionHeader}>
+              These users also read this book:
+            </Text>
+            <FlatList
+              data={otherReaders}
+              keyExtractor={(item) => `${item.user_id}-${item.id}`}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.readersListContent}
+              renderItem={({ item }) => {
+                const profile = item.user_profile;
+                if (!profile) return null;
+                const avatarUrl = getProfilePictureUrl(profile.profile_photo_url);
+                const displayName = profile.name?.trim() || profile.username;
+                return (
+                  <TouchableOpacity
+                    style={styles.readerCard}
+                    onPress={() =>
+                      navigation.navigate('UserProfile', {
+                        userId: profile.user_id,
+                        username: profile.username,
+                      })
+                    }
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.readerAvatarWrapper}>
+                      {avatarUrl ? (
+                        <Image
+                          source={{ uri: avatarUrl }}
+                          style={styles.readerAvatar}
+                        />
+                      ) : (
+                        <View style={styles.readerAvatarPlaceholder} />
+                      )}
+                    </View>
+                    <Text style={styles.readerName} numberOfLines={1}>
+                      {displayName}
+                    </Text>
+                    <Text style={styles.readerUsername} numberOfLines={1}>
+                      @{profile.username}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              }}
+            />
+          </View>
+        )}
       </KeyboardAwareScrollView>
 
       <Modal
@@ -1249,6 +1309,52 @@ const styles = StyleSheet.create({
     fontFamily: typography.sectionHeader,
     color: colors.brownText,
     marginBottom: 12,
+  },
+  readersSection: {
+    marginBottom: 24,
+  },
+  readersSectionHeader: {
+    fontSize: 20,
+    fontFamily: typography.sectionHeader,
+    color: colors.brownText,
+    marginBottom: 24,
+  },
+  readersListContent: {
+    paddingRight: 24,
+  },
+  readerCard: {
+    width: 72,
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  readerAvatarWrapper: {
+    marginBottom: 6,
+  },
+  readerAvatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+  },
+  readerAvatarPlaceholder: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.primaryBlue,
+    opacity: 0.5,
+  },
+  readerName: {
+    fontSize: 12,
+    fontFamily: typography.body,
+    color: colors.brownText,
+    textAlign: 'center',
+    marginBottom: 2,
+  },
+  readerUsername: {
+    fontSize: 11,
+    fontFamily: typography.body,
+    color: colors.brownText,
+    opacity: 0.8,
+    textAlign: 'center',
   },
   description: {
     fontSize: 15,

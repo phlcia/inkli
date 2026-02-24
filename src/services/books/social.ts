@@ -149,7 +149,7 @@ export async function getFriendsRankingsForBook(
     limit?: number;
   }
 ): Promise<{
-  rankings: Array<UserBook & { user_profile?: { user_id: string; username: string; profile_photo_url: string | null } }>;
+  rankings: Array<UserBook & { user_profile?: { user_id: string; username: string; name: string; profile_photo_url: string | null } }>;
   totalCount: number;
 }> {
   try {
@@ -218,7 +218,7 @@ export async function getFriendsRankingsForBook(
     const userIds = Array.from(new Set(userBooksData.map((ub) => ub.user_id)));
     const { data: profilesData, error: profilesError } = await supabase
       .from('user_profiles')
-      .select('user_id, username, profile_photo_url')
+      .select('user_id, username, name, profile_photo_url')
       .in('user_id', userIds);
 
     if (profilesError) {
@@ -236,7 +236,7 @@ export async function getFriendsRankingsForBook(
       ...item,
       book: item.book as Book,
       user_profile: profileMap.get(item.user_id),
-    })) as Array<UserBook & { user_profile?: { user_id: string; username: string; profile_photo_url: string | null } }>;
+    })) as Array<UserBook & { user_profile?: { user_id: string; username: string; name: string; profile_photo_url: string | null } }>;
 
     return {
       rankings,
@@ -245,5 +245,85 @@ export async function getFriendsRankingsForBook(
   } catch (error) {
     console.error('Error fetching friends rankings for book:', error);
     throw error;
+  }
+}
+
+export type OtherReaderItem = UserBook & {
+  user_profile?: { user_id: string; username: string; name: string; profile_photo_url: string | null };
+};
+
+/**
+ * Get other users who have ranked this book, excluding the current user and people they follow.
+ * Used for "These users also read this book" to show non-followed readers.
+ */
+export async function getOtherReadersForBook(
+  bookId: string,
+  userId: string,
+  options?: { limit?: number }
+): Promise<OtherReaderItem[]> {
+  try {
+    const limit = options?.limit ?? 20;
+
+    const { data: followingData, error: followingError } = await supabase
+      .from('user_follows')
+      .select('following_id')
+      .eq('follower_id', userId);
+
+    if (followingError) {
+      console.error('Error fetching following list:', followingError);
+      return [];
+    }
+
+    const excludeIds = new Set<string>([userId]);
+    (followingData || []).forEach((row) => {
+      if (row.following_id) excludeIds.add(row.following_id);
+    });
+
+    let query = supabase
+      .from('user_books')
+      .select(
+        `
+        *,
+        book:books(*)
+      `
+      )
+      .eq('book_id', bookId)
+      .neq('user_id', userId)
+      .not('rank_score', 'is', null)
+      .order('rank_score', { ascending: false })
+      .limit(limit * 2);
+
+    const { data: userBooksData, error: userBooksError } = await query;
+
+    if (userBooksError || !userBooksData?.length) {
+      if (userBooksError) console.error('Error fetching other readers:', userBooksError);
+      return [];
+    }
+
+    const filtered = userBooksData.filter((ub) => !excludeIds.has(ub.user_id)).slice(0, limit);
+    if (filtered.length === 0) return [];
+
+    const userIds = Array.from(new Set(filtered.map((ub) => ub.user_id)));
+    const { data: profilesData, error: profilesError } = await supabase
+      .from('user_profiles')
+      .select('user_id, username, name, profile_photo_url')
+      .in('user_id', userIds);
+
+    if (profilesError) {
+      console.error('Error fetching other reader profiles:', profilesError);
+    }
+
+    const profileMap = new Map(
+      (profilesData || []).map((p) => [p.user_id, p])
+    );
+
+    return filtered.map((item) => ({
+      ...item,
+      book: item.book as Book,
+      user_profile: profileMap.get(item.user_id),
+    })) as OtherReaderItem[];
+  } catch (error) {
+    console.error('Error fetching other readers for book:', error);
+    return [];
   }
 }

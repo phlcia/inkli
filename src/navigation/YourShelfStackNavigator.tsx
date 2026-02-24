@@ -5,6 +5,7 @@ import YourShelfScreen from '../features/shelf/screens/YourShelfScreen';
 import ReorderShelfScreen from '../features/shelf/screens/ReorderShelfScreen';
 import BookDetailScreen from '../features/books/screens/BookDetailScreen';
 import BookRankingScreen from '../features/books/screens/BookRankingScreen';
+import UserProfileScreen from '../features/profile/screens/UserProfileScreen';
 import { BookRankingParams } from './types';
 
 export type YourShelfStackParamList = {
@@ -15,6 +16,7 @@ export type YourShelfStackParamList = {
   ReorderShelf: undefined;
   BookDetail: { book: any }; // Enriched book data
   BookRanking: BookRankingParams;
+  UserProfile: { userId: string; username?: string };
 };
 
 const Stack = createNativeStackNavigator<YourShelfStackParamList>();
@@ -42,6 +44,14 @@ export default function YourShelfStackNavigator() {
       <Stack.Screen
         name="BookRanking"
         component={BookRankingScreen}
+        options={{
+          presentation: 'card',
+          animation: 'slide_from_right',
+        }}
+      />
+      <Stack.Screen
+        name="UserProfile"
+        component={UserProfileScreen}
         options={{
           presentation: 'card',
           animation: 'slide_from_right',
