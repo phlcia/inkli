@@ -11,8 +11,10 @@ import {
   RefreshControl,
   KeyboardAvoidingView,
   Platform,
+  Linking,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
+import * as Contacts from 'expo-contacts';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -28,6 +30,11 @@ import {
   getOutgoingFollowRequests,
   cancelFollowRequest,
 } from '../../../services/userProfile';
+import {
+  getMergedRecommendedUsers,
+  getGraphRecommendations,
+  type RecommendedUser,
+} from '../../../services/recommendedUsers';
 import { SearchStackParamList } from '../../../navigation/SearchStackNavigator';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useErrorHandler } from '../../../contexts/ErrorHandlerContext';
@@ -176,6 +183,7 @@ function BookSearchItem({ book, onPress, disabled, trailing }: BookSearchItemPro
 // Storage keys for recent searches (scoped per user)
 const RECENT_SEARCHES_KEY = 'recent_book_searches';
 const RECENT_MEMBER_SEARCHES_KEY = 'recent_member_searches';
+const CONTACTS_FLAG_KEY_BASE = 'HAS_REQUESTED_CONTACTS';
 
 export default function SearchScreen() {
   const navigation = useNavigation<SearchScreenNavigationProp>();
@@ -196,6 +204,15 @@ export default function SearchScreen() {
   const [followLoading, setFollowLoading] = useState<Set<string>>(new Set());
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const searchRequestIdRef = useRef(0);
+  const [recommendedMembers, setRecommendedMembers] = useState<RecommendedUser[]>([]);
+  const [recommendedLoading, setRecommendedLoading] = useState(false);
+  const [recommendedLoadedAt, setRecommendedLoadedAt] = useState<number | null>(null);
+  const [dismissedRecommendedIds, setDismissedRecommendedIds] = useState<Set<string>>(new Set());
+  const [contactsPermissionStatus, setContactsPermissionStatus] = useState<
+    'undetermined' | 'granted' | 'denied'
+  >('undetermined');
+  const [contactsLimited, setContactsLimited] = useState(false);
+  const [hasRequestedContacts, setHasRequestedContacts] = useState(false);
 
   // Load recent searches and following IDs on mount
   useEffect(() => {
@@ -256,6 +273,44 @@ export default function SearchScreen() {
     () => (user?.id ? `${RECENT_MEMBER_SEARCHES_KEY}:${user.id}` : RECENT_MEMBER_SEARCHES_KEY),
     [user?.id]
   );
+  const getContactsFlagKey = useCallback(
+    () => (user?.id ? `${CONTACTS_FLAG_KEY_BASE}:${user.id}` : null),
+    [user?.id]
+  );
+
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const initPermissionsAndFlags = async () => {
+      try {
+        const flagKey = getContactsFlagKey();
+        if (flagKey) {
+          const stored = await AsyncStorage.getItem(flagKey);
+          setHasRequestedContacts(stored === 'true');
+        }
+
+        const permission = await Contacts.getPermissionsAsync();
+        const status = permission.status;
+
+        if (status === 'granted' || status === 'denied' || status === 'undetermined') {
+          setContactsPermissionStatus(status);
+        }
+
+        const isLimited =
+          status === 'granted' &&
+          Platform.OS === 'ios' &&
+          parseInt(String(Platform.Version), 10) >= 18 &&
+          // @ts-expect-error - ios scope is currently platform-specific
+          permission.ios?.scope === 'limited';
+
+        setContactsLimited(isLimited);
+      } catch (error) {
+        console.error('Error initializing contacts permission state:', error);
+      }
+    };
+
+    void initPermissionsAndFlags();
+  }, [getContactsFlagKey, user?.id]);
 
   const loadRecentSearches = useCallback(async () => {
     try {
@@ -376,6 +431,94 @@ export default function SearchScreen() {
       console.error('Error clearing recent member searches:', error);
     }
   };
+
+  const loadRecommendedMembers = useCallback(async () => {
+    if (!user?.id) return;
+    setRecommendedLoading(true);
+    try {
+      let results: RecommendedUser[] = [];
+      if (contactsPermissionStatus === 'granted' && hasRequestedContacts) {
+        results = await getMergedRecommendedUsers(user.id);
+      } else {
+        results = await getGraphRecommendations(user.id);
+      }
+      setRecommendedMembers(results);
+      setRecommendedLoadedAt(Date.now());
+    } catch (error) {
+      console.error('Error loading recommended members:', error);
+      setRecommendedMembers([]);
+    } finally {
+      setRecommendedLoading(false);
+    }
+  }, [contactsPermissionStatus, hasRequestedContacts, user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    if (activeTab !== 'members') return;
+    if (query.trim().length > 0) return;
+
+    const TEN_MINUTES = 10 * 60 * 1000;
+    const now = Date.now();
+
+    if (recommendedLoadedAt !== null && now - recommendedLoadedAt < TEN_MINUTES) {
+      return;
+    }
+
+    void loadRecommendedMembers();
+  }, [activeTab, query, recommendedLoadedAt, loadRecommendedMembers, user?.id]);
+
+  const handleContactsCtaPress = useCallback(async () => {
+    const flagKey = getContactsFlagKey();
+    if (!flagKey) return;
+
+    try {
+      if (contactsPermissionStatus === 'denied') {
+        await Linking.openSettings();
+        return;
+      }
+
+      if (contactsPermissionStatus === 'undetermined') {
+        const permission = await Contacts.requestPermissionsAsync();
+        const status = permission.status;
+
+        if (status === 'granted' || status === 'denied' || status === 'undetermined') {
+          setContactsPermissionStatus(status);
+        }
+
+        const isLimited =
+          status === 'granted' &&
+          Platform.OS === 'ios' &&
+          parseInt(String(Platform.Version), 10) >= 18 &&
+          // @ts-expect-error - ios scope is currently platform-specific
+          permission.ios?.scope === 'limited';
+
+        setContactsLimited(isLimited);
+        await AsyncStorage.setItem(flagKey, 'true');
+        setHasRequestedContacts(true);
+
+        if (status === 'granted') {
+          void loadRecommendedMembers();
+        }
+      }
+    } catch (error) {
+      console.error('Error handling contacts CTA:', error);
+    }
+  }, [contactsPermissionStatus, getContactsFlagKey, loadRecommendedMembers]);
+
+  const handleManageContactsPress = useCallback(async () => {
+    if (
+      Platform.OS === 'ios' &&
+      parseInt(String(Platform.Version), 10) >= 18 &&
+      contactsPermissionStatus === 'granted'
+    ) {
+      try {
+        // @ts-expect-error - API may be gated by platform version
+        await Contacts.presentContactAccessPickerAsync();
+      } catch (error) {
+        console.error('Error presenting contacts access picker:', error);
+      }
+    }
+  }, [contactsPermissionStatus]);
 
   const loadFollowingIds = useCallback(async () => {
     if (!user?.id) return;
@@ -754,6 +897,12 @@ export default function SearchScreen() {
   const showRecentMemberSearches = activeTab === 'members' && query.trim().length < 2 && recentMemberSearches.length > 0;
   const results = activeTab === 'books' ? bookResults : memberResults;
   const placeholder = activeTab === 'books' ? 'Search for books...' : 'Search for members...';
+  const showContactsOptInCard =
+    activeTab === 'members' &&
+    query.trim().length === 0 &&
+    !!user?.id &&
+    !hasRequestedContacts &&
+    contactsPermissionStatus !== 'granted';
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -839,6 +988,115 @@ export default function SearchScreen() {
             {activeTab === 'members' && <View style={styles.tabUnderline} />}
           </TouchableOpacity>
         </View>
+
+        {/* Contacts opt-in + recommended users (members tab, empty query) */}
+        {activeTab === 'members' && query.trim().length === 0 && (
+          <>
+            {showContactsOptInCard && (
+              <View style={styles.contactsCard}>
+                <Text style={styles.contactsCardTitle}>Find friends from your contacts</Text>
+                <Text style={styles.contactsCardBody}>
+                  Inkli uses your contacts to find friends who are already on the app! Contact information is never stored.
+                </Text>
+                <TouchableOpacity
+                  style={styles.contactsCardButton}
+                  onPress={() => {
+                    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    void handleContactsCtaPress();
+                  }}
+                >
+                  <Text style={styles.contactsCardButtonText}>
+                    {contactsPermissionStatus === 'denied' ? 'Enable in Settings' : 'Allow Access'}
+                  </Text>
+                </TouchableOpacity>
+                {contactsLimited && (
+                  <TouchableOpacity
+                    style={styles.manageContactsLink}
+                    onPress={() => {
+                      void Haptics.selectionAsync();
+                      void handleManageContactsPress();
+                    }}
+                  >
+                    <Text style={styles.manageContactsLinkText}>
+                      Manage which contacts we can see
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+
+            {!recommendedLoading && recommendedMembers.filter((m) => !dismissedRecommendedIds.has(m.user_id)).length > 0 && (
+              <View style={styles.recommendedSection}>
+                <Text style={styles.recommendedSectionHeader}>You might also know</Text>
+                <FlatList
+                  data={recommendedMembers.filter((m) => !dismissedRecommendedIds.has(m.user_id))}
+                  keyExtractor={(item) => item.user_id}
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.recommendedListContent}
+                  keyboardDismissMode="on-drag"
+                  keyboardShouldPersistTaps="handled"
+                  renderItem={({ item }) => {
+                    const displayName = item.name?.trim() || item.username;
+                    return (
+                      <View style={styles.recommendedCardContainer}>
+                        <TouchableOpacity
+                          style={styles.recommendedCardClose}
+                          onPress={() => {
+                            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                            setDismissedRecommendedIds((prev) => new Set(prev).add(item.user_id));
+                          }}
+                          activeOpacity={0.7}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Text style={styles.recommendedCardCloseText}>×</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.recommendedCard}
+                          onPress={() =>
+                            navigation.navigate('UserProfile', {
+                              userId: item.user_id,
+                              username: item.username,
+                            })
+                          }
+                          activeOpacity={0.7}
+                        >
+                          <View style={styles.recommendedAvatarWrapper}>
+                            {item.profile_photo_url ? (
+                              <Image
+                                source={{ uri: item.profile_photo_url }}
+                                style={styles.recommendedAvatar}
+                              />
+                            ) : (
+                              <View style={styles.recommendedAvatarPlaceholder}>
+                                <Text style={styles.recommendedAvatarPlaceholderText}>
+                                  {(item.name?.charAt(0) || item.username?.charAt(0) || 'U').toUpperCase()}
+                                </Text>
+                              </View>
+                            )}
+                          </View>
+                          <Text style={styles.recommendedName} numberOfLines={1}>
+                            {displayName}
+                          </Text>
+                          <Text style={styles.recommendedUsername} numberOfLines={1}>
+                            @{item.username}
+                          </Text>
+                          {typeof item.mutual_count === 'number' && item.mutual_count > 0 && (
+                            <Text style={styles.recommendedMutuals} numberOfLines={1}>
+                              {item.mutual_count === 1
+                                ? '1 mutuals'
+                                : `${item.mutual_count} mutuals`}
+                            </Text>
+                          )}
+                        </TouchableOpacity>
+                      </View>
+                    );
+                  }}
+                />
+              </View>
+            )}
+          </>
+        )}
 
         {/* Recent Searches Section */}
         {showRecentSearches && (
@@ -1232,5 +1490,139 @@ const styles = StyleSheet.create({
   },
   followingButtonText: {
     color: colors.brownText,
+  },
+  contactsCard: {
+    backgroundColor: colors.white,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: colors.brownText,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  contactsCardTitle: {
+    fontSize: 16,
+    fontFamily: typography.sectionHeader ?? typography.body,
+    color: colors.brownText,
+    marginBottom: 6,
+  },
+  contactsCardBody: {
+    fontSize: 14,
+    fontFamily: typography.body,
+    color: colors.brownText,
+    opacity: 0.8,
+    marginBottom: 12,
+  },
+  contactsCardButton: {
+    backgroundColor: colors.primaryBlue,
+    borderRadius: 20,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    alignSelf: 'flex-start',
+    marginBottom: 4,
+  },
+  contactsCardButtonText: {
+    fontSize: 14,
+    fontFamily: typography.button,
+    color: colors.white,
+    fontWeight: '500',
+  },
+  manageContactsLink: {
+    marginTop: 4,
+  },
+  manageContactsLinkText: {
+    fontSize: 12,
+    fontFamily: typography.body,
+    color: colors.primaryBlue,
+  },
+  recommendedSection: {
+    marginBottom: 24,
+  },
+  recommendedSectionHeader: {
+    fontSize: 18,
+    fontFamily: typography.sectionHeader ?? typography.body,
+    color: colors.brownText,
+    marginBottom: 16,
+  },
+  recommendedListContent: {
+    paddingRight: 16,
+  },
+  recommendedCardContainer: {
+    width: 96,
+    marginRight: 16,
+    backgroundColor: colors.white,
+    borderRadius: 12,
+    padding: 12,
+    paddingTop: 28,
+    shadowColor: colors.brownText,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  recommendedCardClose: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1,
+  },
+  recommendedCardCloseText: {
+    fontSize: 18,
+    color: colors.brownText,
+    lineHeight: 20,
+  },
+  recommendedCard: {
+    alignItems: 'center',
+  },
+  recommendedAvatarWrapper: {
+    marginBottom: 6,
+  },
+  recommendedAvatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+  },
+  recommendedAvatarPlaceholder: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.primaryBlue,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  recommendedAvatarPlaceholderText: {
+    fontSize: 20,
+    fontFamily: typography.body,
+    color: colors.white,
+    fontWeight: '600',
+  },
+  recommendedName: {
+    fontSize: 12,
+    fontFamily: typography.body,
+    color: colors.brownText,
+    textAlign: 'center',
+    marginBottom: 2,
+  },
+  recommendedUsername: {
+    fontSize: 11,
+    fontFamily: typography.body,
+    color: colors.brownText,
+    opacity: 0.8,
+    textAlign: 'center',
+  },
+  recommendedMutuals: {
+    fontSize: 11,
+    fontFamily: typography.body,
+    color: colors.brownText,
+    opacity: 0.7,
+    textAlign: 'center',
+    marginTop: 2,
   },
 });

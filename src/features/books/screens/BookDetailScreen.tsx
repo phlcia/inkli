@@ -61,6 +61,7 @@ export default function BookDetailScreen() {
   const [showRankingActionSheet, setShowRankingActionSheet] = useState(false);
   const [resolvedBookId, setResolvedBookId] = useState<string | null>(book.id || null);
   const [showFeedbackForm, setShowFeedbackForm] = useState(false);
+  const [dismissedOtherReaderIds, setDismissedOtherReaderIds] = useState<Set<string>>(new Set());
 
   const coverUrl = book.cover_url;
   const hasCover =
@@ -976,13 +977,13 @@ export default function BookDetailScreen() {
         />
 
         {/* Other readers: users who ranked this book (excluding people you follow) */}
-        {!otherReadersLoading && otherReaders.length > 0 && (
+        {!otherReadersLoading && otherReaders.filter((r) => !dismissedOtherReaderIds.has(r.user_id)).length > 0 && (
           <View style={styles.readersSection}>
             <Text style={styles.readersSectionHeader}>
               These users also read this book:
             </Text>
             <FlatList
-              data={otherReaders}
+              data={otherReaders.filter((r) => !dismissedOtherReaderIds.has(r.user_id))}
               keyExtractor={(item) => `${item.user_id}-${item.id}`}
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -993,33 +994,45 @@ export default function BookDetailScreen() {
                 const avatarUrl = getProfilePictureUrl(profile.profile_photo_url);
                 const displayName = profile.name?.trim() || profile.username;
                 return (
-                  <TouchableOpacity
-                    style={styles.readerCard}
-                    onPress={() =>
-                      navigation.navigate('UserProfile', {
-                        userId: profile.user_id,
-                        username: profile.username,
-                      })
-                    }
-                    activeOpacity={0.7}
-                  >
-                    <View style={styles.readerAvatarWrapper}>
-                      {avatarUrl ? (
-                        <Image
-                          source={{ uri: avatarUrl }}
-                          style={styles.readerAvatar}
-                        />
-                      ) : (
-                        <View style={styles.readerAvatarPlaceholder} />
-                      )}
-                    </View>
-                    <Text style={styles.readerName} numberOfLines={1}>
-                      {displayName}
-                    </Text>
-                    <Text style={styles.readerUsername} numberOfLines={1}>
-                      @{profile.username}
-                    </Text>
-                  </TouchableOpacity>
+                  <View style={styles.readerCardContainer}>
+                    <TouchableOpacity
+                      style={styles.readerCardClose}
+                      onPress={() =>
+                        setDismissedOtherReaderIds((prev) => new Set(prev).add(profile.user_id))
+                      }
+                      activeOpacity={0.7}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Text style={styles.readerCardCloseText}>×</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.readerCard}
+                      onPress={() =>
+                        navigation.navigate('UserProfile', {
+                          userId: profile.user_id,
+                          username: profile.username,
+                        })
+                      }
+                      activeOpacity={0.7}
+                    >
+                      <View style={styles.readerAvatarWrapper}>
+                        {avatarUrl ? (
+                          <Image
+                            source={{ uri: avatarUrl }}
+                            style={styles.readerAvatar}
+                          />
+                        ) : (
+                          <View style={styles.readerAvatarPlaceholder} />
+                        )}
+                      </View>
+                      <Text style={styles.readerName} numberOfLines={1}>
+                        {displayName}
+                      </Text>
+                      <Text style={styles.readerUsername} numberOfLines={1}>
+                        @{profile.username}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
                 );
               }}
             />
@@ -1322,10 +1335,38 @@ const styles = StyleSheet.create({
   readersListContent: {
     paddingRight: 24,
   },
-  readerCard: {
-    width: 72,
-    alignItems: 'center',
+  readerCardContainer: {
+    width: 88,
     marginRight: 16,
+    backgroundColor: colors.white,
+    borderRadius: 12,
+    padding: 12,
+    paddingTop: 28,
+    shadowColor: colors.brownText,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  readerCardClose: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: colors.creamBackground,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1,
+  },
+  readerCardCloseText: {
+    fontSize: 18,
+    color: colors.brownText,
+    lineHeight: 20,
+  },
+  readerCard: {
+    alignItems: 'center',
   },
   readerAvatarWrapper: {
     marginBottom: 6,
