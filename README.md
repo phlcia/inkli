@@ -1,691 +1,658 @@
-# Inkli - Book Ranking App
+# Inkli
 
-A social book ranking and discovery app built with Expo (React Native), Supabase, and Open Library API. Inkli helps readers organize their bookshelves, rank their favorite reads, and discover new books through community rankings.
+React Native / Expo app for book shelf management, head-to-head ranking, and social reading activity. Backend is Supabase (Postgres + Edge Functions). Book metadata is sourced from Open Library and Google Books APIs. AI-powered recommendations use xAI Grok.
 
-## 🎨 Design System
+---
+
+## Design System
+
+Defined in `src/config/theme.ts`.
 
 ### Colors
-- **Primary Blue**: `#4EACE3` (buttons, logo, accents)
-- **Brown Text**: `#5A4338` (all text)
-- **Cream Background**: `#F5EDE1` (app background)
-- **White**: `#FFFFFF` (text inside buttons, cards)
+
+| Token | Hex | Usage |
+|---|---|---|
+| `primaryBlue` | `#4EACE3` | buttons, active states, logo tint |
+| `brownText` | `#5A4338` | all body and heading text |
+| `creamBackground` | `#F5EDE1` | app-wide background |
+| `white` | `#FFFFFF` | card backgrounds, overlays |
 
 ### Typography
-- **Playfair Display Italic**: logo "inkli", section headers, hero titles
-- **Inter Light 300**: body text, UI elements
-- **Inter** (varied weights): buttons, labels, emphasis
 
-## 🚀 Features
+| Token | Font | Weights |
+|---|---|---|
+| `logo` | PlayfairDisplay-Black-Italic | 900 |
+| `sectionHeader`, `heroTitle` | PlayfairDisplay-Italic | 400 |
+| `body`, `button`, `label` | Inter | 300, 400, 500, 600 |
 
-### ✅ Implemented Features
+Both font families are loaded via `@expo-google-fonts/*` in `App.tsx` before rendering.
 
-#### Authentication & User Profiles
-- **Multi-provider authentication**: Email/password, Apple Sign In, Google Sign In
-- **Sign-in options**: Sign in with username or email
-- **User profiles**: Username, single name field, bio, reading interests
-- **Profile photos**: Upload and manage profile pictures via Supabase Storage
-- **Auto-profile creation**: Automatic profile creation on signup via database triggers
-- **Account settings**: Private account screen for email/phone, password change, public/private account type, account deactivation, and account deletion (with password or confirmation)
-- **Phone number**: Phone input and validation in sign-up and account settings
+---
 
-#### Book Management
-- **Book search**: Search using Open Library API with Google Books enrichment
-- **Simplified search results**: Clean book preview cards showing only cover image, title, and author
-- **Book enrichment**: Automatic merging of data from Open Library and Google Books APIs
-- **Smart book matching**: ISBN and title/author matching between data sources
-- **Book shelf**: Organize books by status (Read, Currently Reading, Want to Read) with tabbed interface
-- **Book details**: View and edit ratings (liked/fine/disliked), notes, start/finish dates, reading progress (input-based)
-- **Auto-save**: Notes and dates automatically save as you type/select them
-- **Book feedback**: Submit feedback (e.g. wrong cover, wrong metadata) from book detail screen
-- **Genre & label filtering**: Filter books by preset genres and custom labels
-- **Custom labels**: Create and manage custom labels for book organization
-- **Read sessions**: Track multiple read sessions with start/finish dates for each book
-- **Reading progress**: Input-based progress (e.g. percentage or page) on book detail
-- **Community stats**: See average scores and member counts for books
-- **Secure catalog writes**: `public.books` is read-only to clients; inserts handled by Edge Function
+## Architecture
 
-#### Ranking System
-- **Binary search ranking**: Efficient O(log n) pairwise comparison system for ranking books
-- **Category-based ranking**: Separate rankings for "liked", "fine", and "disliked" books
-- **Precise scoring**: High-precision fractional scores (5+ decimal places) for accurate ordering
-- **Score range**: Scores from 1.0 to 10.0 (10.0 is the maximum for "liked" books)
-- **Rank persistence**: Rankings stored in database with automatic recalculation support
+### Layer overview
 
-#### Social Features
-- **Activity feed**: Home feed with followed users' activity, cursor pagination, pull-to-refresh
-- **Activity cards**: Unified `RecentActivityCard` UI with likes/comments and book context
-- **Leaderboard**: Global rankings based on books read count
-- **User following**: Follow/unfollow other users
-- **Member search**: Search for users by username or name
-- **Profile viewing**: View other users' profiles and reading stats
-- **Comments & likes**: Activity comments/likes with counts and detail screens
-- **Notifications**: In-app notifications for follow requests, likes, comments, and other interactions
-- **Followers/Following**: View and manage followers and following lists
-- **Account privacy**: Public/private account types with follow request system
-- **Block & mute**: Block or mute users for content moderation
+```
+App.tsx
+├── AuthProvider (AuthContext)           — Supabase session management
+└── AppContent
+    ├── ErrorHandlerProvider
+    ├── GestureHandlerRootView
+    ├── OfflineBanner (useNetworkStatus)
+    └── NavigationContainer
+        ├── AuthStackNavigator          — unauthenticated + post-auth gates
+        └── TabNavigator                — main app (5 tabs)
+```
 
-#### Recommendations & Discovery
-- **Onboarding quiz**: Quiz with book comparisons to build initial recommendations
-- **Personalized recommendations**: Book recommendations based on reading history and preferences
-- **Book circles**: See which users in your network have read specific books
-- **Friends' rankings**: View friends' rankings and ratings for books
+### Directory structure
 
-#### Navigation & UI
-- **Tab navigation**: Home, Your Shelf, Search, Leaderboard, Profile
-- **Stack navigation**: Nested navigation for search results, profile editing, and account settings
-- **Onboarding flow**: Welcome screen, account creation, profile setup, taste quiz
-- **Responsive design**: Safe area handling, keyboard avoidance (KeyboardAwareScrollView, debouncing)
-- **Haptic feedback**: Tactile feedback for interactions (expo-haptics)
-- **Error handling**: Error handling context and user feedback across sign-up, account settings, and quiz
-- **Profile activity feed**: Paginated user activity feed on profile screen
+```
+src/
+├── config/
+│   ├── supabase.ts          — Supabase client
+│   └── theme.ts             — colors + typography tokens
+├── contexts/
+│   ├── AuthContext.tsx       — user/session state, sign-in methods
+│   └── ErrorHandlerContext.tsx
+├── features/
+│   ├── auth/                — login, signup screens + OAuth
+│   ├── books/               — detail, ranking screens + components
+│   ├── home/                — activity feed (HomeScreen)
+│   ├── leaderboard/         — LeaderboardScreen
+│   ├── onboarding/          — quiz, invite gate
+│   ├── profile/             — own + other users' profiles
+│   ├── recommendations/     — rec lists + friends-liked lists
+│   ├── search/              — book search (SearchScreen) + Ask (AskScreen)
+│   ├── shelf/               — shelf view + reorder
+│   └── social/              — comments, likes, notifications, followers
+├── hooks/
+│   ├── useBookRanking.ts    — binary-search ranking state machine
+│   ├── useInviteTier.ts     — invite counts + feature unlock state
+│   └── useNetworkStatus.ts  — connectivity via NetInfo
+├── navigation/
+│   ├── AuthStackNavigator.tsx
+│   ├── HomeStackNavigator.tsx
+│   ├── LeaderboardStackNavigator.tsx
+│   ├── ProfileStackNavigator.tsx
+│   ├── SearchStackNavigator.tsx
+│   ├── TabNavigator.tsx
+│   ├── YourShelfStackNavigator.tsx
+│   └── types.ts
+├── services/
+│   ├── account.ts
+│   ├── activityCommentLikes.ts
+│   ├── activityComments.ts
+│   ├── activityFeed.ts
+│   ├── activityLikes.ts
+│   ├── analytics.ts
+│   ├── books.ts             — barrel re-export
+│   ├── books/
+│   │   ├── community.ts
+│   │   ├── cover.ts
+│   │   ├── googleBooks.ts
+│   │   ├── metadata.ts
+│   │   ├── openLibraryLookup.ts
+│   │   ├── shelf.ts
+│   │   ├── social.ts
+│   │   ├── types.ts
+│   │   ├── upsert.ts
+│   │   └── utils.ts
+│   ├── bookDetails.ts
+│   ├── bookFeedback.ts
+│   ├── comparisons.ts
+│   ├── coverResolver.ts
+│   ├── enrichment.ts
+│   ├── grok.ts
+│   ├── invites.ts
+│   ├── notifications.ts
+│   ├── quiz.ts
+│   ├── recommendations.ts
+│   ├── recommendationTriggers.ts
+│   ├── recommendedUsers.ts
+│   ├── supabase.ts          — re-exports supabase client
+│   ├── userPrivateData.ts
+│   ├── userProfile.ts
+│   └── users.ts
+└── types/                   — shared TypeScript interfaces
+supabase/
+├── functions/               — 18 Deno Edge Functions
+├── schema.sql               — consolidated schema snapshot
+└── migrate_*.sql            — incremental migrations
+```
 
-### 🚧 In Progress / Needs Work
+### Auth flow
 
-#### UI/UX Polish
-- ✅ Activity cards with notes and dates display
-- ✅ Simplified search result cards (image, title, author only)
-- ✅ Auto-save for notes and dates
-- Loading states could be more consistent across screens
-- Error handling and user feedback messages
-- Empty states for all screens
-- ✅ Pull-to-refresh functionality
-- Skeleton loaders for better perceived performance
+The root `AppContent` component drives navigation based on three state checks evaluated in order:
 
-#### Ranking System
-- ✅ Notes and dates read display on activity cards
-- ✅ Auto-save functionality for notes and dates
-- ✅ Database precision fixed to support scores up to 10.0
-- ✅ Drag-to-reorder alternative to binary search (for users who prefer it)
-- ✅ Reading progress (input-based) on book detail
-- Ranking history/undo functionality
-- Export rankings feature
+1. **No user** → `AuthStackNavigator` (starts at `Welcome`)
+2. **New user** (< 10 min since signup) who has not completed or skipped the quiz → `AuthStackNavigator` at `Quiz`
+3. **User** with fewer than 4 sent invites and no `grandfathered_invite_unlock` → `AuthStackNavigator` at `InviteGate`
+4. **Otherwise** → `TabNavigator`
 
-#### Search & Discovery
-- ✅ Simplified search result cards (cleaner UI)
-- ✅ Genre and custom label filtering
-- ✅ Book recommendations based on reading history
-- Advanced search filters (author, year, publication date range, etc.)
-- Trending books section
-- Recently added books by followed users
+Deep-linked invite URLs (`/invite/:code`) are intercepted at app launch and stored in AsyncStorage for post-auth redemption.
 
-#### Performance Optimizations
-- ✅ Image caching and optimization
-- ✅ Pagination for large book lists
-- Virtualized lists for better scroll performance
-- ✅ Optimistic UI updates
+---
 
-## 📋 Setup Instructions
+## Implemented Features
+
+### Auth
+
+- Email/password signup (username, display name, reading interests collected at signup)
+- Sign in via email address, username, or phone number (username/phone resolved server-side via edge functions)
+- Apple Sign In — native `expo-apple-authentication` on iOS, web OAuth fallback on Android
+- Google Sign In — `@react-native-google-signin/google-signin` native SDK
+- Account deactivation (soft-delete via `deactivated_at`)
+- Permanent account deletion (password or "DELETE" confirmation for OAuth users)
+- Password change (re-verifies current password first)
+
+### Onboarding
+
+- **Comparison quiz** (`QuizScreen`) — shown to new users within 10 minutes of signup. Presents pairs of starter books; each choice is stored as a `Comparison` row and used to seed initial rankings.
+- **Invite gate** (`InviteGateScreen`) — soft wall requiring the user to share at least 4 invites before accessing the full app. Users with `grandfathered_invite_unlock = true` bypass it.
+
+### Books
+
+**Search**
+- Open Library full-text search (`/search.json`) with custom relevance scoring (title similarity, author match, ISBN exact match, recency)
+- Results enriched with Google Books metadata (description, publisher, ISBNs, cover, page count)
+- Community stats (average rank score, member count) overlaid from the local `books_stats` table
+
+**Book detail**
+- Book metadata (description, page count, genres, first published year)
+- Community stats: global average + friends' average from `books_stats`
+- Shelf counts (how many users have it read / currently reading / want to read)
+- Friends' rankings for that book (paginated)
+- Other readers who ranked it but aren't followed
+
+**Shelf management**
+- Add to shelf with status (`read`, `currently_reading`, `want_to_read`), rating (`liked`, `fine`, `disliked`), notes, per-user genre tags, and custom labels
+- Reading progress slider (0–100%) for `currently_reading` books; changes create activity cards
+- Multiple read sessions per book (started/finished date pairs in `user_book_read_sessions`)
+- Remove from shelf
+- Reorder shelf via drag-and-drop (`ReorderShelfScreen`)
+- Custom label management: create, apply, delete across all books atomically
+
+**Ranking**
+- Head-to-head binary search insertion sort (`BookRankingScreen`) — new books are compared against existing books in the same tier until the insertion point is found
+- Rank scores are stored as `NUMERIC(6,3)` in the `[0, 3.5]`, `(3.5, 6.5]`, `(6.5, 10.0]` tiers for `disliked`, `fine`, `liked`
+- Batch rank redistribution when a top-tier book is removed
+
+**Comparisons**
+- Each head-to-head choice is persisted as a `comparisons` row via the `comparisons-create` edge function, which also updates `rank_score` on both user_books
+
+**Book feedback**
+- Users can report bad book data (title, cover, description, etc.) via `BookFeedbackForm`
+
+### Social
+
+**Activity feed** (`HomeScreen`)
+- Paginated feed of followed users' shelf activity, sourced from `activity_cards` via RPC `get_followed_activity_cards`
+- Feed source is configurable via `EXPO_PUBLIC_FEED_SOURCE` env var (`activity_cards` | `user_books` | `auto`)
+- Each card shows the book, user, status, rank score, read count, like/comment counts
+
+**Likes and comments**
+- Like/unlike a shelf entry (`activity_likes`) — toggle via unique constraint
+- Threaded comments on shelf entries (`activity_comments`) with parent/child replies
+- Like individual comments (`activity_comment_likes`)
+- Full CRUD on own comments (add, edit, delete)
+
+**Notifications**
+- Types: `like`, `comment`, `follow`, `follow_request`, `follow_accept`, `follow_reject`
+- Unread count tracked via `notifications_last_seen_at` on `user_profiles`
+- App icon badge reflects unread count (badge-only permission, no alerts/sounds)
+- Badge cleared when app returns to foreground
+
+**Following**
+- Follow public accounts directly (RPC `request_follow`)
+- Follow requests for private accounts (RPC `accept_follow_request`, `reject_follow_request`)
+- Cancel outgoing follow request
+- Unfollow (also removes follow notification)
+- View followers/following lists
+
+**Privacy**
+- Block users (RPC `block_user`) — hides content in both directions, prevents new follows
+- Unblock
+- Mute users — excluded from feed and notifications
+- `account_type` (`public` | `private`) controls content visibility
+
+### Search and discovery
+
+**Book search** — Open Library + Google Books enrichment pipeline (see Books section)
+
+**User search** — search by username or name (ilike query on `user_profiles`)
+
+**Recommended users** — shown on the Search screen:
+- Contact-based: device phone contacts matched against `user_private_data` via `match-contacts` edge function
+- Graph-based: friends-of-friends via `get_recommended_users` SQL RPC (mutual follower count)
+- Both sources merged and deduped; contacts take priority
+
+**Ask** (`AskScreen`) — conversational AI book recommendations via xAI Grok (`grok-ask` edge function). Suggestions are enriched with Google Books metadata client-side and presented as tappable book cards.
+
+### Recommendations
+
+- Personalized recommendations generated server-side by `recommendations-generate` edge function and stored in `recommendations` table
+- Auto-refresh triggered when user accumulates ≥ 10 comparisons since last refresh, or ≥ 7 days have passed
+- `shown_at` and `clicked_at` tracked per recommendation
+- Friends-liked list: books recently rated `liked` or scored ≥ 6.5 by followed users
+
+### Profile
+
+- View own profile: shelf counts, followers/following, reading interests, bio
+- View other users' profiles
+- Edit profile: name, username, bio, reading interests, profile photo (upload/delete via Supabase Storage)
+- Profile photos stored in `profile-photos` bucket with pattern `{userId}/{userId}-{timestamp}.{ext}`
+- Account settings: change password, toggle public/private, deactivate, delete account
+
+### Invites
+
+Five lockable features: `community_scores`, `activity_feed`, `friend_recommendations`, `friends_rankings`, `leaderboard_circles`.
+
+- Each successful invite earns an `unspent_invite_point`
+- Points are spent via `spend-invite-point` edge function to unlock individual features
+- `grandfathered_invite_unlock` bypasses all feature gates
+- Invite links use deep link scheme `https://inkli.app/invite/{code}`
+- Native share sheet used to send; a "send" is counted when the share sheet is dismissed
+
+### Analytics
+
+Filter usage in the shelf view is tracked to `filter_events`:
+- `filter_applied` (debounced 300ms, includes genre/label selections and result count)
+- `filter_cleared`
+- `custom_label_deleted`
+
+---
+
+## Service Functions Reference
+
+### `services/account.ts`
+| Function | Description |
+|---|---|
+| `deactivateAccount(userId)` | Sets `deactivated_at`, then signs out |
+| `deleteAccount(userId, passwordOrConfirmation, isOAuthUser)` | Calls `delete-account` edge function |
+| `updatePassword(userEmail, currentPassword, newPassword)` | Re-authenticates then updates password |
+
+### `services/activityFeed.ts`
+| Function | Description |
+|---|---|
+| `fetchFollowedActivityCards(userId, options?)` | Paginated feed of followed users via RPC `get_followed_activity_cards` |
+| `fetchUserActivityCards(userId, options?)` | Paginated activity for a single user from `activity_cards` |
+
+### `services/activityComments.ts`
+| Function | Description |
+|---|---|
+| `addComment(userBookId, userId, commentText)` | Insert top-level comment |
+| `addReply(userBookId, userId, parentCommentId, commentText)` | Insert threaded reply |
+| `getActivityComments(userBookId, limit, offset)` | Fetch comments with user profiles |
+| `deleteComment(commentId, userId)` | Delete own comment |
+| `updateComment(commentId, userId, newText)` | Update own comment |
+| `getCommentsCount(userBookId)` | Read denormalized count from `user_books.comments_count` |
+
+### `services/activityLikes.ts`
+| Function | Description |
+|---|---|
+| `toggleLike(userBookId, userId)` | Insert or delete like via unique constraint; returns `{ liked }` |
+| `getActivityLikes(userBookId, limit, offset)` | List users who liked |
+| `checkUserLiked(userBookId, userId)` | Boolean check |
+| `getLikesCount(userBookId)` | Count from `activity_likes` |
+
+### `services/activityCommentLikes.ts`
+| Function | Description |
+|---|---|
+| `toggleCommentLike(commentId, userId)` | Like or unlike a comment |
+| `getCommentLikes(commentIds, userId?)` | Batch fetch counts + liked-by-user set |
+| `getCommentLikesList(commentId, limit, offset)` | List users who liked a comment |
+
+### `services/analytics.ts`
+| Function | Description |
+|---|---|
+| `trackFilterApplied(selectedGenres, selectedCustomLabels, shelfContext, resultCount, userId)` | Record filter usage event |
+| `trackFilterCleared(shelfContext, userId)` | Record filter clear event |
+| `trackCustomLabelDeleted(label, booksAffected, context, userId)` | Record custom label deletion |
+
+### `services/books/shelf.ts`
+| Function | Description |
+|---|---|
+| `addBookToShelf(bookData, status, userId, options?)` | Upsert book + create/update user_books entry |
+| `addExistingBookToShelf(bookId, status, userId, options?)` | Add already-stored book to shelf by ID |
+| `checkUserHasBook(bookId, userId)` | Returns `{ exists, userBookId, currentStatus }` |
+| `updateReadingProgress(userId, bookId, progressPercent, createActivity?)` | Update percent; optionally emit activity card |
+| `getReadingProgress(userId, bookId)` | Return current progress percent |
+| `getUserBooks(userId)` | All shelf entries ordered by rating then rank_score |
+| `updateTierScoresBatch(userId, tier, updatedBooks, options?)` | Batch rank_score update for a rating tier |
+| `updateBookStatus(userBookId, newStatus, options?)` | Change shelf status |
+| `updateUserBookDetails(userBookId, userId, updates, options?)` | Update rating, notes, custom_labels, user_genres |
+| `removeBookFromShelf(userBookId)` | Delete user_book row |
+| `redistributeRanksForRating(userId, rating)` | Recalculate rank_scores evenly across a tier |
+| `getUserBookCounts(userId)` | Count entries by status |
+| `getUserBooksByRating(userId, rating)` | Books in a specific tier ordered by rank_score |
+| `getRecentUserBooks(userId, limit?)` | Recently updated user_books |
+| `getReadSessions(userBookId)` | All read sessions for a user_book |
+| `addReadSession(userBookId, dates)` | Create a read session (started/finished) |
+| `updateReadSession(sessionId, dates)` | Update a read session |
+| `deleteReadSession(sessionId)` | Delete a read session |
+| `removeCustomLabelFromAllBooks(userId, labelToRemove)` | Batch remove label via `remove_custom_label` RPC |
+
+### `services/books/googleBooks.ts`
+| Function | Description |
+|---|---|
+| `searchBooks(query)` | Open Library search with relevance scoring; returns top 20 |
+| `searchBooksWithStats(query)` | Search + overlay community stats from `books` table |
+| `enrichBookWithGoogleBooks(olBook)` | Merge Open Library book with Google Books data |
+| `buildBookFromOpenLibrary(olBook)` | Build book object from Open Library data only (fallback) |
+| `searchGoogleBooks(title, author, year?)` | Direct Google Books API search |
+| `enrichForAsk(suggestion)` | Enrich AI-suggested title/author for the Ask feature |
+| `validateEnrichmentForSearch(enrichedBook, originalOlBook)` | Validate GB enrichment safety |
+| `checkDatabaseForBook(openLibraryId?, googleBooksId?)` | Check if book already exists in DB |
+| `saveBookToDatabase(enrichedBook)` | Upsert via `books-upsert` edge function |
+| `clearGoogleBooksCache()` | Clear in-memory Google Books cache |
+
+### `services/books/community.ts`
+| Function | Description |
+|---|---|
+| `updateBookCommunityStats(bookId)` | Trigger `books-update-community-stats` edge function |
+| `getBookCircles(bookId, userId?)` | Global + friends' avg score and count from `books_stats` |
+| `getBookShelfCounts(bookId)` | Read/currently_reading/want_to_read counts from `books_stats` |
+
+### `services/books/social.ts`
+| Function | Description |
+|---|---|
+| `getFriendsRecentLiked(userId, limit?)` | Books recently liked/ranked ≥ 6.5 by followed users |
+| `getFriendsRankingsForBook(bookId, userId, options?)` | Paginated friends' rankings for a specific book |
+| `getOtherReadersForBook(bookId, userId, options?)` | Non-followed users who ranked this book |
+
+### `services/books/upsert.ts`
+| Function | Description |
+|---|---|
+| `upsertBookViaEdge(enrichedBook)` | Upsert book via `books-upsert` edge function; returns `{ book, book_id }` |
+
+### `services/books/openLibraryLookup.ts`
+| Function | Description |
+|---|---|
+| `lookupOpenLibraryIdByTitleAuthor(title, author?)` | Quick OL search; returns work ID (e.g. `/works/OL12345W`) or null |
+
+### `services/bookDetails.ts`
+| Function | Description |
+|---|---|
+| `fetchBookWithUserStatus(bookId, userId?)` | Fetch book row + optional user's shelf entry |
+
+### `services/bookFeedback.ts`
+| Function | Description |
+|---|---|
+| `submitBookFeedback(params)` | Submit book data issue via `book-feedback` edge function |
+
+### `services/comparisons.ts`
+| Function | Description |
+|---|---|
+| `createComparison(params)` | Create head-to-head ranking via `comparisons-create` edge function |
+| `getUserComparisons(userId, options?)` | Fetch user's comparison history |
+
+### `services/coverResolver.ts`
+| Function | Description |
+|---|---|
+| `resolveCoverUrl(book)` | Resolve cover URL: DB → Google Books → Open Library; LRU cache + dedup pending |
+| `verifyImageUrl(url)` | HEAD request to verify image exists and has content |
+| `cacheToDatabase(book, coverUrl)` | Persist resolved cover URL to `books` table |
+
+### `services/enrichment.ts`
+| Function | Description |
+|---|---|
+| `enrichBook(bookId, openlibraryId)` | Enrich book via `books-enrich` edge function |
+
+### `services/grok.ts`
+| Function | Description |
+|---|---|
+| `askGrokForBooks(messages, userContent, options?)` | Call `grok-ask` edge function; parse and return book suggestions |
+
+### `services/invites.ts`
+| Function | Description |
+|---|---|
+| `fetchInviteProfile(userId)` | Invite code, sent/successful counts, unspent points, grandfathered flag |
+| `fetchUnlockedFeatures(userId)` | List of unlocked feature keys |
+| `acceptInvite(inviteCode)` | Call `accept-invite` edge function |
+| `spendInvitePoint(featureKey)` | Call `spend-invite-point` edge function |
+| `shareInviteLink(inviteCode)` | Open native share sheet; increment sent count on dismiss |
+| `storePendingInviteCode(code)` | Save deep-linked code to AsyncStorage |
+| `getPendingInviteCode()` | Read pending code from AsyncStorage |
+| `clearPendingInviteCode()` | Remove pending code from AsyncStorage |
+
+### `services/notifications.ts`
+| Function | Description |
+|---|---|
+| `fetchNotifications(userId, limit?)` | Fetch notifications with actor profiles and book/comment context |
+| `fetchUnreadNotificationsCount(userId)` | Count notifications since `notifications_last_seen_at` |
+| `getNotificationsLastSeen(userId)` | Read last-seen timestamp |
+| `updateNotificationsLastSeen(userId, timestamp?)` | Update last-seen timestamp |
+| `requestBadgePermission()` | Request iOS badge-only notification permission |
+| `setBadgeCount(count)` | Set app icon badge number |
+| `clearBadge()` | Reset app icon badge to 0 |
+
+### `services/quiz.ts`
+| Function | Description |
+|---|---|
+| `getQuizBookPair()` | Call `quiz-start`; returns a random pair of starter books |
+| `skipQuiz()` | Call `quiz-skip`; sets `skipped_onboarding_quiz = true` |
+
+### `services/recommendations.ts`
+| Function | Description |
+|---|---|
+| `fetchRecommendations(userId, options?)` | Fetch stored recommendations ordered by score |
+| `markRecommendationsShown(recommendationIds)` | Batch-set `shown_at` |
+| `markRecommendationClicked(recommendationId)` | Set `clicked_at` |
+| `generateRecommendations()` | Call `recommendations-generate` edge function |
+| `refreshRecommendations()` | Call `recommendations-refresh` edge function |
+
+### `services/recommendationTriggers.ts`
+| Function | Description |
+|---|---|
+| `checkAndTriggerRecommendations(userId)` | Refresh if ≥ 10 comparisons or ≥ 7 days since last refresh |
+| `onUserAction(userId, action)` | Increment rankings counter then check trigger |
+
+### `services/recommendedUsers.ts`
+| Function | Description |
+|---|---|
+| `getContactMatches(userId)` | Match device contacts via `match-contacts` edge function |
+| `getGraphRecommendations(userId, limit?)` | Friends-of-friends via `get_recommended_users` RPC |
+| `getMergedRecommendedUsers(userId)` | Merge both sources; contacts preferred; uses `Promise.allSettled` |
+
+### `services/userProfile.ts`
+| Function | Description |
+|---|---|
+| `getUserProfile(userId)` | Fetch profile row |
+| `checkUsernameAvailability(username)` | Check via `check_username_available` RPC (bypasses RLS) |
+| `checkIfFollowing(followerId, followingId)` | Boolean check |
+| `updateUserProfile(userId, updates)` | Update name, username, bio, reading interests, photo URL |
+| `uploadProfilePhoto(userId, imageUri)` | Upload to `profile-photos` bucket; deletes old photo first |
+| `deleteProfilePhoto(photoUrlOrPath)` | Delete file from storage |
+| `getProfilePictureUrl(pathOrUrl)` | Resolve full public URL from storage path or existing URL |
+| `saveProfileWithPicture(userId, profileData, newImageUri, deleteProfilePicture)` | Combined profile save with photo handling |
+| `searchMembers(query)` | ilike search on username and name; returns public profile fields |
+| `followUser(followerId, followingId)` | RPC `request_follow`; returns `'following'` or `'requested'` |
+| `getOutgoingFollowRequests(requesterId)` | Pending outgoing requests |
+| `getIncomingFollowRequests(requestedId)` | Pending incoming requests |
+| `acceptFollowRequest(requestId)` | RPC `accept_follow_request` |
+| `rejectFollowRequest(requestId)` | RPC `reject_follow_request` |
+| `cancelFollowRequest(requesterId, requestedId)` | Delete pending request row |
+| `unfollowUser(followerId, followingId)` | Delete follow row + remove follow notification |
+| `getBlockStatus(viewerId, targetId)` | Returns `{ blockedByViewer, blockedByTarget }` |
+| `blockUser(blockerId, blockedId)` | RPC `block_user` |
+| `unblockUser(blockerId, blockedId)` | Delete from `blocked_users` |
+| `getBlockedUsers(blockerId)` | List blocked users with profiles |
+| `muteUser(muterId, mutedId)` | Insert to `muted_users` |
+| `unmuteUser(muterId, mutedId)` | Delete from `muted_users` |
+| `getMutedUsers(muterId)` | List muted users with profiles |
+| `checkIfMuted(muterId, mutedId)` | Boolean check |
+| `checkPendingFollowRequest(requesterId, requestedId)` | Boolean check |
+| `getFollowingIds(userId)` / `getFollowerIds(userId)` | Arrays of user IDs |
+| `getFollowersList(userId)` / `getFollowingList(userId)` | Arrays of `UserSummary` with profiles |
+| `getFollowerCount(userId)` / `getFollowingCount(userId)` | Counts |
+
+### `services/users.ts`
+| Function | Description |
+|---|---|
+| `searchUsersForMention(query, currentUserId, limit?)` | Search mutual connections first, fall back to global username search |
+
+### `services/userPrivateData.ts`
+| Function | Description |
+|---|---|
+| `getPrivateData(userId)` | Fetch email/phone; auto-creates row if missing |
+| `updatePrivateData(userId, updates)` | Update private fields |
+
+---
+
+## Custom Hooks
+
+### `useBookRanking(initialBooks?)`
+
+Encapsulates the binary search insertion sort state machine for ranking. Used in `BookRankingScreen`.
+
+```ts
+const ranking = useBookRanking(existingBooks);
+ranking.startInserting(newBook, tier);  // 'liked' | 'fine' | 'disliked'
+ranking.chooseNewBook();                // new book wins comparison
+ranking.chooseExistingBook();           // existing book wins
+ranking.skipToBottom();                 // place new book last in tier
+ranking.getCurrentComparison();         // { bookA, bookB } | null
+ranking.isComplete();                   // boolean
+ranking.getResult();                    // { books, insertedBook } | null
+```
+
+### `useInviteTier()`
+
+Manages invite state and feature unlocks. Subscribes to Supabase Realtime on `user_invites` and `user_unlocked_features` for live updates.
+
+```ts
+const {
+  hasFeature,        // (featureKey: FeatureKey) => boolean
+  unspentPoints,
+  inviteCount,
+  sentCount,
+  isWallCleared,     // grandfathered || sentCount >= 4
+  availableToUnlock, // FeatureKey[]
+  inviteCode,
+  loading,
+} = useInviteTier();
+```
+
+### `useNetworkStatus()`
+
+```ts
+const { isOnline } = useNetworkStatus();  // uses NetInfo, not navigator.onLine
+```
+
+---
+
+## Supabase Edge Functions
+
+All functions are in `supabase/functions/`. They run as Deno services.
+
+| Function | Method | Purpose |
+|---|---|---|
+| `accept-invite` | POST | Accept an invite code; update counts on both users |
+| `book-feedback` | POST | Store a book data issue report |
+| `books-enrich` | POST | Fetch Open Library data and update a book record |
+| `books-update-community-stats` | POST | Recalculate `community_average_score` and `community_rank_count` on `books` |
+| `books-update-genres` | POST | Update global book genres (deprecated in favour of `user_genres`) |
+| `books-upsert` | POST | Insert or update a book record; returns `{ book, book_id }` |
+| `comparisons-create` | POST | Record a head-to-head choice; update both `user_books.rank_score` values |
+| `delete-account` | POST | Permanently delete user (verifies password for email users) |
+| `grok-ask` | POST | Proxy to xAI Grok API; returns structured book suggestions |
+| `match-contacts` | POST | Match a list of phone numbers against `user_private_data` |
+| `quiz-skip` | POST | Mark `skipped_onboarding_quiz = true` on `user_profiles` |
+| `quiz-start` | GET | Return a random pair of starter books, excluding already-compared pairs |
+| `recalculate-ranks` | POST | Recalculate all rank scores for a user within each tier |
+| `recommendations-generate` | POST | Generate and store personalized book recommendations |
+| `recommendations-refresh` | POST | Regenerate recommendations and reset the comparison counter |
+| `resolve-phone` | POST | Look up email address for a phone number (used by sign-in) |
+| `resolve-username` | POST | Look up email address for a username (used by sign-in) |
+| `spend-invite-point` | POST | Deduct one point and insert a row into `user_unlocked_features` |
+
+---
+
+## Database Schema
+
+Main tables and their purpose. Full DDL is in `supabase/schema.sql`.
+
+| Table | Purpose |
+|---|---|
+| `books` | Book metadata: title, authors, ISBNs, description, cover_url, `community_average_score`, `community_rank_count` |
+| `books_stats` | Denormalized per-book stats: global avg score, review count, shelf counts by status |
+| `user_profiles` | Public profile: name, username, bio, photo URL, account_type (`public`/`private`), invite fields, onboarding flags, `notifications_last_seen_at` |
+| `user_private_data` | Owner-only: email, phone |
+| `user_books` | Shelf entries: `status`, `rating` (`liked`/`fine`/`disliked`), `rank_score` (NUMERIC 6,3), `progress_percent`, `notes`, `custom_labels[]`, `user_genres[]`, `likes_count`, `comments_count` |
+| `user_book_read_sessions` | Multiple started/finished date pairs per `user_book` |
+| `activity_cards` | Feed events: shelf changes and reading progress updates |
+| `activity_likes` | Likes on `user_books` entries (unique per user+book) |
+| `activity_comments` | Threaded comments on `user_books`; `parent_comment_id` for replies |
+| `activity_comment_likes` | Likes on `activity_comments` |
+| `notifications` | Notification events: `like`, `comment`, `follow`, `follow_request`, `follow_accept`, `follow_reject` |
+| `comparisons` | Head-to-head ranking history: `winner_book_id`, `loser_book_id`, `is_onboarding` |
+| `recommendations` | Generated book recommendations: `score`, `reason`, `algorithm_version`, `shown_at`, `clicked_at` |
+| `user_follows` | Directed follow graph (public accounts) |
+| `follow_requests` | Pending follow requests (private accounts); status: `pending`/`accepted`/`rejected` |
+| `blocked_users` | Block relationships; enforced in RLS and helper functions |
+| `muted_users` | Mute relationships; excluded from feed and notifications |
+| `user_invites` | Per-invite records: `inviter_user_id`, `invitee_user_id`, `accepted_at` |
+| `user_unlocked_features` | Per-user unlocked feature keys |
+| `filter_events` | Shelf filter usage analytics |
+
+Key RLS helper functions: `can_view_profile`, `can_view_content`, `is_blocked_between`, `is_muted_between`, `should_notify`.
+
+Key RPCs: `get_followed_activity_cards`, `get_followed_user_books_activity`, `get_recommended_users`, `get_friends_book_stats`, `request_follow`, `accept_follow_request`, `reject_follow_request`, `block_user`, `check_username_available`, `remove_custom_label`, `increment_sent_invites_count`, `increment_rankings_counter`, `update_user_book_rank_scores_no_touch`, `update_user_book_status_no_touch`, `update_user_book_details_no_touch`.
+
+---
+
+## Setup
 
 ### Prerequisites
-- Node.js 18+ and npm
-- Expo CLI (`npm install -g expo-cli`)
-- Supabase account
-- (Optional) Google Books API key
 
-### 1. Install Dependencies
+- Node.js 18+
+- Expo CLI (`npm install -g expo`)
+- A Supabase project with the schema applied
+
+### Environment variables
+
+Create a `.env` file in the project root:
+
+```
+EXPO_PUBLIC_SUPABASE_URL=https://<your-project>.supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=<anon-key>
+EXPO_PUBLIC_GOOGLE_BOOKS_API_KEY=<google-books-api-key>
+EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID=<ios-client-id>
+EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID=<web-client-id>
+
+# Optional — controls activity feed data source (default: activity_cards)
+EXPO_PUBLIC_FEED_SOURCE=activity_cards
+```
+
+`EXPO_PUBLIC_GOOGLE_BOOKS_API_KEY` is optional; the app falls back to unauthenticated requests (lower quota).
+
+### Running locally
+
 ```bash
 npm install
+npx expo start
 ```
 
-### 2. Configure Supabase
+Press `i` for iOS simulator, `a` for Android emulator, or scan the QR code with Expo Go.
 
-1. Create a Supabase project at [supabase.com](https://supabase.com)
-2. Copy your project URL and anon key
-3. Open `src/config/supabase.ts` and replace:
-   - `YOUR_SUPABASE_URL` with your Supabase project URL
-   - `YOUR_SUPABASE_ANON_KEY` with your Supabase anon key
+### Database
 
-### 3. Set Up Database Schema
-
-Run all migration files in order in your Supabase SQL Editor. The repo contains many migrations in `supabase/` (e.g. user profiles, books, ranking, activity, notifications, privacy, account deactivation, user private data, reading progress, book feedback). Use the consolidated `supabase/schema.sql` if available; otherwise run `supabase/migrate_*.sql` in dependency order. Key areas covered:
-
-- User profiles, bio, profile photos, single name field (`migrate_first_last_to_name`)
-- Books, Open Library, ratings, notes, dates, rank score, community stats
-- Activity feed, likes, comments, activity cards
-- User follows, RLS, account type (public/private), block/mute
-- Account deactivation and private data (`migrate_add_deactivated_at`, `migrate_user_private_data`)
-- Reading progress, book feedback, recommendations
-
-### 4. Deploy Edge Functions
-
-- `supabase/functions/recalculate-ranks` (optional): maintenance rank recalculation
-- `supabase/functions/books-upsert`: authenticated book upsert with validation (required)
-- `supabase/functions/delete-account`: account deletion (required for delete-account flow)
-- `supabase/functions/book-feedback`: submit book feedback from app (optional)
-- `supabase/functions/grok-ask`: proxy to xAI Grok API for the Ask feature (required for Ask)
-
-Set secrets for grok-ask (no API key in the app bundle):
+Apply the schema to a fresh Supabase project:
 
 ```bash
-supabase secrets set GROK_API_KEY=your_xai_api_key_here
+# Using the Supabase CLI
+supabase db reset --linked     # applies schema.sql + migrations
 ```
 
-Optional: override the default system prompt (e.g. to tune recommendations without redeploying):
+Or run `supabase/schema.sql` manually via the Supabase SQL editor.
+
+Edge functions must be deployed separately:
 
 ```bash
-supabase secrets set GROK_SYSTEM_PROMPT="Your custom prompt..."
+supabase functions deploy
 ```
 
-### 5. Configure Google Books API (Optional)
+### Supabase Storage
 
-1. Get a Google Books API key from [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
-2. Copy `.env.example` to `.env` and fill in values. For Google Books (optional):
-   ```
-   EXPO_PUBLIC_GOOGLE_BOOKS_API_KEY=your_api_key_here
-   ```
-3. The Google Books API key is optional - the app works without it but with lower rate limits
-
-### 6. Run the App
-
-```bash
-npm start
-```
-
-Then press `i` for iOS simulator, `a` for Android emulator, or scan the QR code with Expo Go app.
-
-## 📁 Project Structure
-
-```
-inkli/
-├── src/
-│   ├── components/
-│   │   ├── books/
-│   │   │   └── GenreLabelPicker.tsx     # Genre and label picker component
-│   │   ├── filters/
-│   │   │   ├── CustomLabelInput.tsx     # Custom label input component
-│   │   │   ├── FilterPanel.tsx          # Filtration panel for books
-│   │   │   └── GenreChip.tsx            # Genre chip component
-│   │   └── ui/
-│   │       └── DateRangePickerModal.tsx # Date range picker modal
-│   ├── config/
-│   │   ├── supabase.ts                  # Supabase client configuration
-│   │   └── theme.ts                     # Colors and typography config
-│   ├── contexts/
-│   │   └── AuthContext.tsx              # Authentication context provider
-│   ├── features/
-│   │   ├── auth/
-│   │   │   ├── components/
-│   │   │   │   └── OnboardingTabBar.tsx # Custom tab bar for onboarding
-│   │   │   └── screens/
-│   │   │       ├── CreateAccountScreen.tsx
-│   │   │       ├── LoginScreen.tsx
-│   │   │       ├── SetupProfileScreen.tsx
-│   │   │       ├── SignInScreen.tsx
-│   │   │       ├── SignUpEmailScreen.tsx
-│   │   │       └── WelcomeScreen.tsx
-│   │   ├── books/
-│   │   │   ├── components/
-│   │   │   │   ├── BookActionModal.tsx  # Book actions (edit, remove)
-│   │   │   │   ├── BookComparisonModal.tsx # Binary search comparison UI
-│   │   │   │   └── BookCoverPlaceholder.tsx # Placeholder for book covers
-│   │   │   └── screens/
-│   │   │       ├── BookDetailScreen.tsx # Book detail view
-│   │   │       └── BookRankingScreen.tsx # Book ranking with notes and dates
-│   │   ├── home/
-│   │   │   └── screens/
-│   │   │       └── HomeScreen.tsx       # Home activity feed
-│   │   ├── leaderboard/
-│   │   │   └── screens/
-│   │   │       └── LeaderboardScreen.tsx # Global leaderboard
-│   │   ├── onboarding/
-│   │   │   ├── components/
-│   │   │   │   ├── QuizBookCard.tsx     # Book card for onboarding quiz
-│   │   │   │   └── TasteProfileCard.tsx # Profile card for taste quiz
-│   │   │   └── screens/
-│   │   │       └── QuizScreen.tsx       # Onboarding quiz screen
-│   │   ├── profile/
-│   │   │   ├── components/
-│   │   │   │   ├── ProfileHeader.tsx            # Profile header component
-│   │   │   │   └── ProfilePhotoActionSheet.tsx  # Profile photo actions
-│   │   │   └── screens/
-│   │   │       ├── AccountSettingsScreen.tsx    # Private account settings (email, phone, password, deactivate/delete)
-│   │   │       ├── EditProfileScreen.tsx
-│   │   │       ├── ProfileScreen.tsx             # User profile with activity feed
-│   │   │       └── UserProfileScreen.tsx        # Public profile view
-│   │   ├── recommendations/
-│   │   │   └── components/
-│   │   │       └── RecommendationsList.tsx # Book recommendations list
-│   │   ├── search/
-│   │   │   └── screens/
-│   │   │       └── SearchScreen.tsx     # Book search
-│   │   ├── shelf/
-│   │   │   ├── components/
-│   │   │   │   └── ShelfScreen.tsx      # Shelf view component
-│   │   │   └── screens/
-│   │   │       └── YourShelfScreen.tsx  # User's book shelf
-│   │   └── social/
-│   │       ├── components/
-│   │       │   └── RecentActivityCard.tsx # Activity card UI component
-│   │       └── screens/
-│   │           ├── ActivityCommentsScreen.tsx # Activity comments thread
-│   │           ├── ActivityLikesScreen.tsx    # Activity likes list
-│   │           ├── FollowersFollowingScreen.tsx # Followers/following list
-│   │           ├── NotificationsScreen.tsx    # Notifications screen
-│   │           └── UserShelfScreen.tsx        # Public shelves
-│   ├── hooks/
-│   │   └── useBookRanking.ts            # Binary search ranking hook
-│   ├── navigation/
-│   │   ├── AuthStackNavigator.tsx       # Authentication flow navigation
-│   │   ├── HomeStackNavigator.tsx       # Home feed stack
-│   │   ├── ProfileStackNavigator.tsx    # Profile screen stack
-│   │   ├── SearchStackNavigator.tsx     # Search screen stack
-│   │   ├── TabNavigator.tsx             # Bottom tab navigation
-│   │   ├── YourShelfStackNavigator.tsx  # Your Shelf stack
-│   │   └── types.ts                     # Navigation types
-│   ├── services/
-│   │   ├── account.ts                   # Account deactivation, deletion, password update
-│   │   ├── activityCommentLikes.ts      # Comment likes API
-│   │   ├── activityComments.ts          # Activity comments API
-│   │   ├── activityFeed.ts              # Home feed RPC + pagination
-│   │   ├── activityLikes.ts             # Activity likes API
-│   │   ├── analytics.ts                 # Analytics service
-│   │   ├── bookFeedback.ts              # Book feedback submission (wrong cover, metadata, etc.)
-│   │   ├── books.ts                     # Book-related API functions
-│   │   ├── comparisons.ts               # Book comparison service
-│   │   ├── coverResolver.ts             # Cover URL resolution service
-│   │   ├── enrichment.ts                # Book enrichment service
-│   │   ├── notifications.ts             # Notifications service
-│   │   ├── quiz.ts                      # Onboarding quiz service
-│   │   ├── recommendations.ts           # Book recommendations service
-│   │   ├── supabase.ts                  # Supabase service exports
-│   │   ├── userPrivateData.ts           # User private data (email, phone) read/update
-│   │   ├── userProfile.ts               # User profile API functions
-│   │   └── users.ts                     # User management service
-│   ├── types/
-│   │   ├── activityCards.ts             # Activity card types
-│   │   ├── activityComments.ts          # Activity comment types
-│   │   ├── activityLikes.ts             # Activity like types
-│   │   └── users.ts                     # User types
-│   └── utils/
-│       ├── bookFilters.ts               # Book filtering utilities
-│       ├── bookHelpers.ts               # Book helper functions
-│       ├── bookRanking.ts               # Binary search ranking algorithm
-│       ├── dateUtils.ts                 # Date utility functions
-│       ├── genreMapper.ts               # Genre mapping utilities
-│       └── rankScoreColors.ts           # Score color utilities
-├── supabase/
-│   ├── schema.sql                       # Consolidated schema (current)
-│   ├── migrate_*.sql                    # Individual migration files
-│   ├── functions/
-│   │   ├── recalculate-ranks/           # Edge function for rank recalculation
-│   │   └── books-upsert/                # Edge function for book upsert
-│   └── check_and_fix_ranking.sql        # Ranking troubleshooting script
-├── assets/                              # Images and icons
-├── App.tsx                              # Main app entry point
-└── package.json                         # Dependencies
-```
-
-### Architecture Overview
-
-The codebase follows a **feature-based architecture** where domain-specific code is organized into feature modules under `src/features/`. Each feature contains its own:
-- **screens/** - Screen components for that feature
-- **components/** - Feature-specific UI components (where applicable)
-
-This structure promotes:
-- **Modularity**: Each feature is self-contained and independent
-- **Scalability**: Easy to add new features without affecting existing ones
-- **Maintainability**: Related code is grouped together, making it easier to locate and modify
-
-**Feature Modules:**
-- **auth/** - Authentication screens (welcome, sign in/up, account creation)
-- **books/** - Book detail, ranking, and comparison interfaces
-- **home/** - Home activity feed
-- **leaderboard/** - Global user leaderboard
-- **onboarding/** - Onboarding quiz
-- **profile/** - User profile management and viewing
-- **recommendations/** - Book recommendations
-- **search/** - Book search functionality
-- **shelf/** - User's book shelf management
-- **social/** - Social features (activity cards, comments, likes, followers, notifications)
-
-**Shared code** is organized outside the features directory:
-- **components/** - Reusable UI components used across features
-- **services/** - API and data access layer
-- **hooks/** - Custom React hooks
-- **utils/** - Utility functions and helpers
-- **types/** - TypeScript type definitions
-- **navigation/** - Navigation configuration
-- **contexts/** - React context providers
-- **config/** - App configuration files
-
-## 🔧 Core Functions
-
-### Book Services (`src/services/books.ts`)
-Core book management and search functionality:
-- `searchBooks(query)` - Search Open Library API
-- `searchBooksWithStats(query)` - Search with community statistics
-- `enrichBookWithGoogleBooks(olBook)` - Enrich with Google Books data
-- `buildBookFromOpenLibrary(olBook)` - Build book object from Open Library data
-- `checkDatabaseForBook(openLibraryId, googleBooksId)` - Check if book exists in database
-- `addBookToShelf(bookData, status, userId, options)` - Add book to shelf
-- `getUserBooks(userId)` - Get user's books ordered by rank
-- `getUserBooksByRating(userId, rating)` - Get books by rating category
-- `getUserBookCounts(userId)` - Get count of books by status
-- `updateUserBookDetails(userBookId, userId, updates)` - Update book details (rating, notes, dates)
-- `updateBookStatus(userBookId, userId, newStatus)` - Update book status
-- `removeBookFromShelf(userBookId, userId)` - Remove book from shelf
-- `getRecentUserBooks(userId, limit)` - Get recent activity with notes and dates
-- `getBookCircles(bookId, userId, limit)` - Get users who have read a book
-- `updateBookCommunityStats(bookId)` - Update community stats for a book
-- `updateBookGenres(userBookId, userId, genres)` - Update book genres
-- `getFriendsRankingsForBook(userId, bookId)` - Get friends' rankings for a book
-
-### Read Sessions (`src/services/books.ts`)
-Track reading sessions for books:
-- `getReadSessions(userBookId, userId)` - Get read sessions for a book
-- `addReadSession(userBookId, userId, startedDate, finishedDate)` - Add a read session
-- `updateReadSession(sessionId, userBookId, userId, updates)` - Update a read session
-- `deleteReadSession(sessionId, userBookId, userId)` - Delete a read session
-
-### Activity Feed Services (`src/services/activityFeed.ts`)
-Home feed with pagination and activity tracking:
-- `fetchFollowedActivityCards(userId, options)` - Cursor-paginated feed from followed users
-- `fetchUserActivityCards(userId, options)` - Cursor-paginated activity cards for a specific user
-
-### Activity Engagement (`src/services/activityLikes.ts`, `src/services/activityComments.ts`)
-Social engagement on activity items:
-- `likeActivity(userId, activityCardId)` - Like an activity card
-- `unlikeActivity(userId, activityCardId)` - Unlike an activity card
-- `getActivityLikes(activityCardId, options)` - Get likes for an activity card
-- `addComment(userId, activityCardId, content)` - Add comment to activity
-- `getActivityComments(activityCardId, options)` - Get comments with pagination
-- `deleteComment(commentId, userId)` - Delete a comment
-- `likeComment(userId, commentId)` - Like a comment
-- `unlikeComment(userId, commentId)` - Unlike a comment
-
-### Account & Private Data (`src/services/account.ts`, `src/services/userPrivateData.ts`)
-Account lifecycle and private user data:
-- `deactivateAccount(userId)` - Deactivate account (sets deactivated_at, signs out)
-- `deleteAccount(userId, passwordOrConfirmation, isOAuthUser)` - Permanently delete account (Edge Function)
-- `updatePassword(newPassword)` - Update password for email users
-- `getPrivateData(userId)` - Get email, phone for current user
-- `updatePrivateData(userId, updates)` - Update email/phone (RLS-protected)
-
-### Book Feedback (`src/services/bookFeedback.ts`)
-- `submitBookFeedback({ bookId, issueType, description })` - Submit book feedback via Edge Function (e.g. wrong cover, metadata issues)
-
-### User Profile Services (`src/services/userProfile.ts`)
-Comprehensive user profile and social features:
-- `getUserProfile(userId)` - Get user profile
-- `updateUserProfile(userId, updates)` - Update profile
-- `checkUsernameAvailability(username)` - Check if username is available
-- `uploadProfilePhoto(userId, imageUri)` - Upload profile photo
-- `deleteProfilePhoto(userId)` - Delete profile photo
-- `getProfilePictureUrl(profilePicturePathOrUrl)` - Get profile picture URL
-- `searchMembers(query)` - Search for users by username or name
-- `followUser(followerId, followingId)` - Follow a user
-- `unfollowUser(followerId, followingId)` - Unfollow a user
-- `checkIfFollowing(followerId, followingId)` - Check if following a user
-- `getFollowersList(userId, options)` - Get list of followers
-- `getFollowingList(userId, options)` - Get list of users being followed
-- `getFollowerCount(userId)` - Get follower count
-- `getFollowingCount(userId)` - Get following count
-- `getAccountType(userId)` - Get account type (public/private)
-- `updateAccountType(userId, accountType)` - Update account type
-- `getOutgoingFollowRequests(userId)` - Get pending outgoing follow requests
-- `getIncomingFollowRequests(userId)` - Get pending incoming follow requests
-- `acceptFollowRequest(requestId)` - Accept follow request
-- `rejectFollowRequest(requestId)` - Reject follow request
-- `cancelFollowRequest(requestId)` - Cancel outgoing follow request
-- `blockUser(blockerId, blockedId)` - Block a user
-- `unblockUser(blockerId, blockedId)` - Unblock a user
-- `getBlockedUsers(userId)` - Get list of blocked users
-- `muteUser(muterId, mutedId)` - Mute a user
-- `unmuteUser(muterId, mutedId)` - Unmute a user
-- `getMutedUsers(userId)` - Get list of muted users
-
-### Recommendations (`src/services/recommendations.ts`)
-Book recommendation engine:
-- Provides personalized book recommendations based on reading history and preferences
-
-### Onboarding Quiz (`src/services/quiz.ts`)
-Onboarding quiz for recommendations:
-- Manages quiz questions and responses to build user recommendations
-
-### Cover Resolution (`src/services/coverResolver.ts`)
-Intelligent cover URL resolution and caching:
-- `resolveCoverUrl(book)` - Resolve best available cover URL from multiple sources
-
-### Notifications (`src/services/notifications.ts`)
-In-app notifications system:
-- Manages user notifications for social interactions
-
-### Analytics (`src/services/analytics.ts`)
-User analytics and tracking:
-- Tracks user actions and provides insights
-
-### Ranking System (`src/utils/bookRanking.ts`)
-Efficient binary search-based ranking algorithm:
-- Binary search algorithm for O(log n) book ranking
-- Supports three rating categories: liked, fine, disliked
-- Default scores: 10.0 (liked), 6.0 (fine), 4.0 (disliked)
-- High-precision fractional scores for accurate ordering
-- Tiered ranking system for better organization
-
-## 🎯 What Needs to Be Done
-
-### High Priority
-1. **Error Handling & User Feedback**
-   - Consistent error messages across the app
-   - Toast notifications for success/error states
-   - ✅ Network error handling with retry options
-   - ✅ Offline mode detection
-
-2. **Performance Optimization**
-   - Implement pagination for book lists (currently loads all books)
-   - Add virtualized lists (FlatList optimization)
-   - ✅ Image caching and lazy loading
-   - ✅ Optimistic UI updates for better perceived performance
-
-3. **Testing**
-   - Unit tests for ranking algorithm
-   - Integration tests for API calls
-   - E2E tests for critical user flows
-   - Performance testing
-
-### Medium Priority
-4. **Search Enhancements**
-   - Advanced filters (genre, year, author, etc.)
-   - Saved searches
-   - Search suggestions/autocomplete
-
-5. **Social Features**
-   - Reviews on books (distinct from activity comments)
-   - Book clubs/groups
-   - Sharing book lists
-   - Reading challenges
-
-6. **Analytics & Insights**
-   - Reading statistics dashboard
-   - Genre breakdown
-   - Reading goals and progress
-   - Yearly reading summaries
-
-### Low Priority
-7. **UI/UX Polish**
-   - Animations and transitions
-   - Skeleton loaders
-   - ✅ Haptic feedback (expo-haptics integrated)
-   - Dark mode support
-
-8. **Accessibility**
-   - Screen reader support
-   - Keyboard navigation
-   - High contrast mode
-   - Font size adjustments
-
-## 🚀 Scalability Considerations
-
-### Database & Backend
-
-#### Current State
-- ✅ Row Level Security (RLS) policies implemented
-- ✅ Database triggers for automatic calculations
-- ✅ Indexes on frequently queried columns
-- ✅ Unique constraints to prevent duplicates
-
-#### Recommendations for Scale
-
-1. **Database Indexing**
-   - Add composite indexes for common query patterns:
-     ```sql
-     CREATE INDEX idx_user_books_user_rating_score 
-       ON user_books(user_id, rating, rank_score DESC);
-     CREATE INDEX idx_books_title_search 
-       ON books USING gin(to_tsvector('english', title));
-     ```
-   - Consider full-text search indexes for book search
-   - Monitor query performance with `EXPLAIN ANALYZE`
-
-2. **Caching Strategy**
-   - **Redis/Memcached** for frequently accessed data:
-     - User profiles
-     - Leaderboard top 100
-     - Popular book stats
-     - Search results (with TTL)
-   - **CDN** for static assets:
-     - Book cover images
-     - Profile photos
-   - **Client-side caching**:
-     - Cache book search results
-     - Cache user's book list
-     - Use React Query or SWR for smart caching
-
-3. **Database Partitioning**
-   - Partition `user_books` table by `user_id` hash for large scale
-   - Consider time-based partitioning for activity logs (if added)
-
-4. **Read Replicas**
-   - Use Supabase read replicas for leaderboard queries
-   - Separate read/write operations where possible
-
-5. **Background Jobs**
-   - Move rank recalculation to background jobs (Edge Functions)
-   - Batch update community statistics
-   - Use Supabase Edge Functions or external job queue (Bull, BullMQ)
-   - Schedule periodic tasks for:
-     - Recalculating global rankings
-     - Updating community stats
-     - Cleaning up old data
-
-### API & Rate Limiting
-
-1. **Rate Limiting**
-   - Implement rate limiting per user/IP
-   - Use Supabase Edge Functions with rate limiting middleware
-   - Consider Cloudflare or similar for DDoS protection
-
-2. **API Optimization**
-   - Batch API requests where possible
-   - Use GraphQL or REST endpoints that return only needed data
-   - Implement request deduplication
-   - Use connection pooling for database connections
-
-3. **External API Management**
-   - Implement robust retry logic with exponential backoff
-   - Cache Google Books API responses (already partially done)
-   - Consider Open Library API rate limiting
-   - Monitor API quota usage
-
-### Frontend Performance
-
-1. **Code Splitting**
-   - Lazy load screens and heavy components
-   - Split navigation stacks
-   - Use React.lazy() for modals and less-used screens
-
-2. **Image Optimization**
-   - Implement image compression
-   - Use WebP format where supported
-   - Lazy load images below the fold
-   - Use placeholder images while loading
-
-3. **State Management**
-   - Consider Redux or Zustand for complex state
-   - Implement proper state normalization
-   - Use React Query for server state management
-
-4. **Bundle Size**
-   - Analyze bundle with `expo-bundle-analyzer`
-   - Remove unused dependencies
-   - Use tree-shaking effectively
-   - Consider code splitting by route
-
-### Monitoring & Observability
-
-1. **Error Tracking**
-   - Integrate Sentry or similar for error tracking
-   - Track API errors and user-reported issues
-   - Set up alerts for critical errors
-
-2. **Performance Monitoring**
-   - Track API response times
-   - Monitor database query performance
-   - Use React Native Performance Monitor
-   - Track Core Web Vitals (for web version)
-
-3. **Analytics**
-   - User behavior tracking (privacy-compliant)
-   - Feature usage metrics
-   - Conversion funnel analysis
-   - A/B testing infrastructure
-
-### Infrastructure
-
-1. **CDN & Asset Delivery**
-   - Use Cloudflare or similar CDN
-   - Cache book covers and profile photos
-   - Implement cache invalidation strategy
-
-2. **Database Scaling**
-   - Monitor database size and growth
-   - Plan for Supabase scaling (or migration path)
-   - Consider connection pooling (PgBouncer)
-   - Regular database maintenance (VACUUM, ANALYZE)
-
-3. **Edge Functions**
-   - Move heavy computations to Edge Functions
-   - Use for rank recalculation
-   - Implement webhooks for async operations
-
-### Security
-
-1. **Data Protection**
-   - Encrypt sensitive data at rest
-   - Use HTTPS everywhere
-   - Implement proper CORS policies
-   - Regular security audits
-
-2. **Authentication**
-   - Implement refresh token rotation
-   - Add 2FA support
-   - Rate limit authentication attempts
-   - Monitor for suspicious activity
-
-3. **Input Validation**
-   - Validate all user inputs on both client and server
-   - Sanitize user-generated content
-   - Implement SQL injection prevention (Supabase handles this, but be aware)
-
-### Scalability Milestones
-
-- **1,000 users**: Current architecture should handle this well
-- **10,000 users**: Add caching layer, optimize queries
-- **100,000 users**: Implement read replicas, background jobs, CDN
-- **1,000,000+ users**: Consider microservices, database sharding, dedicated infrastructure
-
-## 📚 Additional Resources
-
-- [Supabase Documentation](https://supabase.com/docs)
-- [Expo Documentation](https://docs.expo.dev/)
-- [React Navigation](https://reactnavigation.org/)
-- [Open Library API](https://openlibrary.org/developers/api)
-- [Google Books API](https://developers.google.com/books)
-
-## 🤝 Contributing
-
-This is a personal project, but suggestions and feedback are welcome!
-
-## 📄 License
-
-Private project - All rights reserved
+Create a `profile-photos` bucket (public read access) in your Supabase project. The RLS policy on storage allows authenticated users to upload to their own `{userId}/` prefix.
