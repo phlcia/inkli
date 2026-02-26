@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
 import {
@@ -22,6 +22,10 @@ import { OfflineBanner } from './src/components/OfflineBanner';
 import AuthStackNavigator from './src/navigation/AuthStackNavigator';
 import { supabase } from './src/config/supabase';
 import { clearBadge, requestBadgePermission } from './src/services/notifications';
+import {
+  storePendingInviteCode,
+  clearPendingInviteCode,
+} from './src/services/invites';
 import 'react-native-get-random-values';
 import 'react-native-url-polyfill/auto';
 
@@ -36,8 +40,19 @@ function AppContent() {
     skipped_onboarding_quiz: boolean;
     member_since: string | null;
     created_at: string | null;
+    sent_invites_count: number;
+    grandfathered_invite_unlock: boolean;
   } | null>(null);
   const [profileRefreshCount, setProfileRefreshCount] = useState(0);
+  const prevUserRef = useRef(user);
+
+  // Clear pending invite code when auth session is destroyed (sign out or expiry).
+  useEffect(() => {
+    if (prevUserRef.current !== null && user === null) {
+      void clearPendingInviteCode();
+    }
+    prevUserRef.current = user;
+  }, [user]);
 
   // Request badge-only notification permission once the user is authenticated.
   useEffect(() => {
@@ -55,6 +70,43 @@ function AppContent() {
     return () => subscription.remove();
   }, []);
 
+  // Deep link handling (invite URLs and OAuth). Runs in AppContent so we can check user for invite.
+  useEffect(() => {
+    const handleDeepLink = async (event: { url: string }) => {
+      if (!event?.url) return;
+      try {
+        const inviteMatch = event.url.match(/\/invite\/([a-zA-Z0-9]+)/);
+        if (inviteMatch?.[1]) {
+          if (!user) {
+            await storePendingInviteCode(inviteMatch[1]);
+          }
+          return;
+        }
+        const url = new URL(event.url);
+        let code = url.searchParams.get('code');
+        if (!code && url.hash) {
+          const hashParams = new URLSearchParams(url.hash.substring(1));
+          code = hashParams.get('code');
+        }
+        if (!code) {
+          const codeMatch = event.url.match(/[#&]code=([^&]+)/);
+          code = codeMatch?.[1] ?? null;
+        }
+        if (code) {
+          const { error } = await supabase.auth.exchangeCodeForSession(code);
+          if (error) console.error('Error exchanging code for session:', error);
+        }
+      } catch (error) {
+        console.error('Error handling deep link:', error);
+      }
+    };
+    const subscription = Linking.addEventListener('url', handleDeepLink);
+    void Linking.getInitialURL().then((url) => {
+      if (url) handleDeepLink({ url });
+    });
+    return () => subscription.remove();
+  }, [user]);
+
   useEffect(() => {
     const fetchProfileFlags = async () => {
       if (!user) {
@@ -67,7 +119,7 @@ function AppContent() {
       try {
         const { data, error } = await supabase
           .from('user_profiles')
-          .select('completed_onboarding_quiz, skipped_onboarding_quiz, member_since, created_at')
+          .select('completed_onboarding_quiz, skipped_onboarding_quiz, member_since, created_at, sent_invites_count, grandfathered_invite_unlock')
           .eq('user_id', user.id)
           .single();
 
@@ -78,6 +130,8 @@ function AppContent() {
             skipped_onboarding_quiz: false,
             member_since: null,
             created_at: null,
+            sent_invites_count: 0,
+            grandfathered_invite_unlock: false,
           });
           return;
         }
@@ -87,6 +141,8 @@ function AppContent() {
           skipped_onboarding_quiz: Boolean(data.skipped_onboarding_quiz),
           member_since: data.member_since ?? null,
           created_at: data.created_at ?? null,
+          sent_invites_count: Number(data.sent_invites_count) || 0,
+          grandfathered_invite_unlock: Boolean(data.grandfathered_invite_unlock),
         });
       } catch (error) {
         console.error('Exception loading onboarding flags:', error);
@@ -95,6 +151,8 @@ function AppContent() {
           skipped_onboarding_quiz: false,
           member_since: null,
           created_at: null,
+          sent_invites_count: 0,
+          grandfathered_invite_unlock: false,
         });
       } finally {
         setProfileLoading(false);
@@ -120,6 +178,13 @@ function AppContent() {
     !profileFlags.completed_onboarding_quiz &&
     !profileFlags.skipped_onboarding_quiz;
 
+  const needsInviteGate =
+    hasUser &&
+    !needsOnboardingQuiz &&
+    !profileFlags?.grandfathered_invite_unlock &&
+    (profileFlags?.sent_invites_count ?? 0) < 4 &&
+    !inviteGateDismissed;
+
   if (isLoading || (hasUser && (profileLoading || profileFlags === null))) {
     return (
       <View style={styles.loadingContainer}>
@@ -138,6 +203,11 @@ function AppContent() {
             <AuthStackNavigator
               initialRouteName="Quiz"
               onQuizComplete={() => setProfileRefreshCount((count) => count + 1)}
+            />
+          ) : needsInviteGate ? (
+            <AuthStackNavigator
+              initialRouteName="InviteGate"
+              onInviteGateCleared={() => setProfileRefreshCount((count) => count + 1)}
             />
           ) : (
             <TabNavigator />
@@ -160,58 +230,6 @@ export default function App() {
     'Inter-Medium': Inter_500Medium,
     'Inter-SemiBold': Inter_600SemiBold,
   });
-
-  useEffect(() => {
-    // Handle OAuth redirects
-    const handleDeepLink = async (event: { url: string }) => {
-      if (event.url) {
-        try {
-          // Extract code from URL
-          const url = new URL(event.url);
-          let code = url.searchParams.get('code');
-          
-          // If not in query params, check hash fragment
-          if (!code && url.hash) {
-            const hashParams = new URLSearchParams(url.hash.substring(1));
-            code = hashParams.get('code');
-          }
-
-          // If still not found, try to extract from the full URL string as fallback
-          if (!code) {
-            const codeMatch = event.url.match(/[#&]code=([^&]+)/);
-            code = codeMatch?.[1] ?? null;
-          }
-
-          if (code) {
-            // Exchange code for session
-            const { error } = await supabase.auth.exchangeCodeForSession(code);
-            if (error) {
-              console.error('Error exchanging code for session:', error);
-            }
-            // Session will be handled by AuthContext's onAuthStateChange
-          } else {
-            console.log('No code found in deep link URL:', event.url);
-          }
-        } catch (error) {
-          console.error('Error handling deep link:', error);
-        }
-      }
-    };
-
-    // Listen for deep links
-    const subscription = Linking.addEventListener('url', handleDeepLink);
-
-    // Check if app was opened with a URL
-    Linking.getInitialURL().then((url) => {
-      if (url) {
-        handleDeepLink({ url });
-      }
-    });
-
-    return () => {
-      subscription.remove();
-    };
-  }, []);
 
   const areFontsLoaded = Boolean(fontsLoaded);
 

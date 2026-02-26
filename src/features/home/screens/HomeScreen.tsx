@@ -26,12 +26,15 @@ import { fetchBookWithUserStatus } from '../../../services/bookDetails';
 import { supabase } from '../../../config/supabase';
 import { useToggleWantToRead } from '../../books/hooks/useToggleWantToRead';
 import type { UserBook } from '../../../services/books';
+import { useInviteTier } from '../../../hooks/useInviteTier';
+import { FeatureTeaser } from '../../../components/FeatureTeaser';
 import heartIcon from '../../../../assets/heart.png';
 import searchIcon from '../../../../assets/search.png';
 
 export default function HomeScreen() {
   const { user } = useAuth();
   const navigation = useNavigation<StackNavigationProp<HomeStackParamList>>();
+  const { hasFeature, loading: inviteTierLoading } = useInviteTier();
   const [cards, setCards] = useState<ActivityFeedItem[]>([]);
   const [cursor, setCursor] = useState<ActivityFeedCursor | null>(null);
   const [hasMore, setHasMore] = useState(true);
@@ -348,21 +351,40 @@ export default function HomeScreen() {
         <Text style={styles.searchBarText}>Search for books or members...</Text>
       </Pressable>
 
-      <FlatList
-        data={cards}
-        keyExtractor={(item) => item.id}
-        renderItem={renderItem}
-        contentContainerStyle={styles.listContent}
-        onEndReached={handleLoadMore}
-        onEndReachedThreshold={0.4}
-        refreshing={refreshing}
-        onRefresh={handleRefresh}
-        ListEmptyComponent={listEmptyComponent}
-        ListFooterComponent={listFooterComponent}
-        removeClippedSubviews
-        initialNumToRender={6}
-        windowSize={7}
-      />
+      {hasFeature('activity_feed') ? (
+        <FlatList
+          data={cards}
+          keyExtractor={(item) => item.id}
+          renderItem={renderItem}
+          contentContainerStyle={styles.listContent}
+          onEndReached={handleLoadMore}
+          onEndReachedThreshold={0.4}
+          refreshing={refreshing}
+          onRefresh={handleRefresh}
+          ListHeaderComponent={
+            <View style={styles.invitesBoxContainer}>
+              <FeatureTeaser
+                featureKey="activity_feed"
+                loading={inviteTierLoading}
+                onPress={() => navigation.navigate('InviteHub')}
+              />
+            </View>
+          }
+          ListEmptyComponent={listEmptyComponent}
+          ListFooterComponent={listFooterComponent}
+          removeClippedSubviews
+          initialNumToRender={6}
+          windowSize={7}
+        />
+      ) : (
+        <View style={styles.teaserContainer}>
+          <FeatureTeaser
+            featureKey="activity_feed"
+            loading={inviteTierLoading}
+            onPress={() => navigation.navigate('InviteHub')}
+          />
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -371,6 +393,11 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.creamBackground,
+  },
+  teaserContainer: {
+    flex: 1,
+    paddingHorizontal: 20,
+    paddingTop: 20,
   },
   header: {
     flexDirection: 'row',
@@ -461,6 +488,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: typography.body,
     color: colors.brownText,
+  },
+  invitesBoxContainer: {
+    marginBottom: 16,
   },
   listContent: {
     flexGrow: 1,

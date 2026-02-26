@@ -567,6 +567,16 @@ export default function ProfileScreen() {
       return (
         <View style={styles.profileContent}>
           <View style={styles.settingsSection}>
+            <TouchableOpacity
+              style={styles.inviteRow}
+              onPress={() => navigation.getParent()?.navigate('Home' as never, { screen: 'InviteHub' } as never)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.inviteRowText}>Invite Friends & Unlock Features</Text>
+              <Text style={styles.inviteRowChevron}>›</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.settingsSection}>
             <Text style={styles.sectionTitle}>
               Follow Requests {incomingRequests.length > 0 ? `(${incomingRequests.length})` : ''}
             </Text>
@@ -1176,6 +1186,24 @@ const styles = StyleSheet.create({
     fontFamily: typography.body,
     color: colors.brownText,
     opacity: 0.6,
+  },
+  inviteRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    paddingHorizontal: 4,
+  },
+  inviteRowText: {
+    fontFamily: typography.body,
+    fontSize: 16,
+    color: colors.primaryBlue,
+  },
+  inviteRowChevron: {
+    fontFamily: typography.body,
+    fontSize: 20,
+    color: colors.brownText,
+    opacity: 0.5,
   },
   rowBetween: {
     flexDirection: 'row',

@@ -15,6 +15,8 @@ import { colors, typography } from '../../../config/theme';
 import { supabase } from '../../../config/supabase';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useErrorHandler } from '../../../contexts/ErrorHandlerContext';
+import { useInviteTier } from '../../../hooks/useInviteTier';
+import { FeatureTeaser } from '../../../components/FeatureTeaser';
 
 interface LeaderboardUser {
   user_id: string;
@@ -28,6 +30,7 @@ export default function LeaderboardScreen() {
   const { user: currentUser } = useAuth();
   const { handleApiError } = useErrorHandler();
   const navigation = useNavigation<any>();
+  const { hasFeature, loading: inviteTierLoading } = useInviteTier();
   const [topUsers, setTopUsers] = useState<LeaderboardUser[]>([]);
   const [currentUserRank, setCurrentUserRank] = useState<LeaderboardUser | null>(null);
   const [loading, setLoading] = useState(true);
@@ -145,6 +148,25 @@ export default function LeaderboardScreen() {
     },
     [currentUser?.id, navigation]
   );
+
+  if (!hasFeature('leaderboard_circles')) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={styles.header}>
+          <View style={styles.logoContainer}>
+            <Text style={styles.logo}>Leaderboard</Text>
+          </View>
+        </View>
+        <View style={styles.teaserWrapper}>
+          <FeatureTeaser
+            featureKey="leaderboard_circles"
+            loading={inviteTierLoading}
+            onPress={() => navigation.getParent()?.navigate('Home' as never, { screen: 'InviteHub' } as never)}
+          />
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   if (loading) {
     return (
@@ -298,6 +320,11 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  teaserWrapper: {
+    flex: 1,
+    paddingHorizontal: 20,
+    paddingTop: 20,
   },
   scrollView: {
     flex: 1,

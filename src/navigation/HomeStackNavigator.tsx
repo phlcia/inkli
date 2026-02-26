@@ -10,6 +10,7 @@ import FollowersFollowingScreen from '../features/social/screens/FollowersFollow
 import UserProfileScreen from '../features/profile/screens/UserProfileScreen';
 import UserShelfScreen from '../features/social/screens/UserShelfScreen';
 import NotificationsScreen from '../features/social/screens/NotificationsScreen';
+import InviteHubScreen from '../features/profile/screens/InviteHubScreen';
 import {
   ActivityLikesParams,
   ActivityCommentsParams,
@@ -19,6 +20,7 @@ import {
 
 export type HomeStackParamList = {
   HomeMain: undefined;
+  InviteHub: undefined;
   BookDetail: { book: any };
   BookRanking: BookRankingParams;
   ActivityLikes: ActivityLikesParams;
@@ -47,6 +49,14 @@ export default function HomeStackNavigator() {
       }}
     >
       <Stack.Screen name="HomeMain" component={HomeScreen} />
+      <Stack.Screen
+        name="InviteHub"
+        component={InviteHubScreen}
+        options={{
+          presentation: 'card',
+          animation: 'slide_from_right',
+        }}
+      />
       <Stack.Screen
         name="Notifications"
         component={NotificationsScreen}

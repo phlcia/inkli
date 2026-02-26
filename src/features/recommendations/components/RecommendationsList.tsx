@@ -25,6 +25,8 @@ import { getBookCircles, BookCircleStats, formatCount } from '../../../services/
 import { supabase } from '../../../config/supabase';
 import { isBookSparse } from '../../../utils/bookHelpers';
 import { enrichBook } from '../../../services/enrichment';
+import { useInviteTier } from '../../../hooks/useInviteTier';
+import { FeatureTeaser } from '../../../components/FeatureTeaser';
 
 type RecommendationsListProps = {
   showHeader?: boolean;
@@ -36,6 +38,7 @@ export default function RecommendationsList({ showHeader = true }: Recommendatio
   const { user } = useAuth();
   const { handleApiError } = useErrorHandler();
   const navigation = useNavigation<any>();
+  const { hasFeature, loading: inviteTierLoading } = useInviteTier();
   const pageSize = 30;
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -362,6 +365,18 @@ export default function RecommendationsList({ showHeader = true }: Recommendatio
       </TouchableOpacity>
     );
   };
+
+  if (!hasFeature('friend_recommendations')) {
+    return (
+      <View style={styles.container}>
+        <FeatureTeaser
+          featureKey="friend_recommendations"
+          loading={inviteTierLoading}
+          onPress={() => navigation.getParent()?.navigate('Home' as never, { screen: 'InviteHub' } as never)}
+        />
+      </View>
+    );
+  }
 
   if (loading) {
     return (

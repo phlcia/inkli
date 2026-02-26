@@ -31,8 +31,8 @@ function ProfileTabIcon({ focused }: { focused: boolean }) {
           .from('user_profiles')
           .select('profile_photo_url')
           .eq('user_id', user.id)
-          .single();
-        
+          .maybeSingle();
+
         if (data?.profile_photo_url) {
           setProfilePhotoUrl(data.profile_photo_url);
         }

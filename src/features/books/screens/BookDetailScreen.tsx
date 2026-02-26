@@ -32,6 +32,8 @@ import { useBookStats } from '../hooks/useBookStats';
 import { useFriendsRankings } from '../hooks/useFriendsRankings';
 import { useOtherReaders } from '../hooks/useOtherReaders';
 import { useBookThoughts } from '../hooks/useBookThoughts';
+import { useInviteTier } from '../../../hooks/useInviteTier';
+import { FeatureTeaser } from '../../../components/FeatureTeaser';
 import addIcon from '../../../../assets/add.png';
 import readingIcon from '../../../../assets/reading.png';
 import bookmarkIcon from '../../../../assets/bookmark.png';
@@ -62,6 +64,8 @@ export default function BookDetailScreen() {
   const [resolvedBookId, setResolvedBookId] = useState<string | null>(book.id || null);
   const [showFeedbackForm, setShowFeedbackForm] = useState(false);
   const [dismissedOtherReaderIds, setDismissedOtherReaderIds] = useState<Set<string>>(new Set());
+
+  const { hasFeature, loading: inviteTierLoading } = useInviteTier();
 
   const coverUrl = book.cover_url;
   const hasCover =
@@ -801,72 +805,82 @@ export default function BookDetailScreen() {
           </View>
         )}
 
-        {/* Rating Circles */}
-        <View style={styles.circlesSection}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.circlesScrollContent}
-          >
-            <View style={styles.circlesRow}>
-              {userRankScore !== null && (
+        {/* Rating Circles (community_scores) */}
+        {hasFeature('community_scores') ? (
+          <View style={styles.circlesSection}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.circlesScrollContent}
+            >
+              <View style={styles.circlesRow}>
+                {userRankScore !== null && (
+                  <View style={styles.circleCard}>
+                    <View
+                      style={[
+                        styles.ratingCircle,
+                        { backgroundColor: getScoreTierColor(userRankScore, 1) },
+                      ]}
+                    >
+                      <Text style={styles.circleScore}>
+                        {formatCircleScore(userRankScore)}
+                      </Text>
+                    </View>
+                    <Text style={styles.circleLabel}>What you{'\n'}think</Text>
+                  </View>
+                )}
                 <View style={styles.circleCard}>
                   <View
                     style={[
                       styles.ratingCircle,
-                      { backgroundColor: getScoreTierColor(userRankScore, 1) },
+                      { backgroundColor: getScoreTierColor(circleStats?.friends.average ?? null, circleStats?.friends.count ?? 0) },
                     ]}
                   >
                     <Text style={styles.circleScore}>
-                      {formatCircleScore(userRankScore)}
+                      {formatCircleScore(circleStats?.friends.average)}
                     </Text>
+                    {Boolean(circleStats?.friends.count) && (
+                      <View style={styles.circleCountBadge}>
+                        <Text style={styles.circleCountText}>
+                          {formatCircleCount(circleStats?.friends.count)}
+                        </Text>
+                      </View>
+                    )}
                   </View>
-                  <Text style={styles.circleLabel}>What you{'\n'}think</Text>
+                  <Text style={styles.circleLabel}>What your{'\n'}friends think</Text>
                 </View>
-              )}
-              <View style={styles.circleCard}>
-                <View
-                  style={[
-                    styles.ratingCircle,
-                    { backgroundColor: getScoreTierColor(circleStats?.friends.average ?? null, circleStats?.friends.count ?? 0) },
-                  ]}
-                >
-                  <Text style={styles.circleScore}>
-                    {formatCircleScore(circleStats?.friends.average)}
-                  </Text>
-                  {Boolean(circleStats?.friends.count) && (
-                    <View style={styles.circleCountBadge}>
-                      <Text style={styles.circleCountText}>
-                        {formatCircleCount(circleStats?.friends.count)}
-                      </Text>
-                    </View>
-                  )}
+                <View style={styles.circleCard}>
+                  <View
+                    style={[
+                      styles.ratingCircle,
+                      { backgroundColor: getScoreTierColor(circleStats?.global.average ?? null, circleStats?.global.count ?? 0) },
+                    ]}
+                  >
+                    <Text style={styles.circleScore}>
+                      {formatCircleScore(circleStats?.global.average)}
+                    </Text>
+                    {Boolean(circleStats?.global.count) && (
+                      <View style={styles.circleCountBadge}>
+                        <Text style={styles.circleCountText}>
+                          {formatCircleCount(circleStats?.global.count)}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text style={styles.circleLabel}>What Inkli{'\n'}users think</Text>
                 </View>
-                <Text style={styles.circleLabel}>What your{'\n'}friends think</Text>
               </View>
-              <View style={styles.circleCard}>
-                <View
-                  style={[
-                    styles.ratingCircle,
-                    { backgroundColor: getScoreTierColor(circleStats?.global.average ?? null, circleStats?.global.count ?? 0) },
-                  ]}
-                >
-                  <Text style={styles.circleScore}>
-                    {formatCircleScore(circleStats?.global.average)}
-                  </Text>
-                  {Boolean(circleStats?.global.count) && (
-                    <View style={styles.circleCountBadge}>
-                      <Text style={styles.circleCountText}>
-                        {formatCircleCount(circleStats?.global.count)}
-                      </Text>
-                    </View>
-                  )}
-                </View>
-                <Text style={styles.circleLabel}>What Inkli{'\n'}users think</Text>
-              </View>
-            </View>
-          </ScrollView>
-        </View>
+            </ScrollView>
+          </View>
+        ) : (
+          <View style={styles.circlesSection}>
+            <FeatureTeaser
+              featureKey="community_scores"
+              loading={inviteTierLoading}
+              onPress={() => navigation.getParent()?.navigate('Home' as never, { screen: 'InviteHub' } as never)}
+            />
+          </View>
+        )}
 
         {/* Description */}
         {book.description && (
@@ -954,27 +968,37 @@ export default function BookDetailScreen() {
           onClearEditingSession={() => setEditingSessionId(null)}
         />
 
-        <FriendsRankingsSection
-          friendsRankings={friendsRankings}
-          friendsRankingsLoading={friendsRankingsLoading}
-          friendsRankingsError={friendsRankingsError}
-          friendsRankingsTotalCount={friendsRankingsTotalCount}
-          onRetry={handleRetryFriendsRankings}
-          onShowMore={handleShowMoreFriendsRankings}
-          onPressUser={(userId, username) =>
-            navigation.navigate('UserProfile', {
-              userId,
-              username,
-            })
-          }
-          onPressBook={handleFriendBookPress}
-          viewerStatus={currentStatus}
-          onToggleWantToRead={() => handleIconPress('want_to_read')}
-          sectionRef={friendsRankingsSectionRef}
-          styles={styles}
-          FriendsRankingSkeletonCard={FriendsRankingSkeletonCard}
-          loadingIndicatorColor={colors.white}
-        />
+        {hasFeature('friends_rankings') ? (
+          <FriendsRankingsSection
+            friendsRankings={friendsRankings}
+            friendsRankingsLoading={friendsRankingsLoading}
+            friendsRankingsError={friendsRankingsError}
+            friendsRankingsTotalCount={friendsRankingsTotalCount}
+            onRetry={handleRetryFriendsRankings}
+            onShowMore={handleShowMoreFriendsRankings}
+            onPressUser={(userId, username) =>
+              navigation.navigate('UserProfile', {
+                userId,
+                username,
+              })
+            }
+            onPressBook={handleFriendBookPress}
+            viewerStatus={currentStatus}
+            onToggleWantToRead={() => handleIconPress('want_to_read')}
+            sectionRef={friendsRankingsSectionRef}
+            styles={styles}
+            FriendsRankingSkeletonCard={FriendsRankingSkeletonCard}
+            loadingIndicatorColor={colors.white}
+          />
+        ) : (
+          <View style={styles.descriptionSection}>
+            <FeatureTeaser
+              featureKey="friends_rankings"
+              loading={inviteTierLoading}
+              onPress={() => navigation.getParent()?.navigate('Home' as never, { screen: 'InviteHub' } as never)}
+            />
+          </View>
+        )}
 
         {/* Other readers: users who ranked this book (excluding people you follow) */}
         {!otherReadersLoading && otherReaders.filter((r) => !dismissedOtherReaderIds.has(r.user_id)).length > 0 && (

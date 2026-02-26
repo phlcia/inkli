@@ -5,6 +5,7 @@ import WelcomeScreen from '../features/auth/screens/WelcomeScreen';
 import CreateAccountScreen from '../features/auth/screens/CreateAccountScreen';
 import SignUpEmailScreen from '../features/auth/screens/SignUpEmailScreen';
 import QuizScreen from '../features/onboarding/screens/QuizScreen';
+import InviteGateScreen from '../features/onboarding/screens/InviteGateScreen';
 import SignInScreen from '../features/auth/screens/SignInScreen';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -22,6 +23,7 @@ export type AuthStackParamList = {
         phone?: string | null;
       }
     | undefined;
+  InviteGate: undefined;
 };
 
 const Stack = createNativeStackNavigator<AuthStackParamList>();
@@ -29,11 +31,14 @@ const Stack = createNativeStackNavigator<AuthStackParamList>();
 interface AuthStackNavigatorProps {
   initialRouteName?: keyof AuthStackParamList;
   onQuizComplete?: () => void;
+  onInviteGateCleared?: () => void;
 }
 
 export default function AuthStackNavigator({
   initialRouteName = 'Welcome',
   onQuizComplete,
+  onInviteGateDismiss,
+  onInviteGateCleared,
 }: AuthStackNavigatorProps) {
   const { signInWithApple, signInWithGoogle } = useAuth();
 
@@ -127,6 +132,15 @@ export default function AuthStackNavigator({
               // Navigation to main app happens automatically via AuthContext
             }}
             onQuizComplete={onQuizComplete}
+          />
+        )}
+      </Stack.Screen>
+
+      <Stack.Screen name="InviteGate">
+        {(props) => (
+          <InviteGateScreen
+            {...props}
+            onInviteGateCleared={onInviteGateCleared}
           />
         )}
       </Stack.Screen>
