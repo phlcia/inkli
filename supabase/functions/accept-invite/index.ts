@@ -59,20 +59,30 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ error: 'Invalid or missing invite_code' }, 400)
     }
 
-    // Find inviter by invite_code
-    const { data: inviterProfile, error: inviterError } = await supabaseDb
-      .from('user_profiles')
-      .select('user_id')
-      .eq('invite_code', inviteCode)
+    // Look up invite link by code (single-use, 24h expiry)
+    const { data: inviteLink, error: inviteLinkError } = await supabaseDb
+      .from('invite_links')
+      .select('id, inviter_user_id, expires_at, accepted_by')
+      .eq('code', inviteCode)
       .maybeSingle()
 
-    if (inviterError || !inviterProfile) {
+    if (inviteLinkError || !inviteLink) {
       return jsonResponse({ error: 'Invalid or expired invite code' }, 400)
     }
 
-    const inviterUserId = inviterProfile.user_id as string
+    const inviterUserId = inviteLink.inviter_user_id as string
     if (inviterUserId === inviteeUserId) {
       return jsonResponse({ error: 'You cannot use your own invite code' }, 400)
+    }
+
+    const expiresAt = inviteLink.expires_at ? new Date(inviteLink.expires_at as string).getTime() : null
+    const nowMs = Date.now()
+    if (!expiresAt || expiresAt < nowMs) {
+      return jsonResponse({ error: 'Invalid or expired invite code' }, 400)
+    }
+
+    if (inviteLink.accepted_by) {
+      return jsonResponse({ error: 'Invalid or expired invite code' }, 400)
     }
 
     // Load invitee profile to check already linked and onboarding status
@@ -97,6 +107,23 @@ Deno.serve(async (req: Request) => {
     }
 
     const now = new Date().toISOString()
+
+    // Mark invite link as accepted (single-use)
+    const { data: updatedLink, error: updateLinkError } = await supabaseDb
+      .from('invite_links')
+      .update({
+        accepted_by: inviteeUserId,
+        accepted_at: now,
+      })
+      .eq('id', inviteLink.id)
+      .is('accepted_by', null)
+      .select('id')
+      .maybeSingle()
+
+    if (updateLinkError || !updatedLink) {
+      console.error('accept-invite update invite_links error:', updateLinkError)
+      return jsonResponse({ error: 'Invalid or expired invite code' }, 400)
+    }
 
     // Insert user_invites row with accepted_at set (trigger will credit inviter)
     const { error: insertInviteError } = await supabaseDb

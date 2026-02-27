@@ -182,8 +182,7 @@ function AppContent() {
     hasUser &&
     !needsOnboardingQuiz &&
     !profileFlags?.grandfathered_invite_unlock &&
-    (profileFlags?.sent_invites_count ?? 0) < 4 &&
-    !inviteGateDismissed;
+    (profileFlags?.sent_invites_count ?? 0) < 4;
 
   if (isLoading || (hasUser && (profileLoading || profileFlags === null))) {
     return (

@@ -411,7 +411,7 @@ Filter usage in the shelf view is tracked to `filter_events`:
 | `fetchUnlockedFeatures(userId)` | List of unlocked feature keys |
 | `acceptInvite(inviteCode)` | Call `accept-invite` edge function |
 | `spendInvitePoint(featureKey)` | Call `spend-invite-point` edge function |
-| `shareInviteLink(inviteCode)` | Open native share sheet; increment sent count on dismiss |
+| `shareInviteLink()` | Create a single-use invite link via `create-invite-link` and open native share sheet |
 | `storePendingInviteCode(code)` | Save deep-linked code to AsyncStorage |
 | `getPendingInviteCode()` | Read pending code from AsyncStorage |
 | `clearPendingInviteCode()` | Remove pending code from AsyncStorage |
@@ -566,6 +566,7 @@ All functions are in `supabase/functions/`. They run as Deno services.
 | `resolve-phone` | POST | Look up email address for a phone number (used by sign-in) |
 | `resolve-username` | POST | Look up email address for a username (used by sign-in) |
 | `spend-invite-point` | POST | Deduct one point and insert a row into `user_unlocked_features` |
+| `create-invite-link` | POST | Create a single-use, 24h invite link and increment sent count |
 
 ---
 

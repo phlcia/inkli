@@ -126,26 +126,46 @@ export async function spendInvitePoint(featureKey: FeatureKey): Promise<{ error:
   }
 }
 
-const INVITE_BASE_URL = 'https://inkli.app/invite';
-
 /**
- * Opens the native share sheet with the user's invite link.
- * On iOS, Share.share() resolves with sharedAction when the share sheet is
- * dismissed — not when the user actually sends. So we credit a "send" when
- * the sheet is dismissed. This is intentional: the 4-invite wall is easy to
- * clear. Do not add stricter checks (e.g. waiting for delivery) without
- * product approval.
+ * Opens the native share sheet with a fresh, single-use invite link.
+ * The actual sent-invites count is incremented in the create-invite-link
+ * edge function when the link row is created.
  */
-export async function shareInviteLink(inviteCode: string): Promise<void> {
-  const url = `${INVITE_BASE_URL}/${inviteCode}`;
-  const result = await Share.share({
-    message: `Join me on Inkli — share what you're reading and discover your next favorite book.\n${url}`,
-    url,
-    title: 'Join me on Inkli',
-  });
+export async function shareInviteLink(): Promise<void> {
+  try {
+    const { data, error } = await supabase.functions.invoke<{
+      code?: string;
+      url?: string;
+      error?: string;
+    }>('create-invite-link', {
+      method: 'POST',
+    });
 
-  if (result.action === Share.sharedAction) {
-    await supabase.rpc('increment_sent_invites_count');
+    if (error) {
+      console.warn('shareInviteLink: create-invite-link error', error);
+      return;
+    }
+
+    if (!data || !data.url) {
+      console.warn('shareInviteLink: missing url from create-invite-link');
+      return;
+    }
+
+    const url = data.url;
+    const message =
+      "HELLO i've been ranking all my books on inkli and i think you'd love it. join me? my link expires in 24 hours (˶ˆᗜˆ˵)\n" +
+      url;
+
+    await Share.share({
+      message,
+      url,
+      title: 'Join me on Inkli',
+    });
+  } catch (e) {
+    console.warn(
+      'shareInviteLink: unexpected error',
+      e instanceof Error ? e.message : String(e),
+    );
   }
 }
 

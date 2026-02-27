@@ -31,7 +31,6 @@ const FEATURE_LABELS: Record<FeatureKey, string> = {
 export default function InviteHubScreen() {
   const navigation = useNavigation();
   const {
-    inviteCode,
     sentCount,
     inviteCount,
     unspentPoints,
@@ -42,10 +41,16 @@ export default function InviteHubScreen() {
   } = useInviteTier();
 
   const [spendingKey, setSpendingKey] = useState<FeatureKey | null>(null);
+  const [sharing, setSharing] = useState(false);
 
   const handleShare = async () => {
-    if (!inviteCode) return;
-    await shareInviteLink(inviteCode);
+    if (sharing) return;
+    setSharing(true);
+    try {
+      await shareInviteLink();
+    } finally {
+      setSharing(false);
+    }
   };
 
   const handleUnlock = async (featureKey: FeatureKey) => {
@@ -89,8 +94,13 @@ export default function InviteHubScreen() {
             style={styles.shareButton}
             onPress={handleShare}
             activeOpacity={0.8}
+            disabled={sharing}
           >
-            <Text style={styles.shareButtonText}>Share invite link</Text>
+            {sharing ? (
+              <ActivityIndicator size="small" color={colors.white} />
+            ) : (
+              <Text style={styles.shareButtonText}>Share invite link</Text>
+            )}
           </TouchableOpacity>
         </View>
 

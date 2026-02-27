@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -28,9 +28,10 @@ export default function InviteGateScreen({
     sentCount,
     inviteCount,
     isWallCleared,
-    inviteCode,
     loading,
   } = useInviteTier();
+
+  const [sharing, setSharing] = useState(false);
 
   useEffect(() => {
     if (isWallCleared) {
@@ -55,8 +56,13 @@ export default function InviteGateScreen({
   }, []);
 
   const handleShare = async () => {
-    if (!inviteCode) return;
-    await shareInviteLink(inviteCode);
+    if (sharing) return;
+    setSharing(true);
+    try {
+      await shareInviteLink();
+    } finally {
+      setSharing(false);
+    }
   };
 
   if (loading) {
@@ -94,8 +100,13 @@ export default function InviteGateScreen({
           style={styles.shareButton}
           onPress={handleShare}
           activeOpacity={0.8}
+          disabled={sharing}
         >
-          <Text style={styles.shareButtonText}>Share invite link</Text>
+          {sharing ? (
+            <ActivityIndicator size="small" color={colors.white} />
+          ) : (
+            <Text style={styles.shareButtonText}>Share invite link</Text>
+          )}
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
