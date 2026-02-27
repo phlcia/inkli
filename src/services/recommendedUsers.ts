@@ -12,7 +12,7 @@ export interface MemberResult {
 
 export interface RecommendedUser extends MemberResult {
   mutual_count?: number | null;
-  source: 'contacts' | 'graph';
+  source: 'contacts' | 'graph' | 'popular';
 }
 
 type MatchContactsResponse = {
@@ -106,10 +106,49 @@ export async function getGraphRecommendations(
   }));
 }
 
+const POPULAR_READERS_FALLBACK_THRESHOLD = 5;
+
+/**
+ * Fallback: fetch active public readers the user doesn't already know about.
+ * Only called when contacts + graph together return fewer than POPULAR_READERS_FALLBACK_THRESHOLD results.
+ */
+async function getPopularReaders(
+  userId: string,
+  excludeIds: Set<string>,
+  limit: number
+): Promise<RecommendedUser[]> {
+  // Overfetch to account for client-side exclusion filtering
+  const { data, error } = await supabase
+    .from('user_profiles')
+    .select('user_id, username, name, profile_photo_url, account_type')
+    .eq('account_type', 'public')
+    .neq('user_id', userId)
+    .limit(limit + excludeIds.size + 10);
+
+  if (error) {
+    console.error('Error fetching popular readers fallback:', error);
+    return [];
+  }
+
+  return (data ?? [])
+    .filter((u) => !excludeIds.has(u.user_id))
+    .slice(0, limit)
+    .map((u) => ({
+      user_id: u.user_id,
+      username: u.username,
+      name: u.name ?? u.username,
+      profile_photo_url: u.profile_photo_url,
+      account_type: u.account_type,
+      mutual_count: undefined,
+      source: 'popular' as const,
+    }));
+}
+
 /**
  * Merge contacts-based and graph-based recommendations with graceful degradation.
  * - Uses Promise.allSettled so one failing source doesn't block the other.
  * - Dedupes by user_id, preferring contacts over graph.
+ * - Falls back to popular public readers when combined results are sparse.
  */
 export async function getMergedRecommendedUsers(userId: string): Promise<RecommendedUser[]> {
   const results = await Promise.allSettled([
@@ -131,11 +170,6 @@ export async function getMergedRecommendedUsers(userId: string): Promise<Recomme
     });
   }
 
-  // If both failed, bail.
-  if (!contacts.length && !graph.length) {
-    return [];
-  }
-
   const seen = new Set<string>();
   const merged: RecommendedUser[] = [];
 
@@ -149,6 +183,16 @@ export async function getMergedRecommendedUsers(userId: string): Promise<Recomme
     if (seen.has(user.user_id)) continue;
     seen.add(user.user_id);
     merged.push(user);
+  }
+
+  // Fallback: if contacts + graph are both sparse, fill with popular public readers
+  if (merged.length < POPULAR_READERS_FALLBACK_THRESHOLD) {
+    const needed = POPULAR_READERS_FALLBACK_THRESHOLD - merged.length;
+    const popular = await getPopularReaders(userId, seen, needed);
+    for (const user of popular) {
+      seen.add(user.user_id);
+      merged.push(user);
+    }
   }
 
   return merged;
