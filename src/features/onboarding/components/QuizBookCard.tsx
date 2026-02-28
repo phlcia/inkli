@@ -52,7 +52,7 @@ export default function QuizBookCard({ book, onChoose, disabled }: QuizBookCardP
         accessibilityHint="Selects this book as your preference"
         accessibilityState={{ disabled: !!disabled }}
       >
-        <Text style={styles.buttonText}>Choose this</Text>
+        <Text style={styles.buttonText}>Choose{'\n'}this</Text>
       </TouchableOpacity>
     </View>
   );
@@ -127,6 +127,7 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     fontSize: 16,
+    lineHeight: 20,
     fontFamily: typography.button,
     color: colors.white,
     fontWeight: '600',

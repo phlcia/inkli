@@ -251,7 +251,7 @@ Five lockable features: `community_scores`, `activity_feed`, `friend_recommendat
 - Each successful invite earns an `unspent_invite_point`
 - Points are spent via `spend-invite-point` edge function to unlock individual features
 - `grandfathered_invite_unlock` bypasses all feature gates
-- Invite links use deep link scheme `https://inkli.app/invite/{code}`
+- Invite links use deep link scheme `https://inkliapp.com/invite/{code}`
 - Native share sheet used to send; a "send" is counted when the share sheet is dismissed
 
 ### Analytics
