@@ -9,6 +9,7 @@ import {
 } from '../services/invites';
 
 const REFETCH_DELAY_MS = 500;
+const INVITE_FETCH_TIMEOUT_MS = 5000;
 
 export function useInviteTier() {
   const { user } = useAuth();
@@ -35,9 +36,16 @@ export function useInviteTier() {
     }
     setLoading(true);
     try {
-      const [profileResult, featuresResult] = await Promise.all([
+      const fetchPromise = Promise.all([
         fetchInviteProfile(userId),
         fetchUnlockedFeatures(userId),
+      ]);
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('Invite tier fetch timeout')), INVITE_FETCH_TIMEOUT_MS);
+      });
+      const [profileResult, featuresResult] = await Promise.race([
+        fetchPromise,
+        timeoutPromise,
       ]);
       if (profileResult.data) {
         setInviteCode(profileResult.data.invite_code || null);
@@ -50,7 +58,17 @@ export function useInviteTier() {
         setUnlockedKeys(new Set(featuresResult.data.map((r) => r.feature_key)));
       }
     } catch (error) {
-      console.error('useInviteTier refetch error:', error);
+      if (error instanceof Error && error.message === 'Invite tier fetch timeout') {
+        console.warn('useInviteTier: fetch timed out, using empty state');
+        setInviteCode(null);
+        setSentCount(0);
+        setInviteCount(0);
+        setUnspentPoints(0);
+        setUnlockedKeys(new Set());
+        setGrandfathered(false);
+      } else {
+        console.error('useInviteTier refetch error:', error);
+      }
     } finally {
       setLoading(false);
     }
@@ -122,5 +140,6 @@ export function useInviteTier() {
     availableToUnlock,
     inviteCode,
     loading,
+    refetch,
   };
 }

@@ -180,7 +180,6 @@ function AppContent() {
 
   const needsInviteGate =
     hasUser &&
-    !needsOnboardingQuiz &&
     !profileFlags?.grandfathered_invite_unlock &&
     (profileFlags?.sent_invites_count ?? 0) < 4;
 
@@ -198,15 +197,15 @@ function AppContent() {
         <OfflineBanner visible={!isOnline} />
         <NavigationContainer key="main-navigator">
           {hasUser ? (
-          needsOnboardingQuiz ? (
-            <AuthStackNavigator
-              initialRouteName="Quiz"
-              onQuizComplete={() => setProfileRefreshCount((count) => count + 1)}
-            />
-          ) : needsInviteGate ? (
+          needsInviteGate ? (
             <AuthStackNavigator
               initialRouteName="InviteGate"
               onInviteGateCleared={() => setProfileRefreshCount((count) => count + 1)}
+            />
+          ) : needsOnboardingQuiz ? (
+            <AuthStackNavigator
+              initialRouteName="Quiz"
+              onQuizComplete={() => setProfileRefreshCount((count) => count + 1)}
             />
           ) : (
             <TabNavigator />

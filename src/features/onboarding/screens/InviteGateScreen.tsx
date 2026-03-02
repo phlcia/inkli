@@ -6,8 +6,10 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 import { colors, typography } from '../../../config/theme';
 import { useInviteTier } from '../../../hooks/useInviteTier';
 import {
@@ -16,22 +18,88 @@ import {
   acceptInvite,
   clearPendingInviteCode,
 } from '../../../services/invites';
+import { useAuth } from '../../../contexts/AuthContext';
+import { supabase } from '../../../config/supabase';
+import { updatePrivateData } from '../../../services/userPrivateData';
+
+export type InviteGateSignupParams = {
+  email: string;
+  password: string;
+  name: string;
+  username: string;
+  phone?: string | null;
+};
 
 interface InviteGateScreenProps {
+  signupParams?: InviteGateSignupParams;
   onInviteGateCleared?: () => void;
 }
 
 export default function InviteGateScreen({
+  signupParams,
   onInviteGateCleared,
 }: InviteGateScreenProps) {
+  const { user, signUp } = useAuth();
+  const navigation = useNavigation();
   const {
     sentCount,
     inviteCount,
     isWallCleared,
     loading,
+    refetch,
   } = useInviteTier();
 
   const [sharing, setSharing] = useState(false);
+  const [signingUp, setSigningUp] = useState(false);
+  const [signupComplete, setSignupComplete] = useState(false);
+
+  // Create account when arriving from email signup (before invite gate)
+  useEffect(() => {
+    if (user) {
+      setSignupComplete(true);
+      return;
+    }
+    if (!signupParams) {
+      setSignupComplete(true);
+      return;
+    }
+
+    let cancelled = false;
+    setSigningUp(true);
+    (async () => {
+      try {
+        await signUp(
+          signupParams.email,
+          signupParams.password,
+          signupParams.username,
+          signupParams.name,
+          []
+        );
+        if (cancelled) return;
+        const phone = signupParams.phone?.trim();
+        if (phone) {
+          const { data: sessionData } = await supabase.auth.getSession();
+          const userId = sessionData?.session?.user?.id;
+          if (userId) {
+            await updatePrivateData(userId, { phone_number: phone });
+          }
+        }
+        if (!cancelled) setSignupComplete(true);
+      } catch (error: any) {
+        if (cancelled) return;
+        Alert.alert(
+          'Signup Error',
+          error.message || 'Failed to create account. Please try again.',
+          [{ text: 'OK', onPress: () => navigation.goBack() }]
+        );
+      } finally {
+        if (!cancelled) setSigningUp(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user, signupParams?.email]);
 
   useEffect(() => {
     if (isWallCleared) {
@@ -60,12 +128,14 @@ export default function InviteGateScreen({
     setSharing(true);
     try {
       await shareInviteLink();
+      refetch();
     } finally {
       setSharing(false);
     }
   };
 
-  if (loading) {
+  const waitingForSignup = signupParams && !signupComplete;
+  if (loading || signingUp || waitingForSignup) {
     return (
       <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
         <View style={styles.centered}>

@@ -153,8 +153,7 @@ export async function shareInviteLink(): Promise<void> {
 
     const url = data.url;
     const message =
-      "HELLO i've been ranking all my books on inkli and i think you'd love it. join me? my link expires in 24 hours (˶ˆᗜˆ˵)\n" +
-      url;
+      "HELLO i've been ranking all my books on inkli and i think you'd love it. join me? my link expires in 24 hours (˶ˆᗜˆ˵)"
 
     await Share.share({
       message,

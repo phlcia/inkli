@@ -23,7 +23,15 @@ export type AuthStackParamList = {
         phone?: string | null;
       }
     | undefined;
-  InviteGate: undefined;
+  InviteGate:
+    | {
+        email: string;
+        password: string;
+        name: string;
+        username: string;
+        phone?: string | null;
+      }
+    | undefined;
 };
 
 const Stack = createNativeStackNavigator<AuthStackParamList>();
@@ -37,7 +45,6 @@ interface AuthStackNavigatorProps {
 export default function AuthStackNavigator({
   initialRouteName = 'Welcome',
   onQuizComplete,
-  onInviteGateDismiss,
   onInviteGateCleared,
 }: AuthStackNavigatorProps) {
   const { signInWithApple, signInWithGoogle } = useAuth();
@@ -110,7 +117,7 @@ export default function AuthStackNavigator({
           <SignUpEmailScreen
             {...props}
             onNext={(email, password, name, username, phone) => {
-              props.navigation.navigate('Quiz', {
+              props.navigation.navigate('InviteGate', {
                 email,
                 password,
                 name,
@@ -140,6 +147,7 @@ export default function AuthStackNavigator({
         {(props) => (
           <InviteGateScreen
             {...props}
+            signupParams={props.route.params}
             onInviteGateCleared={onInviteGateCleared}
           />
         )}

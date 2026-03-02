@@ -94,7 +94,10 @@ export default function HomeScreen() {
   );
 
   const loadInitial = useCallback(async () => {
-    if (!user) return;
+    if (!user) {
+      setInitialLoading(false);
+      return;
+    }
     setInitialLoading(true);
 
     try {
