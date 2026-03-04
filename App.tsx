@@ -1,5 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import {
+  NavigationContainer,
+  createNavigationContainerRef,
+} from '@react-navigation/native';
 import { useFonts } from 'expo-font';
 import {
   PlayfairDisplay_400Regular_Italic,
@@ -26,8 +29,15 @@ import {
   storePendingInviteCode,
   clearPendingInviteCode,
 } from './src/services/invites';
+import { getUserIdByUsername } from './src/services/userProfile';
 import 'react-native-get-random-values';
 import 'react-native-url-polyfill/auto';
+
+const linking = {
+  prefixes: ['https://inkliapp.com', 'com.inkli.app://', 'inkli://'],
+};
+
+const navigationRef = createNavigationContainerRef<any>();
 
 function AppContent() {
   const { user, loading } = useAuth();
@@ -82,7 +92,42 @@ function AppContent() {
           }
           return;
         }
+
         const url = new URL(event.url);
+
+        let usernameFromProfileLink: string | null = null;
+
+        if (
+          url.hostname === 'inkliapp.com' &&
+          url.pathname.startsWith('/u/')
+        ) {
+          const [, , usernamePart] = url.pathname.split('/');
+          if (usernamePart) {
+            usernameFromProfileLink = decodeURIComponent(usernamePart);
+          }
+        } else if (
+          (url.protocol === 'com.inkli.app:' || url.protocol === 'inkli:') &&
+          url.pathname.startsWith('/profile/')
+        ) {
+          const [, , usernamePart] = url.pathname.split('/');
+          if (usernamePart) {
+            usernameFromProfileLink = decodeURIComponent(usernamePart);
+          }
+        }
+
+        if (usernameFromProfileLink) {
+          if (user && navigationRef.isReady()) {
+            const userId = await getUserIdByUsername(usernameFromProfileLink);
+            if (userId) {
+              navigationRef.navigate('Profile', {
+                screen: 'UserProfile',
+                params: { userId, username: usernameFromProfileLink },
+              });
+            }
+          }
+          return;
+        }
+
         let code = url.searchParams.get('code');
         if (!code && url.hash) {
           const hashParams = new URLSearchParams(url.hash.substring(1));
@@ -195,7 +240,11 @@ function AppContent() {
     <ErrorHandlerProvider>
       <GestureHandlerRootView style={styles.appRoot}>
         <OfflineBanner visible={!isOnline} />
-        <NavigationContainer key="main-navigator">
+        <NavigationContainer
+          key="main-navigator"
+          linking={linking}
+          ref={navigationRef}
+        >
           {hasUser ? (
           needsInviteGate ? (
             <AuthStackNavigator

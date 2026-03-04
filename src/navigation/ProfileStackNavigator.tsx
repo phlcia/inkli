@@ -18,7 +18,7 @@ import {
 } from './types';
 
 export type ProfileStackParamList = {
-  ProfileMain: undefined;
+  ProfileMain: { username?: string } | undefined;
   EditProfile: undefined;
   AccountSettings: undefined;
   BookDetail: { book: any }; // Enriched book data

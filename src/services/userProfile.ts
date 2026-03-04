@@ -29,6 +29,31 @@ export type FollowRequestStatus = 'pending' | 'accepted' | 'rejected';
 
 export type FollowAction = 'following' | 'requested';
 
+export async function getUserIdByUsername(
+  username: string,
+): Promise<string | null> {
+  const trimmed = username.trim();
+  if (!trimmed) return null;
+
+  try {
+    const { data, error } = await supabase
+      .from('user_profiles')
+      .select('user_id')
+      .eq('username', trimmed)
+      .maybeSingle();
+
+    if (error) {
+      console.warn('getUserIdByUsername: error', error);
+      return null;
+    }
+
+    return data?.user_id ?? null;
+  } catch (error) {
+    console.error('getUserIdByUsername: exception', error);
+    return null;
+  }
+}
+
 /**
  * Get user profile by user ID
  */

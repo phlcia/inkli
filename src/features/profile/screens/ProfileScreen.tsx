@@ -9,10 +9,11 @@ import {
   Alert,
   Image,
   Linking,
+  Share,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { ProfileStackParamList } from '../../../navigation/ProfileStackNavigator';
 import { colors, typography } from '../../../config/theme';
@@ -27,6 +28,7 @@ import { fetchUserActivityCards } from '../../../services/activityFeed';
 import { ActivityFeedCursor, ActivityFeedItem } from '../../../types/activityCards';
 import { formatDateRange } from '../../../utils/dateRanges';
 import { getActionText } from '../../../utils/activityText';
+import { getProfileUrl } from '../../../utils/links';
 import { useToggleWantToRead } from '../../books/hooks/useToggleWantToRead';
 import {
   acceptFollowRequest,
@@ -54,16 +56,15 @@ import fireIcon from '../../../../assets/fire.png';
 import igIcon from '../../../../assets/ig.png';
 import tiktokIcon from '../../../../assets/tt.png';
 
-type ProfileScreenNavigationProp = StackNavigationProp<
-  ProfileStackParamList,
-  'ProfileMain'
->;
+type ProfileScreenNavigationProp = StackNavigationProp<ProfileStackParamList, 'ProfileMain'>;
+
+type ProfileMainRoute = RouteProp<ProfileStackParamList, 'ProfileMain'>;
 
 export default function ProfileScreen() {
   const { user, signOut } = useAuth();
   const { handleApiError } = useErrorHandler();
   const navigation = useNavigation<ProfileScreenNavigationProp>();
-  const route = useRoute();
+  const route = useRoute<ProfileMainRoute>();
   const [bookCounts, setBookCounts] = useState({
     read: 0,
     currently_reading: 0,
@@ -103,6 +104,24 @@ export default function ProfileScreen() {
     viewerShelfMap,
     setViewerShelfMap,
   });
+
+  const handleShareProfile = useCallback(async () => {
+    if (!userProfile?.username) return;
+
+    try {
+      const url = getProfileUrl(userProfile.username);
+      await Share.share({
+        message: `Check out my reading profile on Inkli:\n\n${url}`,
+        url,
+        title: 'Share your Inkli profile',
+      });
+    } catch (e) {
+      console.warn(
+        'ProfileScreen: share profile failed',
+        e instanceof Error ? e.message : String(e),
+      );
+    }
+  }, [userProfile?.username]);
 
   const fetchUserProfile = async (userId: string) => {
     try {
@@ -182,6 +201,9 @@ export default function ProfileScreen() {
       if (showLoading) {
         setLoading(true);
       }
+
+      const targetUserId = user.id;
+
       const [
         counts,
         activityResult,
@@ -192,14 +214,14 @@ export default function ProfileScreen() {
         blockedUsersResult,
         mutedUsersResult,
       ] = await Promise.all([
-        getUserBookCounts(user.id),
-        fetchUserActivityCards(user.id, { limit: 20 }),
-        fetchUserProfile(user.id),
-        getFollowerCount(user.id),
-        getFollowingCount(user.id),
-        getIncomingFollowRequests(user.id),
-        getBlockedUsers(user.id),
-        getMutedUsers(user.id),
+        getUserBookCounts(targetUserId),
+        fetchUserActivityCards(targetUserId, { limit: 20 }),
+        fetchUserProfile(targetUserId),
+        getFollowerCount(targetUserId),
+        getFollowingCount(targetUserId),
+        getIncomingFollowRequests(targetUserId),
+        getBlockedUsers(targetUserId),
+        getMutedUsers(targetUserId),
       ]);
       setBookCounts(counts);
       setRecentBooks(activityResult.cards);
@@ -563,10 +585,22 @@ export default function ProfileScreen() {
           <View style={styles.actionButtons}>
             <View style={styles.followGroup}>
               <TouchableOpacity
-                style={[styles.followButton]}
+                style={styles.followButton}
+                activeOpacity={0.8}
                 onPress={() => navigation.navigate('EditProfile')}
               >
                 <Text style={styles.followButtonText}>Edit profile</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.followGroup}>
+              <TouchableOpacity
+                style={styles.followButton}
+                activeOpacity={0.8}
+                onPress={handleShareProfile}
+                disabled={!userProfile?.username}
+              >
+                <Text style={styles.followButtonText}>Share profile</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -651,6 +685,7 @@ export default function ProfileScreen() {
       navigation,
       bookCounts,
       activeTab,
+      handleShareProfile,
     ]
   );
 
@@ -1216,7 +1251,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     position: 'relative',
-    width: '100%',
+    flex: 1,
   },
   followButton: {
     flex: 1,
