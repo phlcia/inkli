@@ -52,6 +52,8 @@ export default function EditProfileScreen() {
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
   const [bio, setBio] = useState('');
+  const [instagramUsername, setInstagramUsername] = useState('');
+  const [tiktokUsername, setTiktokUsername] = useState('');
   const [profilePhotoUrl, setProfilePhotoUrl] = useState<string | null>(null);
   const [tempPhotoUri, setTempPhotoUri] = useState<string | null>(null);
   const [deleteProfilePicture, setDeleteProfilePicture] = useState(false);
@@ -60,6 +62,8 @@ export default function EditProfileScreen() {
   const [originalUsername, setOriginalUsername] = useState('');
   const [originalName, setOriginalName] = useState('');
   const [originalBio, setOriginalBio] = useState('');
+  const [originalInstagramUsername, setOriginalInstagramUsername] = useState('');
+  const [originalTiktokUsername, setOriginalTiktokUsername] = useState('');
   const [usernameStatus, setUsernameStatus] = useState<UsernameStatus>('idle');
   const [usernameFormatError, setUsernameFormatError] = useState('');
   const [usernameRequiredError, setUsernameRequiredError] = useState('');
@@ -89,12 +93,18 @@ export default function EditProfileScreen() {
         const n = profile.name || '';
         const u = profile.username || '';
         const b = profile.bio || '';
+        const ig = profile.instagram_username || '';
+        const tt = profile.tiktok_username || '';
         setName(n);
         setUsername(u);
+        setInstagramUsername(ig);
+        setTiktokUsername(tt);
         setOriginalUsername(u);
         setOriginalName(n);
         setOriginalBio(b);
         setBio(b);
+        setOriginalInstagramUsername(ig);
+        setOriginalTiktokUsername(tt);
         setUsernameStatus('available');
         setUsernameFormatError('');
         setUsernameRequiredError('');
@@ -289,10 +299,15 @@ export default function EditProfileScreen() {
     USERNAME_REGEX.test(username) &&
     (usernameStatus === 'available' || username.trim().toLowerCase() === originalUsername.toLowerCase());
 
+  const sanitizeHandle = (value: string) =>
+    value.trim().replace(/^@+/, '').toLowerCase();
+
   const hasChanges =
     name.trim() !== originalName ||
     username.trim().toLowerCase() !== originalUsername.toLowerCase() ||
     (bio.trim() || '') !== (originalBio || '') ||
+    sanitizeHandle(instagramUsername) !== sanitizeHandle(originalInstagramUsername) ||
+    sanitizeHandle(tiktokUsername) !== sanitizeHandle(originalTiktokUsername) ||
     tempPhotoUri !== null ||
     deleteProfilePicture;
 
@@ -320,6 +335,8 @@ export default function EditProfileScreen() {
           name: name.trim(),
           username: username.trim().toLowerCase(),
           bio: bio.trim() || null,
+          instagramUsername: sanitizeHandle(instagramUsername) || null,
+          tiktokUsername: sanitizeHandle(tiktokUsername) || null,
         },
         tempPhotoUri, // null if no new image selected
         deleteProfilePicture // true if user wants to delete
@@ -517,6 +534,38 @@ export default function EditProfileScreen() {
             </View>
           </View>
 
+          <View style={styles.inputContainer}>
+            <Text style={styles.label}>Instagram</Text>
+            <View style={styles.inputWrapper}>
+              <Text style={styles.inputPrefix}>instagram.com/</Text>
+              <TextInput
+                style={styles.input}
+                value={instagramUsername}
+                onChangeText={setInstagramUsername}
+                placeholder="username"
+                placeholderTextColor={colors.brownText}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+          </View>
+
+          <View style={styles.inputContainer}>
+            <Text style={styles.label}>TikTok</Text>
+            <View style={styles.inputWrapper}>
+              <Text style={styles.inputPrefix}>tiktok.com/@</Text>
+              <TextInput
+                style={styles.input}
+                value={tiktokUsername}
+                onChangeText={setTiktokUsername}
+                placeholder="username"
+                placeholderTextColor={colors.brownText}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+          </View>
+
           <TouchableOpacity
             style={styles.accountPrivacyButton}
             onPress={() => navigation.navigate('AccountSettings')}
@@ -637,6 +686,13 @@ const styles = StyleSheet.create({
   },
   inputWrapperError: {
     borderColor: ERROR_RED,
+  },
+  inputPrefix: {
+    marginRight: 6,
+    fontSize: 14,
+    fontFamily: typography.body,
+    color: colors.brownText,
+    opacity: 0.7,
   },
   usernameSpinner: {
     position: 'absolute',

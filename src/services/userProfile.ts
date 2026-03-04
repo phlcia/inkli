@@ -7,6 +7,8 @@ export interface UserProfile {
   name: string;
   username: string;
   bio: string | null;
+  instagram_username: string | null;
+  tiktok_username: string | null;
   reading_interests: string[];
   profile_photo_url: string | null;
   account_type: 'public' | 'private';
@@ -104,6 +106,8 @@ export async function updateUserProfile(
     bio?: string | null;
     readingInterests?: string[];
     profilePhotoUrl?: string | null;
+    instagramUsername?: string | null;
+    tiktokUsername?: string | null;
   }
 ): Promise<{ profile: UserProfile | null; error: any }> {
   try {
@@ -118,6 +122,10 @@ export async function updateUserProfile(
       updateData.reading_interests = updates.readingInterests;
     if (updates.profilePhotoUrl !== undefined)
       updateData.profile_photo_url = updates.profilePhotoUrl;
+    if (updates.instagramUsername !== undefined)
+      updateData.instagram_username = updates.instagramUsername;
+    if (updates.tiktokUsername !== undefined)
+      updateData.tiktok_username = updates.tiktokUsername;
 
     const { data: profile, error } = await supabase
       .from('user_profiles')
@@ -451,6 +459,8 @@ export async function saveProfileWithPicture(
     username?: string;
     bio?: string | null;
     readingInterests?: string[];
+    instagramUsername?: string | null;
+    tiktokUsername?: string | null;
   },
   newImageUri: string | null,
   deleteProfilePicture: boolean
@@ -500,6 +510,10 @@ export async function saveProfileWithPicture(
     if (profileData.bio !== undefined) updateData.bio = profileData.bio;
     if (profileData.readingInterests !== undefined)
       updateData.reading_interests = profileData.readingInterests;
+    if (profileData.instagramUsername !== undefined)
+      updateData.instagram_username = profileData.instagramUsername;
+    if (profileData.tiktokUsername !== undefined)
+      updateData.tiktok_username = profileData.tiktokUsername;
     
     // Store the URL in profile_photo_url
     // For new uploads, this is the full public URL

@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Linking,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -50,6 +51,8 @@ import bookmarkIcon from '../../../../assets/bookmark.png';
 import heartIcon from '../../../../assets/heart.png';
 import rankIcon from '../../../../assets/rank.png';
 import fireIcon from '../../../../assets/fire.png';
+import igIcon from '../../../../assets/ig.png';
+import tiktokIcon from '../../../../assets/tt.png';
 
 type ProfileScreenNavigationProp = StackNavigationProp<
   ProfileStackParamList,
@@ -58,7 +61,7 @@ type ProfileScreenNavigationProp = StackNavigationProp<
 
 export default function ProfileScreen() {
   const { user, signOut } = useAuth();
-  const { handleApiError, showClientError } = useErrorHandler();
+  const { handleApiError } = useErrorHandler();
   const navigation = useNavigation<ProfileScreenNavigationProp>();
   const route = useRoute();
   const [bookCounts, setBookCounts] = useState({
@@ -83,6 +86,8 @@ export default function ProfileScreen() {
     member_since: string | null;
     profile_photo_url: string | null;
     bio: string | null;
+    instagram_username: string | null;
+    tiktok_username: string | null;
   } | null>(null);
   const [followerCount, setFollowerCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
@@ -103,7 +108,7 @@ export default function ProfileScreen() {
     try {
       const { data, error } = await supabase
         .from('user_profiles')
-        .select('username, name, books_read_count, weekly_streak, global_rank, member_since, profile_photo_url, bio')
+        .select('username, name, books_read_count, weekly_streak, global_rank, member_since, profile_photo_url, bio, instagram_username, tiktok_username')
         .eq('user_id', userId)
         .single();
       
@@ -118,6 +123,8 @@ export default function ProfileScreen() {
           member_since: user?.created_at || new Date().toISOString(),
           profile_photo_url: null,
           bio: null,
+          instagram_username: null,
+          tiktok_username: null,
         };
       }
       return data;
@@ -132,6 +139,8 @@ export default function ProfileScreen() {
         member_since: user?.created_at || new Date().toISOString(),
         profile_photo_url: null,
         bio: null,
+        instagram_username: null,
+        tiktok_username: null,
       };
     }
   };
@@ -225,6 +234,8 @@ export default function ProfileScreen() {
         member_since: user?.created_at || new Date().toISOString(),
         profile_photo_url: null,
         bio: null,
+        instagram_username: null,
+        tiktok_username: null,
       });
     } catch (error) {
       handleApiError(error, 'load profile', () => loadProfileData(showLoading));
@@ -365,6 +376,36 @@ export default function ProfileScreen() {
   // Get user rank from profile
   const userRank = userProfile?.global_rank || null;
 
+  const sanitizeHandle = (value: string | null | undefined) =>
+    value ? value.trim().replace(/^@+/, '').toLowerCase() : '';
+
+  const buildInstagramUrl = (username: string | null | undefined) => {
+    const handle = sanitizeHandle(username);
+    if (!handle) return null;
+    return `https://www.instagram.com/${handle}`;
+  };
+
+  const buildTiktokUrl = (username: string | null | undefined) => {
+    const handle = sanitizeHandle(username);
+    if (!handle) return null;
+    return `https://www.tiktok.com/@${handle}`;
+  };
+
+  const handleOpenSocialUrl = async (url: string | null) => {
+    if (!url) return;
+    try {
+      const supported = await Linking.canOpenURL(url);
+      if (!supported) {
+        Alert.alert('Unable to open link', 'This link cannot be opened on your device.');
+        return;
+      }
+      await Linking.openURL(url);
+    } catch (error) {
+      console.error('Error opening social link:', error);
+      Alert.alert('Error', 'Something went wrong while opening this link.');
+    }
+  };
+
   const handleSignOut = async () => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     Alert.alert(
@@ -448,26 +489,77 @@ export default function ProfileScreen() {
           displayName={userProfile?.name || ''}
           memberSinceLabel={`Member since ${getJoinDate()}`}
           bio={userProfile?.bio}
-          stats={{
-            followers: followerCount,
-            following: followingCount,
-            rankLabel: userRank ? `#${userRank}` : '--',
-            onPressFollowers: () =>
-              user?.id &&
-              navigation.navigate('FollowersFollowing', {
-                userId: user.id,
-                username: userProfile?.username,
-                initialTab: 'followers',
-              }),
-            onPressFollowing: () =>
-              user?.id &&
-              navigation.navigate('FollowersFollowing', {
-                userId: user.id,
-                username: userProfile?.username,
-                initialTab: 'following',
-              }),
-          }}
+          showStats={false}
         >
+          {(userProfile?.instagram_username || userProfile?.tiktok_username) ? (
+            <View style={styles.socialRow}>
+              {userProfile?.instagram_username ? (
+                <TouchableOpacity
+                  style={styles.socialButton}
+                  activeOpacity={0.8}
+                  onPress={() =>
+                    handleOpenSocialUrl(buildInstagramUrl(userProfile.instagram_username))
+                  }
+                >
+                  <Image source={igIcon} style={styles.socialIcon} />
+                </TouchableOpacity>
+              ) : null}
+              {userProfile?.tiktok_username ? (
+                <TouchableOpacity
+                  style={styles.socialButton}
+                  activeOpacity={0.8}
+                  onPress={() =>
+                    handleOpenSocialUrl(buildTiktokUrl(userProfile.tiktok_username))
+                  }
+                >
+                  <Image source={tiktokIcon} style={styles.socialIcon} />
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          ) : null}
+
+          <View style={styles.headerStatsRow}>
+            <TouchableOpacity
+              style={styles.headerStatBox}
+              activeOpacity={0.7}
+              onPress={
+                user?.id
+                  ? () =>
+                      navigation.navigate('FollowersFollowing', {
+                        userId: user.id,
+                        username: userProfile?.username,
+                        initialTab: 'followers',
+                      })
+                  : undefined
+              }
+            >
+              <Text style={styles.headerStatValue}>{followerCount}</Text>
+              <Text style={styles.headerStatLabel}>Followers</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.headerStatBox}
+              activeOpacity={0.7}
+              onPress={
+                user?.id
+                  ? () =>
+                      navigation.navigate('FollowersFollowing', {
+                        userId: user.id,
+                        username: userProfile?.username,
+                        initialTab: 'following',
+                      })
+                  : undefined
+              }
+            >
+              <Text style={styles.headerStatValue}>{followingCount}</Text>
+              <Text style={styles.headerStatLabel}>Following</Text>
+            </TouchableOpacity>
+            <View style={styles.headerStatBox}>
+              <Text style={styles.headerStatValue}>
+                {userRank ? `#${userRank}` : '--'}
+              </Text>
+              <Text style={styles.headerStatLabel}>Rank</Text>
+            </View>
+          </View>
           <View style={styles.actionButtons}>
             <View style={styles.followGroup}>
               <TouchableOpacity
@@ -569,7 +661,11 @@ export default function ProfileScreen() {
           <View style={styles.settingsSection}>
             <TouchableOpacity
               style={styles.inviteRow}
-              onPress={() => navigation.getParent()?.navigate('Home' as never, { screen: 'InviteHub' } as never)}
+              onPress={() =>
+                (navigation.getParent() as any)?.navigate('Home', {
+                  screen: 'InviteHub',
+                })
+              }
               activeOpacity={0.7}
             >
               <Text style={styles.inviteRowText}>Invite Friends & Unlock Features</Text>
@@ -817,6 +913,53 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.primaryBlue,
     alignItems: 'center',
+  },
+  socialRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+    gap: 12,
+  },
+  socialButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: `${colors.brownText}1A`,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  socialIcon: {
+    width: 20,
+    height: 20,
+    tintColor: colors.primaryBlue,
+    resizeMode: 'contain',
+  },
+  headerStatsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 24,
+    marginBottom: 20,
+    paddingHorizontal: 16,
+  },
+  headerStatBox: {
+    alignItems: 'center',
+  },
+  headerStatValue: {
+    fontSize: 20,
+    fontFamily: typography.body,
+    color: colors.brownText,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  headerStatLabel: {
+    fontSize: 12,
+    fontFamily: typography.body,
+    color: colors.brownText,
+    opacity: 0.7,
   },
   outlinedButtonText: {
     fontSize: 14,
