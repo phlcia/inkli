@@ -369,11 +369,13 @@ export default function RecommendationsList({ showHeader = true }: Recommendatio
   if (!hasFeature('friend_recommendations')) {
     return (
       <View style={styles.container}>
-        <FeatureTeaser
-          featureKey="friend_recommendations"
-          loading={inviteTierLoading}
-          onPress={() => navigation.getParent()?.navigate('Home' as never, { screen: 'InviteHub' } as never)}
-        />
+        <View style={styles.teaserContainer}>
+          <FeatureTeaser
+            featureKey="friend_recommendations"
+            loading={inviteTierLoading}
+            onPress={() => navigation.getParent()?.navigate('Home' as never, { screen: 'InviteHub' } as never)}
+          />
+        </View>
       </View>
     );
   }
@@ -459,6 +461,11 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.creamBackground,
+  },
+  teaserContainer: {
+    flex: 1,
+    paddingHorizontal: 20,
+    paddingTop: 20,
   },
   header: {
     flexDirection: 'row',

@@ -34,6 +34,7 @@
     "expo-notifications": "~0.32.16",
     "expo-status-bar": "~3.0.9",
     "expo-web-browser": "~15.0.10",
+    "jsonwebtoken": "^9.0.3",
     "libphonenumber-js": "^1.12.36",
     "react": "19.1.0",
     "react-dom": "19.1.0",
@@ -60,5 +61,18 @@
     "ts-prune": "^0.10.3",
     "typescript": "~5.9.2"
   },
-  "private": true
+  "private": true,
+  "description": "React Native / Expo app for book shelf management, head-to-head ranking, and social reading activity. Backend is Supabase (Postgres + Edge Functions). Book metadata is sourced from Open Library and Google Books APIs. AI-powered recommendations use xAI Grok.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/phlcia/inkli-new.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/phlcia/inkli-new/issues"
+  },
+  "homepage": "https://github.com/phlcia/inkli-new#readme"
 }

@@ -7,6 +7,7 @@ import { Platform } from 'react-native';
 import { getAuthRedirectUri } from '../utils/authRedirect';
 import { looksLikePhone, normalizePhone } from '../utils/phone';
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
+import * as Crypto from 'expo-crypto';
 
 // Complete auth session for better UX
 WebBrowser.maybeCompleteAuthSession();
@@ -189,17 +190,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const redirectUri = getAuthRedirectUri();
 
       let idToken: string | null = null;
-      let rawNonce: string | null = null;
 
       // On iOS, use native Apple Authentication for better UX
       const isAppleAvailable = Platform.OS === 'ios' && await AppleAuthentication.isAvailableAsync();
       if (isAppleAvailable) {
         try {
+          // Generate nonce for Supabase token verification (required for signInWithIdToken)
+          const nonceBytes = await Crypto.getRandomBytesAsync(32);
+          const rawNonce = Array.from(nonceBytes)
+            .map((b) => b.toString(16).padStart(2, '0'))
+            .join('');
+
           const credential = await AppleAuthentication.signInAsync({
             requestedScopes: [
               AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
               AppleAuthentication.AppleAuthenticationScope.EMAIL,
             ],
+            nonce: rawNonce,
           });
 
           if (!credential.identityToken) {
@@ -207,16 +214,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
 
           idToken = credential.identityToken;
-          rawNonce = (credential as any).nonce || null;
 
-          // Sign in with Supabase using the OAuth token
+          // Sign in with Supabase using the OAuth token (same nonce required for verification)
           const { data, error } = await supabase.auth.signInWithIdToken({
             provider: 'apple',
             token: idToken,
-            nonce: rawNonce || undefined,
+            nonce: rawNonce,
           });
 
           if (error) throw error;
+
+          // Persist full name on first sign-in (Apple only sends it once)
+          if (credential.fullName) {
+            const fullName = [credential.fullName.givenName, credential.fullName.familyName]
+              .filter(Boolean)
+              .join(' ')
+              .trim();
+            if (fullName) {
+              await supabase.auth.updateUser({
+                data: {
+                  full_name: fullName,
+                  given_name: credential.fullName.givenName ?? undefined,
+                  family_name: credential.fullName.familyName ?? undefined,
+                },
+              });
+            }
+          }
 
           // Ensure profile is created (trigger should handle it, but add fallback)
           await ensureUserProfile(data.user);
