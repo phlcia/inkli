@@ -40,10 +40,11 @@ const linking = {
 const navigationRef = createNavigationContainerRef<any>();
 
 function AppContent() {
-  const { user, loading } = useAuth();
+  const { user, loading, pendingPasswordRecovery } = useAuth();
   const { isOnline } = useNetworkStatus();
   const isLoading = Boolean(loading);
   const hasUser = Boolean(user);
+  const [postResetMessage, setPostResetMessage] = useState<string | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileFlags, setProfileFlags] = useState<{
     completed_onboarding_quiz: boolean;
@@ -126,6 +127,23 @@ function AppContent() {
             }
           }
           return;
+        }
+
+        // Handle implicit-flow password recovery (access_token + type=recovery in hash)
+        if (url.hash) {
+          const hashParams = new URLSearchParams(url.hash.substring(1));
+          if (hashParams.get('type') === 'recovery') {
+            const accessToken = hashParams.get('access_token');
+            const refreshToken = hashParams.get('refresh_token');
+            if (accessToken && refreshToken) {
+              const { error } = await supabase.auth.setSession({
+                access_token: accessToken,
+                refresh_token: refreshToken,
+              });
+              if (error) console.error('Error setting recovery session:', error);
+            }
+            return;
+          }
         }
 
         let code = url.searchParams.get('code');
@@ -245,7 +263,14 @@ function AppContent() {
           linking={linking}
           ref={navigationRef}
         >
-          {hasUser ? (
+          {pendingPasswordRecovery ? (
+          <AuthStackNavigator
+            initialRouteName="ResetPassword"
+            onPasswordReset={() =>
+              setPostResetMessage('Password updated. Sign in with your new password.')
+            }
+          />
+        ) : hasUser ? (
           needsInviteGate ? (
             <AuthStackNavigator
               initialRouteName="InviteGate"
@@ -260,7 +285,10 @@ function AppContent() {
             <TabNavigator />
           )
         ) : (
-          <AuthStackNavigator />
+          <AuthStackNavigator
+            initialRouteName={postResetMessage ? 'SignIn' : 'Welcome'}
+            successMessage={postResetMessage ?? undefined}
+          />
         )}
         </NavigationContainer>
       </GestureHandlerRootView>

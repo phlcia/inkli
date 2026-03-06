@@ -9,6 +9,8 @@ import {
   Image,
   ScrollView,
   FlatList,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useNavigation } from '@react-navigation/native';
@@ -466,6 +468,10 @@ export default function AskScreen() {
         ) : null}
       </KeyboardAwareScrollView>
 
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={0}
+      >
       <View style={styles.inputRow}>
         <TextInput
           style={styles.input}
@@ -490,6 +496,7 @@ export default function AskScreen() {
           <Text style={styles.sendButtonText}>Send</Text>
         </TouchableOpacity>
       </View>
+      </KeyboardAvoidingView>
     </View>
   );
 }

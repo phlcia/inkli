@@ -123,14 +123,15 @@ supabase/
 
 ### Auth flow
 
-The root `AppContent` component drives navigation based on three state checks evaluated in order:
+The root `AppContent` component drives navigation based on state checks evaluated in order:
 
-1. **No user** → `AuthStackNavigator` (starts at `Welcome`)
-2. **New user** (< 10 min since signup) who has not completed or skipped the quiz → `AuthStackNavigator` at `Quiz`
-3. **User** with fewer than 4 sent invites and no `grandfathered_invite_unlock` → `AuthStackNavigator` at `InviteGate`
-4. **Otherwise** → `TabNavigator`
+1. **Password recovery pending** (`pendingPasswordRecovery` in `AuthContext`) → `AuthStackNavigator` at `ResetPassword`
+2. **No user** → `AuthStackNavigator` (starts at `Welcome`, or `SignIn` with a success message after password reset)
+3. **New user** (< 10 min since signup) who has not completed or skipped the quiz → `AuthStackNavigator` at `Quiz`
+4. **User** with fewer than 4 sent invites and no `grandfathered_invite_unlock` → `AuthStackNavigator` at `InviteGate`
+5. **Otherwise** → `TabNavigator`
 
-Deep-linked invite URLs (`/invite/:code`) are intercepted at app launch and stored in AsyncStorage for post-auth redemption.
+Deep-linked invite URLs (`/invite/:code`) are intercepted at app launch and stored in AsyncStorage for post-auth redemption. Password reset deep links (`/reset-password`) are handled by extracting the Supabase auth code (PKCE) or token (implicit) and establishing a recovery session.
 
 ---
 
@@ -145,6 +146,8 @@ Deep-linked invite URLs (`/invite/:code`) are intercepted at app launch and stor
 - Account deactivation (soft-delete via `deactivated_at`)
 - Permanent account deletion (password or "DELETE" confirmation for OAuth users)
 - Password change (re-verifies current password first)
+- **Forgot password** (`ForgotPasswordScreen`) — email or username input; resolves username via `resolve-username` edge function, then calls `supabase.auth.resetPasswordForEmail`. Shows success state without navigating away.
+- **Reset password** (`ResetPasswordScreen`) — shown when the app receives a `PASSWORD_RECOVERY` auth event (triggered by tapping the reset email link). Validates password requirements + confirmation match, calls `supabase.auth.updateUser`, signs out, and returns the user to `SignIn` with a success message.
 
 ### Onboarding
 

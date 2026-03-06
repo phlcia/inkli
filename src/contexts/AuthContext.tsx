@@ -16,6 +16,7 @@ interface AuthContextType {
   user: User | null;
   session: Session | null;
   loading: boolean;
+  pendingPasswordRecovery: boolean;
   signIn: (identifier: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, username?: string, name?: string, readingInterests?: string[]) => Promise<void>;
   signOut: () => Promise<void>;
@@ -29,6 +30,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [pendingPasswordRecovery, setPendingPasswordRecovery] = useState(false);
 
   useEffect(() => {
     // Configure Google Sign-In
@@ -54,7 +56,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Listen for auth changes
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setPendingPasswordRecovery(true);
+      } else if (event === 'SIGNED_OUT') {
+        setPendingPasswordRecovery(false);
+      }
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
@@ -445,6 +452,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     user,
     session,
     loading: Boolean(loading),
+    pendingPasswordRecovery,
     signIn,
     signUp,
     signOut,

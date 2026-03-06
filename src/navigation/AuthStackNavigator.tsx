@@ -7,6 +7,8 @@ import SignUpEmailScreen from '../features/auth/screens/SignUpEmailScreen';
 import QuizScreen from '../features/onboarding/screens/QuizScreen';
 import InviteGateScreen from '../features/onboarding/screens/InviteGateScreen';
 import SignInScreen from '../features/auth/screens/SignInScreen';
+import ForgotPasswordScreen from '../features/auth/screens/ForgotPasswordScreen';
+import ResetPasswordScreen from '../features/auth/screens/ResetPasswordScreen';
 import { useAuth } from '../contexts/AuthContext';
 
 export type AuthStackParamList = {
@@ -14,6 +16,8 @@ export type AuthStackParamList = {
   SignIn: undefined;
   CreateAccount: undefined;
   SignUpEmail: undefined;
+  ForgotPassword: undefined;
+  ResetPassword: undefined;
   Quiz:
     | {
         email: string;
@@ -40,12 +44,16 @@ interface AuthStackNavigatorProps {
   initialRouteName?: keyof AuthStackParamList;
   onQuizComplete?: () => void;
   onInviteGateCleared?: () => void;
+  onPasswordReset?: () => void;
+  successMessage?: string;
 }
 
 export default function AuthStackNavigator({
   initialRouteName = 'Welcome',
   onQuizComplete,
   onInviteGateCleared,
+  onPasswordReset,
+  successMessage,
 }: AuthStackNavigatorProps) {
   const { signInWithApple, signInWithGoogle } = useAuth();
 
@@ -83,6 +91,26 @@ export default function AuthStackNavigator({
           <SignInScreen
             {...props}
             onSignUp={() => props.navigation.navigate('CreateAccount')}
+            onForgotPassword={() => props.navigation.navigate('ForgotPassword')}
+            successMessage={successMessage}
+          />
+        )}
+      </Stack.Screen>
+
+      <Stack.Screen name="ForgotPassword">
+        {(props) => (
+          <ForgotPasswordScreen
+            {...props}
+            onBack={() => props.navigation.goBack()}
+          />
+        )}
+      </Stack.Screen>
+
+      <Stack.Screen name="ResetPassword">
+        {(props) => (
+          <ResetPasswordScreen
+            {...props}
+            onComplete={onPasswordReset}
           />
         )}
       </Stack.Screen>

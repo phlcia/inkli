@@ -20,9 +20,11 @@ import googleIcon from '../../../../assets/google.png';
 
 interface SignInScreenProps {
   onSignUp?: () => void;
+  onForgotPassword?: () => void;
+  successMessage?: string;
 }
 
-export default function SignInScreen({ onSignUp }: SignInScreenProps) {
+export default function SignInScreen({ onSignUp, onForgotPassword, successMessage }: SignInScreenProps) {
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -70,6 +72,11 @@ export default function SignInScreen({ onSignUp }: SignInScreenProps) {
         {/* Tagline */}
         <Text style={styles.tagline}>you read it,{"\n"}you rank it!</Text>
 
+        {/* Success message (e.g. after password reset) */}
+        {successMessage ? (
+          <Text style={styles.successMessage}>{successMessage}</Text>
+        ) : null}
+
         {/* Username, email, or phone Input */}
         <TextInput
           style={styles.input}
@@ -93,6 +100,13 @@ export default function SignInScreen({ onSignUp }: SignInScreenProps) {
           autoCorrect={false}
           onSubmitEditing={handleSignIn}
         />
+
+        {/* Forgot Password Link */}
+        {onForgotPassword && (
+          <TouchableOpacity onPress={onForgotPassword} style={styles.forgotContainer}>
+            <Text style={styles.forgotText}>Forgot password?</Text>
+          </TouchableOpacity>
+        )}
 
         {/* Sign In Button */}
         <TouchableOpacity
@@ -316,5 +330,26 @@ const styles = StyleSheet.create({
   signUpLink: {
     color: colors.primaryBlue,
     fontWeight: '500',
+  },
+  successMessage: {
+    backgroundColor: '#E8F8EE',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 16,
+    fontFamily: typography.body,
+    fontSize: 14,
+    color: '#1A7A3A',
+    textAlign: 'center',
+  },
+  forgotContainer: {
+    alignSelf: 'flex-end',
+    marginTop: -8,
+    marginBottom: 16,
+  },
+  forgotText: {
+    color: colors.brownText,
+    fontFamily: typography.body,
+    fontSize: 13,
   },
 });
