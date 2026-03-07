@@ -13,10 +13,10 @@ import { ProfileStackParamList } from '../../../navigation/ProfileStackNavigator
 import { SearchStackParamList } from '../../../navigation/SearchStackNavigator';
 import { formatActivityTimestamp } from '../../../utils/dateUtils';
 import { HomeStackParamList } from '../../../navigation/HomeStackNavigator';
+import ReportSheet from '../../moderation/components/ReportSheet';
 import heartShadedIcon from '../../../../assets/heartshaded.png';
 import heartIcon from '../../../../assets/heart.png';
 import commentIcon from '../../../../assets/comment.png';
-import shareIcon from '../../../../assets/share.png';
 import checkIcon from '../../../../assets/check.png';
 import readingIcon from '../../../../assets/reading.png';
 import shadedBookmarkIcon from '../../../../assets/shadedbookmark.png';
@@ -79,6 +79,7 @@ export default function RecentActivityCard({
   const [likesCount, setLikesCount] = useState(userBook.likes_count ?? 0);
   const [commentsCount, setCommentsCount] = useState(userBook.comments_count ?? 0);
   const [likeLoading, setLikeLoading] = useState(false);
+  const [reportSheetVisible, setReportSheetVisible] = useState(false);
   const shouldShowCommentsLink = showCommentsLink && commentsCount > 0;
   const shouldShowLikesRow = likesCount > 0 || shouldShowCommentsLink;
   const actionSuffix = userDisplayName && actionText.startsWith(`${userDisplayName} `)
@@ -377,13 +378,17 @@ export default function RecentActivityCard({
               />
             </TouchableOpacity>
           )}
-          <TouchableOpacity style={styles.cardFooterIcon}>
-            <Image
-              source={shareIcon}
-              style={styles.cardFooterIconImage}
-              resizeMode="contain"
-            />
-          </TouchableOpacity>
+          {isOtherUser ? (
+            <TouchableOpacity
+              style={styles.cardFooterIcon}
+              onPress={() => setReportSheetVisible(true)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.cardFooterReportText}>⋯</Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.cardFooterIcon} />
+          )}
         </View>
         <View style={styles.cardFooterRight}>
           {isRead ? (
@@ -425,6 +430,13 @@ export default function RecentActivityCard({
       <Text style={styles.cardTimestamp}>
         {formatActivityTimestamp(userBook.updated_at)}
       </Text>
+
+      <ReportSheet
+        visible={reportSheetVisible}
+        onClose={() => setReportSheetVisible(false)}
+        targetType="user_book"
+        targetId={userBook.id}
+      />
     </View>
   );
 }
@@ -516,6 +528,11 @@ const styles = StyleSheet.create({
     fontFamily: typography.body,
     color: colors.white,
     fontWeight: '700',
+  },
+  cardFooterReportText: {
+    fontSize: 20,
+    fontFamily: typography.body,
+    color: colors.brownText,
   },
   bookInfoSection: {
     flexDirection: 'row',

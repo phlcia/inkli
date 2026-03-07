@@ -7,6 +7,7 @@ import type { UserBook } from '../../../services/books';
 import {
   addComment,
   addReply,
+  deleteComment,
   getActivityComments,
 } from '../../../services/activityComments';
 import type { ActivityComment } from '../../../types/activityComments';
@@ -278,6 +279,25 @@ export function useActivityComments(params: {
     }
   };
 
+  const handleDeleteComment = useCallback(
+    async (commentId: string) => {
+      if (!currentUser?.id) return;
+      try {
+        await deleteComment(commentId, currentUser.id);
+        setComments((prev) => prev.filter((c) => c.id !== commentId));
+        setLikeCounts((prev) => {
+          const next = new Map(prev);
+          next.delete(commentId);
+          return next;
+        });
+      } catch (error) {
+        console.error('Error deleting comment:', error);
+        throw error;
+      }
+    },
+    [currentUser?.id]
+  );
+
   const handleToggleLike = async (commentId: string) => {
     if (!currentUser?.id) return;
     try {
@@ -426,6 +446,7 @@ export function useActivityComments(params: {
     setShowMentions,
     handleRefresh,
     handlePost,
+    handleDeleteComment,
     handleToggleLike,
     handleChangeText,
     handleSelectionChange,

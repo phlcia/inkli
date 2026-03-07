@@ -40,6 +40,7 @@ import { useToggleWantToRead } from '../../books/hooks/useToggleWantToRead';
 import { useFollowActions } from '../hooks/useFollowActions';
 import FollowMenuActions from '../components/FollowMenuActions';
 import ProfileHeader from '../components/ProfileHeader';
+import ReportSheet from '../../moderation/components/ReportSheet';
 import addIcon from '../../../../assets/add.png';
 import readingIcon from '../../../../assets/reading.png';
 import bookmarkIcon from '../../../../assets/bookmark.png';
@@ -91,6 +92,7 @@ export default function UserProfileScreen() {
   const [blockedByViewer, setBlockedByViewer] = useState(false);
   const [blockedByTarget, setBlockedByTarget] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
+  const [reportSheetVisible, setReportSheetVisible] = useState(false);
   const handleToggleWantToRead = useToggleWantToRead({
     currentUserId: currentUser?.id,
     viewerShelfMap,
@@ -418,6 +420,10 @@ export default function UserProfileScreen() {
               onToggleMenu={() => setFollowMenuOpen((prev) => !prev)}
               onMutePress={handleMutePress}
               onBlockPress={handleBlockPressWithConfirm}
+              onReportPress={() => {
+                setFollowMenuOpen(false);
+                setReportSheetVisible(true);
+              }}
               styles={styles}
             />
           )}
@@ -544,6 +550,12 @@ export default function UserProfileScreen() {
           </>
         )}
       </ScrollView>
+      <ReportSheet
+        visible={reportSheetVisible}
+        onClose={() => setReportSheetVisible(false)}
+        targetType="user"
+        targetId={userId}
+      />
     </SafeAreaView>
   );
 }

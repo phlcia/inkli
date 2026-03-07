@@ -34,6 +34,7 @@ import { formatDateRange } from '../../../utils/dateRanges';
 import { useToggleWantToRead } from '../../books/hooks/useToggleWantToRead';
 import ActivityCommentsHeader from '../components/ActivityCommentsHeader';
 import ActivityCommentsList from '../components/ActivityCommentsList';
+import ReportSheet from '../../moderation/components/ReportSheet';
 import { useActivityComments } from '../hooks/useActivityComments';
 
 type ActivityCommentsRoute = RouteProp<
@@ -78,6 +79,7 @@ export default function ActivityCommentsScreen() {
     setShowMentions,
     handleRefresh,
     handlePost,
+    handleDeleteComment,
     handleToggleLike,
     handleChangeText,
     handleSelectionChange,
@@ -97,6 +99,8 @@ export default function ActivityCommentsScreen() {
   const [viewerShelfMap, setViewerShelfMap] = useState<
     Record<string, { id: string; status: UserBook['status'] }>
   >({});
+  const [reportSheetVisible, setReportSheetVisible] = useState(false);
+  const [reportTargetCommentId, setReportTargetCommentId] = useState<string | null>(null);
   const handleToggleWantToRead = useToggleWantToRead({
     currentUserId: currentUser?.id,
     viewerShelfMap,
@@ -259,6 +263,17 @@ export default function ActivityCommentsScreen() {
         onPressBook={handleBookPress}
         formatDateRange={formatDateRange}
         onReply={setReplyTo}
+        onReportComment={(comment) => {
+          setReportTargetCommentId(comment.id);
+          setReportSheetVisible(true);
+        }}
+        onDeleteComment={async (comment) => {
+          try {
+            await handleDeleteComment(comment.id);
+          } catch (e) {
+            handleApiError(e, 'delete comment');
+          }
+        }}
         likeCounts={likeCounts}
         likedKeys={likedKeys}
         currentUserId={currentUser?.id}
@@ -267,6 +282,16 @@ export default function ActivityCommentsScreen() {
         onNavigateProfile={navigateToProfile}
         renderMentionText={renderMentionText}
         styles={styles}
+      />
+
+      <ReportSheet
+        visible={reportSheetVisible}
+        onClose={() => {
+          setReportSheetVisible(false);
+          setReportTargetCommentId(null);
+        }}
+        targetType="comment"
+        targetId={reportTargetCommentId ?? ''}
       />
 
       <KeyboardAvoidingView
@@ -534,6 +559,18 @@ const styles = StyleSheet.create({
     width: 18,
     height: 18,
     tintColor: colors.brownText,
+  },
+  commentMenuButton: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 4,
+  },
+  commentMenuButtonText: {
+    fontSize: 20,
+    color: colors.brownText,
+    fontWeight: '600',
   },
   inputBar: {
     flexDirection: 'row',

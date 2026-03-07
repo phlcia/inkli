@@ -14,7 +14,7 @@ import {
   Inter_500Medium,
   Inter_600SemiBold,
 } from '@expo-google-fonts/inter';
-import { ActivityIndicator, AppState, View, StyleSheet, Linking } from 'react-native';
+import { ActivityIndicator, AppState, Text, TouchableOpacity, View, StyleSheet, Linking } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { colors } from './src/config/theme';
 import TabNavigator from './src/navigation/TabNavigator';
@@ -30,8 +30,74 @@ import {
   clearPendingInviteCode,
 } from './src/services/invites';
 import { getUserIdByUsername } from './src/services/userProfile';
+import { typography } from './src/config/theme';
 import 'react-native-get-random-values';
 import 'react-native-url-polyfill/auto';
+
+function AccountSuspendedScreen({
+  moderationStatus,
+  onSignOut,
+}: {
+  moderationStatus: string | null;
+  onSignOut: () => void;
+}) {
+  const title =
+    moderationStatus === 'banned'
+      ? 'Account banned'
+      : 'Account suspended';
+  const message =
+    moderationStatus === 'banned'
+      ? 'Your account has been banned. If you believe this is an error, please contact support.'
+      : 'Your account has been suspended. If you believe this is an error, please contact support.';
+
+  return (
+    <View style={suspendedStyles.container}>
+      <Text style={suspendedStyles.title}>{title}</Text>
+      <Text style={suspendedStyles.message}>{message}</Text>
+      <TouchableOpacity style={suspendedStyles.button} onPress={onSignOut} activeOpacity={0.7}>
+        <Text style={suspendedStyles.buttonText}>Sign out</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+const suspendedStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.creamBackground,
+    paddingHorizontal: 32,
+  },
+  title: {
+    fontSize: 22,
+    fontFamily: typography.heroTitle,
+    color: colors.brownText,
+    fontWeight: '600',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  message: {
+    fontSize: 16,
+    fontFamily: typography.body,
+    color: colors.brownText,
+    opacity: 0.9,
+    textAlign: 'center',
+    marginBottom: 32,
+  },
+  button: {
+    paddingVertical: 14,
+    paddingHorizontal: 28,
+    borderRadius: 12,
+    backgroundColor: colors.primaryBlue,
+  },
+  buttonText: {
+    fontSize: 16,
+    fontFamily: typography.button,
+    color: colors.white,
+    fontWeight: '600',
+  },
+});
 
 const linking = {
   prefixes: ['https://inkliapp.com', 'com.inkli.app://', 'inkli://'],
@@ -40,7 +106,7 @@ const linking = {
 const navigationRef = createNavigationContainerRef<any>();
 
 function AppContent() {
-  const { user, loading, pendingPasswordRecovery } = useAuth();
+  const { user, loading, pendingPasswordRecovery, signOut } = useAuth();
   const { isOnline } = useNetworkStatus();
   const isLoading = Boolean(loading);
   const hasUser = Boolean(user);
@@ -53,6 +119,7 @@ function AppContent() {
     created_at: string | null;
     sent_invites_count: number;
     grandfathered_invite_unlock: boolean;
+    moderation_status: string | null;
   } | null>(null);
   const [profileRefreshCount, setProfileRefreshCount] = useState(0);
   const prevUserRef = useRef(user);
@@ -182,22 +249,23 @@ function AppContent() {
       try {
         const { data, error } = await supabase
           .from('user_profiles')
-          .select('completed_onboarding_quiz, skipped_onboarding_quiz, member_since, created_at, sent_invites_count, grandfathered_invite_unlock')
+          .select('completed_onboarding_quiz, skipped_onboarding_quiz, member_since, created_at, sent_invites_count, grandfathered_invite_unlock, moderation_status')
           .eq('user_id', user.id)
           .single();
 
         if (error || !data) {
           console.error('Error loading onboarding flags:', error);
-          setProfileFlags({
-            completed_onboarding_quiz: false,
-            skipped_onboarding_quiz: false,
-            member_since: null,
-            created_at: null,
-            sent_invites_count: 0,
-            grandfathered_invite_unlock: false,
-          });
-          return;
-        }
+setProfileFlags({
+          completed_onboarding_quiz: false,
+          skipped_onboarding_quiz: false,
+          member_since: null,
+          created_at: null,
+          sent_invites_count: 0,
+          grandfathered_invite_unlock: false,
+          moderation_status: null,
+        });
+        return;
+      }
 
         setProfileFlags({
           completed_onboarding_quiz: Boolean(data.completed_onboarding_quiz),
@@ -206,6 +274,7 @@ function AppContent() {
           created_at: data.created_at ?? null,
           sent_invites_count: Number(data.sent_invites_count) || 0,
           grandfathered_invite_unlock: Boolean(data.grandfathered_invite_unlock),
+          moderation_status: data.moderation_status ?? null,
         });
       } catch (error) {
         console.error('Exception loading onboarding flags:', error);
@@ -216,6 +285,7 @@ function AppContent() {
           created_at: null,
           sent_invites_count: 0,
           grandfathered_invite_unlock: false,
+          moderation_status: null,
         });
       } finally {
         setProfileLoading(false);
@@ -246,6 +316,11 @@ function AppContent() {
     !profileFlags?.grandfathered_invite_unlock &&
     (profileFlags?.sent_invites_count ?? 0) < 4;
 
+  const isSuspendedOrBanned =
+    hasUser &&
+    profileFlags !== null &&
+    (profileFlags.moderation_status === 'suspended' || profileFlags.moderation_status === 'banned');
+
   if (isLoading || (hasUser && (profileLoading || profileFlags === null))) {
     return (
       <View style={styles.loadingContainer}>
@@ -271,7 +346,12 @@ function AppContent() {
             }
           />
         ) : hasUser ? (
-          needsInviteGate ? (
+          isSuspendedOrBanned ? (
+            <AccountSuspendedScreen
+              moderationStatus={profileFlags?.moderation_status ?? null}
+              onSignOut={signOut}
+            />
+          ) : needsInviteGate ? (
             <AuthStackNavigator
               initialRouteName="InviteGate"
               onInviteGateCleared={() => setProfileRefreshCount((count) => count + 1)}

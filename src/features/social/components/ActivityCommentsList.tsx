@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Image,
   RefreshControl,
@@ -9,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import { colors } from '../../../config/theme';
+import type { ActivityComment } from '../../../types/activityComments';
 import RecentActivityCard from './RecentActivityCard';
 import type { UserBook } from '../../../services/books';
 import type { CommentRow } from '../hooks/useActivityComments';
@@ -29,6 +31,8 @@ type ActivityCommentsListProps = {
   onPressBook: (userBook: UserBook) => void;
   formatDateRange: (startDate: string | null, endDate?: string | null) => string | null;
   onReply: (comment: CommentRow['item']) => void;
+  onReportComment?: (comment: ActivityComment) => void;
+  onDeleteComment?: (comment: ActivityComment) => void;
   likeCounts: Map<string, number>;
   likedKeys: Set<string>;
   currentUserId?: string;
@@ -53,6 +57,8 @@ type ActivityCommentsListProps = {
     likeCountText: any;
     likeButton: any;
     likeIcon: any;
+    commentMenuButton?: any;
+    commentMenuButtonText?: any;
   };
 };
 
@@ -70,6 +76,8 @@ export default function ActivityCommentsList({
   onPressBook,
   formatDateRange,
   onReply,
+  onReportComment,
+  onDeleteComment,
   likeCounts,
   likedKeys,
   currentUserId,
@@ -79,6 +87,18 @@ export default function ActivityCommentsList({
   renderMentionText,
   styles,
 }: ActivityCommentsListProps) {
+  const openCommentMenu = (comment: ActivityComment) => {
+    const isOwn = currentUserId && comment.user_id === currentUserId;
+    const buttons: { text: string; onPress?: () => void; style?: 'default' | 'cancel' | 'destructive' }[] = [
+      ...(onReportComment ? [{ text: 'Report', onPress: () => onReportComment(comment) }] : []),
+      ...(isOwn && onDeleteComment
+        ? [{ text: 'Delete', onPress: () => onDeleteComment(comment), style: 'destructive' as const }]
+        : []),
+      { text: 'Cancel', style: 'cancel' as const },
+    ];
+    Alert.alert('', '', buttons);
+  };
+
   const renderItem = ({ item }: { item: CommentRow }) => {
     const comment = item.item;
     const username = comment.user?.username || 'user';
@@ -141,6 +161,15 @@ export default function ActivityCommentsList({
             resizeMode="contain"
           />
         </TouchableOpacity>
+        {(onReportComment || (currentUserId && onDeleteComment)) && (
+          <TouchableOpacity
+            style={styles.commentMenuButton}
+            onPress={() => openCommentMenu(comment)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.commentMenuButtonText}>⋮</Text>
+          </TouchableOpacity>
+        )}
       </View>
     );
   };

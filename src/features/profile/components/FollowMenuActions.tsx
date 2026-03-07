@@ -16,6 +16,7 @@ type FollowMenuActionsProps = {
   onToggleMenu: () => void;
   onMutePress: () => void;
   onBlockPress: () => void;
+  onReportPress: () => void;
   styles: Record<string, object>;
 };
 
@@ -31,6 +32,7 @@ export default function FollowMenuActions({
   onToggleMenu,
   onMutePress,
   onBlockPress,
+  onReportPress,
   styles,
 }: FollowMenuActionsProps) {
   const isActive = isFollowing || followRequestPending;
@@ -94,6 +96,12 @@ export default function FollowMenuActions({
                 onBlockPress();
               }}>
                 <Text style={styles.followMenuItemText}>{blockedByViewer ? 'Unblock' : 'Block'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.followMenuItem} onPress={() => {
+                void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+                onReportPress();
+              }}>
+                <Text style={styles.followMenuItemText}>Report User</Text>
               </TouchableOpacity>
             </View>
           )}

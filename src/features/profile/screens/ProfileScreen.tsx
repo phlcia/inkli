@@ -499,7 +499,7 @@ export default function ProfileScreen() {
         />
       </View>
     ),
-    [userProfile?.profile_photo_url, viewerShelfMap, handleBookPress, handleToggleWantToRead]
+    [userProfile, viewerShelfMap, handleBookPress, handleToggleWantToRead]
   );
 
   const listHeaderComponent = useMemo(
