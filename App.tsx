@@ -106,7 +106,7 @@ const linking = {
 const navigationRef = createNavigationContainerRef<any>();
 
 function AppContent() {
-  const { user, loading, pendingPasswordRecovery, signOut } = useAuth();
+  const { user, loading, pendingPasswordRecovery, setPendingPasswordRecovery, signOut } = useAuth();
   const { isOnline } = useNetworkStatus();
   const isLoading = Boolean(loading);
   const hasUser = Boolean(user);
@@ -163,6 +163,9 @@ function AppContent() {
 
         const url = new URL(event.url);
 
+        const isResetPasswordLink =
+          url.pathname === '/reset-password' || url.pathname === 'reset-password';
+
         let usernameFromProfileLink: string | null = null;
 
         if (
@@ -208,6 +211,7 @@ function AppContent() {
                 refresh_token: refreshToken,
               });
               if (error) console.error('Error setting recovery session:', error);
+              else setPendingPasswordRecovery(true);
             }
             return;
           }
@@ -225,6 +229,7 @@ function AppContent() {
         if (code) {
           const { error } = await supabase.auth.exchangeCodeForSession(code);
           if (error) console.error('Error exchanging code for session:', error);
+          else if (isResetPasswordLink) setPendingPasswordRecovery(true);
         }
       } catch (error) {
         console.error('Error handling deep link:', error);
@@ -235,7 +240,7 @@ function AppContent() {
       if (url) handleDeepLink({ url });
     });
     return () => subscription.remove();
-  }, [user]);
+  }, [user, setPendingPasswordRecovery]);
 
   useEffect(() => {
     const fetchProfileFlags = async () => {

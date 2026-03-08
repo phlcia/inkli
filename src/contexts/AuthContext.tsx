@@ -17,6 +17,7 @@ interface AuthContextType {
   session: Session | null;
   loading: boolean;
   pendingPasswordRecovery: boolean;
+  setPendingPasswordRecovery: (value: boolean) => void;
   signIn: (identifier: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, username?: string, name?: string, readingInterests?: string[]) => Promise<void>;
   signOut: () => Promise<void>;
@@ -453,6 +454,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     session,
     loading: Boolean(loading),
     pendingPasswordRecovery,
+    setPendingPasswordRecovery,
     signIn,
     signUp,
     signOut,
