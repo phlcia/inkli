@@ -17,6 +17,8 @@ import { useErrorHandler } from '../../../contexts/ErrorHandlerContext';
 import { FriendsLikedBook, getFriendsRecentLiked, formatCount } from '../../../services/books';
 import { getScoreColor } from '../../../utils/rankScoreColors';
 import { supabase } from '../../../config/supabase';
+import { useInviteTier } from '../../../hooks/useInviteTier';
+import { FeatureTeaser } from '../../../components/FeatureTeaser';
 
 type FriendsLikedListProps = {
   userId: string;
@@ -32,6 +34,7 @@ export default function FriendsLikedList({
   const { user } = useAuth();
   const { handleApiError } = useErrorHandler();
   const navigation = useNavigation<any>();
+  const { hasFeature, loading: inviteTierLoading } = useInviteTier();
   const [items, setItems] = useState<FriendsLikedBook[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -193,6 +196,20 @@ export default function FriendsLikedList({
     );
   };
 
+  if (!hasFeature('friend_recommendations')) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.teaserContainer}>
+          <FeatureTeaser
+            featureKey="friend_recommendations"
+            loading={inviteTierLoading}
+            onPress={() => navigation.getParent()?.navigate('Home' as never, { screen: 'InviteHub' } as never)}
+          />
+        </View>
+      </View>
+    );
+  }
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -246,6 +263,11 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.creamBackground,
+  },
+  teaserContainer: {
+    flex: 1,
+    paddingHorizontal: 20,
+    paddingTop: 20,
   },
   header: {
     paddingHorizontal: 20,

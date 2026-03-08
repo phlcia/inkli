@@ -249,7 +249,13 @@ Deep-linked invite URLs (`/invite/:code`) are intercepted at app launch and stor
 
 ### Invites
 
-Five lockable features: `community_scores`, `activity_feed`, `friend_recommendations`, `friends_rankings`, `leaderboard_circles`.
+Home activity feed and Recommended for You are always available (not gated). Five lockable features (unlocked via invite points):
+
+- `community_scores` — Community average scores (rating circles) on book detail
+- `activity_feed` — (Reserved; home feed is always on.)
+- `friend_recommendations` — **From your friends** (shelf tab: books recently liked/rated by followed users)
+- `friends_rankings` — Friends' rankings for a book on book detail
+- `leaderboard_circles` — Leaderboard screen and book circles
 
 - Each successful invite earns an `unspent_invite_point`
 - Points are spent via `spend-invite-point` edge function to unlock individual features

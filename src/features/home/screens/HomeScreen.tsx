@@ -34,7 +34,7 @@ import searchIcon from '../../../../assets/search.png';
 export default function HomeScreen() {
   const { user } = useAuth();
   const navigation = useNavigation<StackNavigationProp<HomeStackParamList>>();
-  const { hasFeature, loading: inviteTierLoading } = useInviteTier();
+  const { loading: inviteTierLoading } = useInviteTier();
   const [cards, setCards] = useState<ActivityFeedItem[]>([]);
   const [cursor, setCursor] = useState<ActivityFeedCursor | null>(null);
   const [hasMore, setHasMore] = useState(true);
@@ -354,40 +354,30 @@ export default function HomeScreen() {
         <Text style={styles.searchBarText}>Search for books or members...</Text>
       </Pressable>
 
-      {hasFeature('activity_feed') ? (
-        <FlatList
-          data={cards}
-          keyExtractor={(item) => item.id}
-          renderItem={renderItem}
-          contentContainerStyle={styles.listContent}
-          onEndReached={handleLoadMore}
-          onEndReachedThreshold={0.4}
-          refreshing={refreshing}
-          onRefresh={handleRefresh}
-          ListHeaderComponent={
-            <View style={styles.invitesBoxContainer}>
-              <FeatureTeaser
-                featureKey="activity_feed"
-                loading={inviteTierLoading}
-                onPress={() => navigation.navigate('InviteHub')}
-              />
-            </View>
-          }
-          ListEmptyComponent={listEmptyComponent}
-          ListFooterComponent={listFooterComponent}
-          removeClippedSubviews
-          initialNumToRender={6}
-          windowSize={7}
-        />
-      ) : (
-        <View style={styles.teaserContainer}>
-          <FeatureTeaser
-            featureKey="activity_feed"
-            loading={inviteTierLoading}
-            onPress={() => navigation.navigate('InviteHub')}
-          />
-        </View>
-      )}
+      <FlatList
+        data={cards}
+        keyExtractor={(item) => item.id}
+        renderItem={renderItem}
+        contentContainerStyle={styles.listContent}
+        onEndReached={handleLoadMore}
+        onEndReachedThreshold={0.4}
+        refreshing={refreshing}
+        onRefresh={handleRefresh}
+        ListHeaderComponent={
+          <View style={styles.invitesBoxContainer}>
+            <FeatureTeaser
+              featureKey="activity_feed"
+              loading={inviteTierLoading}
+              onPress={() => navigation.navigate('InviteHub')}
+            />
+          </View>
+        }
+        ListEmptyComponent={listEmptyComponent}
+        ListFooterComponent={listFooterComponent}
+        removeClippedSubviews
+        initialNumToRender={6}
+        windowSize={7}
+      />
     </SafeAreaView>
   );
 }

@@ -23,7 +23,7 @@ import {
 const FEATURE_LABELS: Record<FeatureKey, string> = {
   community_scores: 'Community average scores on book detail',
   activity_feed: 'Home activity feed',
-  friend_recommendations: 'Friend recommendations',
+  friend_recommendations: 'From your friends',
   friends_rankings: "Friends' rankings for books",
   leaderboard_circles: 'Leaderboard & book circles',
 };
