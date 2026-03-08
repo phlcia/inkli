@@ -94,7 +94,6 @@ export default function GenreLabelPicker({
     initialCustomLabels,
     bookId,
     autoSelectSuggestions,
-    selectedGenres.length,
   ]);
 
   // Animate modal appearance
