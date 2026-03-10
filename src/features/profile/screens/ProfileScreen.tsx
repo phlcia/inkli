@@ -132,7 +132,6 @@ export default function ProfileScreen() {
         .single();
       
       if (error) {
-        console.warn('Profile not found for user, showing placeholder');
         return {
           username: 'New User',
           name: 'New User',

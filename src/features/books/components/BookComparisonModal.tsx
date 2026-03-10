@@ -57,7 +57,7 @@ export default function BookComparisonModal({
   onComplete,
 }: BookComparisonModalProps) {
   const { user } = useAuth();
-  const { handleApiError, showClientError } = useErrorHandler();
+  const { handleApiError, showClientError, showServerError } = useErrorHandler();
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [showRankedConfirmation, setShowRankedConfirmation] = useState(false);
@@ -228,8 +228,6 @@ export default function BookComparisonModal({
             setProcessing(false);
             handleApiError(error, 'save ranking');
           });
-      } else {
-        console.error('=== RANKING DEBUG: ERROR - result is null/undefined ===');
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -262,7 +260,7 @@ export default function BookComparisonModal({
 
   const saveFinalRank = async (result: ReturnType<typeof getResult>) => {
     if (!user || !result) {
-      console.error('=== RANKING DEBUG: saveFinalRank - No user or result ===');
+      showServerError('Something went wrong saving your ranking. Please try again.');
       return;
     }
 
@@ -275,7 +273,6 @@ export default function BookComparisonModal({
       
       // Validate position
       if (result.positionInTier < 0 || isNaN(result.positionInTier)) {
-        console.error('=== RANKING DEBUG: ERROR - Invalid position ===', result.positionInTier);
         throw new Error(`Invalid position: ${result.positionInTier}`);
       }
       

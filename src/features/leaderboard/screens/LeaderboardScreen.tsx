@@ -65,11 +65,6 @@ export default function LeaderboardScreen() {
           .single();
         
         if (!currentUserError && currentUserData) {
-          // Diagnostic: Check if user has books but no rank
-          if (currentUserData.books_read_count > 0 && !currentUserData.global_rank) {
-            console.warn('⚠️ User has books but no rank. Ranking system may need recalculation.');
-          }
-          
           const isInTop100 = leaders?.some(u => u.user_id === currentUser.id);
           if (!isInTop100 && currentUserData.global_rank) {
             setCurrentUserRank(currentUserData);
@@ -77,21 +72,6 @@ export default function LeaderboardScreen() {
         }
       }
       
-      // Diagnostic: Log if no leaders found but users exist with books
-      if ((!leaders || leaders.length === 0) && currentUser) {
-        const { data: usersWithBooks } = await supabase
-          .from('user_profiles')
-          .select('user_id, books_read_count, global_rank')
-          .gt('books_read_count', 0)
-          .limit(5);
-        
-        if (usersWithBooks && usersWithBooks.length > 0) {
-          const usersWithoutRank = usersWithBooks.filter(u => !u.global_rank);
-          if (usersWithoutRank.length > 0) {
-            console.warn('⚠️ Found users with books but no ranks. Ranking system needs recalculation.');
-          }
-        }
-      }
     } catch (error) {
       handleApiError(error, 'load leaderboard', () => fetchLeaderboard(showLoading));
     } finally {

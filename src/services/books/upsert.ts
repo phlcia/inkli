@@ -27,8 +27,6 @@ export async function upsertBookViaEdge(
     google_books_id: bookToSend?.google_books_id,
     isbn_13: bookToSend?.isbn_13,
   };
-  console.log('[upsertBookViaEdge] Sending payload:', payload);
-
   const { data, error } = await supabase.functions.invoke('books-upsert', {
     body: { book: bookToSend },
   });

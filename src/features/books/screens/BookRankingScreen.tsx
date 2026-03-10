@@ -276,8 +276,6 @@ export default function BookRankingScreen() {
       });
       
       if (updateResult.error) {
-        console.error('=== SAVE DEBUG: Database error ===', updateResult.error);
-        console.error('Error details:', JSON.stringify(updateResult.error, null, 2));
         setSaving(false);
         return false;
       }
@@ -329,9 +327,6 @@ export default function BookRankingScreen() {
       setSaving(false);
       return true;
     } catch (error: any) {
-      console.error('=== SAVE DEBUG: ERROR in saveBookDetails ===', error);
-      console.error('Error stack:', error?.stack);
-      console.error('Error message:', error?.message);
       // Only show alert for unexpected errors
       if (error?.message && !error.message.includes('cancelled')) {
         handleApiError(error, 'update book');
@@ -347,11 +342,7 @@ export default function BookRankingScreen() {
       setRating(selectedRating);
       
       // Auto-save when rating is selected
-      const saved = await saveBookDetails(selectedRating);
-      if (!saved) {
-        console.warn('Failed to save rating, but continuing...');
-        // Don't show alert here - saveBookDetails already handles errors
-      }
+      await saveBookDetails(selectedRating);
     } catch (error) {
       console.error('Error in handleRatingSelect:', error);
       // Error should already be handled by saveBookDetails
@@ -363,7 +354,6 @@ export default function BookRankingScreen() {
     if (initialStatus === 'read' && rating) {
       const ensuredUserBookId = await ensureUserBookId();
       if (!ensuredUserBookId || ensuredUserBookId.trim() === '') {
-        console.error('=== RANKING DEBUG: ERROR - Cannot open comparison modal with empty userBookId ===');
         showClientError('Book ID is missing. Please try adding the book again.');
         return;
       }
@@ -604,9 +594,6 @@ export default function BookRankingScreen() {
           // Verify dates from read sessions
           const sessions = await getReadSessions(comparisonUserBookId);
           
-          if (!book?.rank_score) {
-            console.error('=== RANKING DEBUG: ERROR - rank_score is still null after ranking! ===');
-          }
         }
       } catch (err) {
         console.error('Error saving dates/notes or verifying:', err);
@@ -695,11 +682,7 @@ export default function BookRankingScreen() {
         setStartedDate(newStartDate);
         setFinishedDate(newEndDate);
         // Auto-save when dates are set (regardless of rating)
-        const saved = await saveBookDetails();
-        if (!saved) {
-          console.warn('Failed to save dates, but continuing...');
-          // Don't show alert here - saveBookDetails already handles errors
-        }
+        await saveBookDetails();
       }
     } catch (error) {
       console.error('Error in handleDateRangeSelected:', error);

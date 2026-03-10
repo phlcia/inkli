@@ -19,13 +19,13 @@ export async function updateBookGenres(
     });
 
     if (error) {
-      console.error('=== updateBookGenres: Edge Function error ===', error);
+      console.error('updateBookGenres: Edge Function error:', error);
       return { error };
     }
 
     if (!data?.success) {
       const errMsg = data?.error || 'Unknown error from Edge Function';
-      console.error('=== updateBookGenres: Edge Function failed ===', errMsg);
+      console.error('updateBookGenres: Edge Function failed:', errMsg);
       return { error: new Error(errMsg) };
     }
 

@@ -120,7 +120,6 @@ function sanitizeBook(input: Record<string, unknown>) {
 }
 
 Deno.serve(async (req: Request) => {
-  console.log('[books-upsert] request received', req.method, req.url)
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }

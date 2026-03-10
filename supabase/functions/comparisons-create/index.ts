@@ -59,11 +59,6 @@ Deno.serve(async (req: Request) => {
     const serviceRoleKey = Deno.env.get('SERVICE_ROLE_KEY') ?? ''
     isServiceRoleConfigured = Boolean(serviceRoleKey)
     isServiceRoleDistinct = Boolean(serviceRoleKey && serviceRoleKey !== supabaseAnonKey)
-    console.log('comparisons-create auth config', {
-      hasServiceRoleKey: isServiceRoleConfigured,
-      serviceRoleDistinctFromAnon: isServiceRoleDistinct,
-    })
-
     const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey, {
       global: {
         headers: {
