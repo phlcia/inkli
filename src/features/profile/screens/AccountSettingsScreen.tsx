@@ -12,6 +12,7 @@ import {
   Switch,
   Modal,
   Keyboard,
+  Linking,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -451,6 +452,19 @@ export default function AccountSettingsScreen() {
             </View>
           </>
         )}
+
+        {/* Legal */}
+        <Text style={styles.sectionHeader}>Legal</Text>
+        <View style={styles.section}>
+          <TouchableOpacity
+            style={styles.actionRow}
+            onPress={() => void Linking.openURL('https://inkliapp.com/privacy-policy')}
+            accessibilityRole="link"
+            accessibilityLabel="Privacy Policy"
+          >
+            <Text style={styles.actionRowText}>Privacy Policy</Text>
+          </TouchableOpacity>
+        </View>
 
         {/* Account Actions */}
         <Text style={styles.sectionHeader}>Account Actions</Text>

@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Image,
   Platform,
+  Linking,
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -42,6 +43,8 @@ export default function SignUpEmailScreen({ onNext, onBack: _onBack }: SignUpEma
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
   const [phone, setPhone] = useState('');
+  const [ageConfirmed, setAgeConfirmed] = useState(false);
+  const [privacyConfirmed, setPrivacyConfirmed] = useState(false);
 
   // Validation state
   const [usernameStatus, setUsernameStatus] = useState<UsernameStatus>('idle');
@@ -232,7 +235,9 @@ export default function SignUpEmailScreen({ onNext, onBack: _onBack }: SignUpEma
     !phoneError &&
     passwordRequirementsMet &&
     password === confirmPassword &&
-    confirmPassword.length > 0;
+    confirmPassword.length > 0 &&
+    ageConfirmed &&
+    privacyConfirmed;
 
   const handleNext = async () => {
     validateNameBlur();
@@ -500,6 +505,48 @@ export default function SignUpEmailScreen({ onNext, onBack: _onBack }: SignUpEma
           )}
         </View>
 
+        {/* Age + Privacy checkboxes */}
+        <TouchableOpacity
+          style={styles.checkboxRow}
+          onPress={() => {
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            setAgeConfirmed((prev) => !prev);
+          }}
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: ageConfirmed }}
+          accessibilityLabel="I am 13 years of age or older."
+        >
+          <View style={[styles.checkbox, ageConfirmed && styles.checkboxChecked]}>
+            {ageConfirmed && <Text style={styles.checkboxMark}>✓</Text>}
+          </View>
+          <Text style={styles.checkboxLabel}>I am 13 years of age or older. <Text style={styles.required}>*</Text></Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.checkboxRow}
+          onPress={() => {
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            setPrivacyConfirmed((prev) => !prev);
+          }}
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: privacyConfirmed }}
+          accessibilityLabel="I agree to the Privacy Policy."
+        >
+          <View style={[styles.checkbox, privacyConfirmed && styles.checkboxChecked]}>
+            {privacyConfirmed && <Text style={styles.checkboxMark}>✓</Text>}
+          </View>
+          <Text style={styles.checkboxLabel}>
+            I agree to the{' '}
+            <Text
+              style={styles.privacyLink}
+              onPress={() => void Linking.openURL('https://inkliapp.com/privacy-policy')}
+            >
+              Privacy Policy
+            </Text>
+            {' '}<Text style={styles.required}>*</Text>
+          </Text>
+        </TouchableOpacity>
+
         {/* Next Button */}
         <TouchableOpacity
           style={[styles.nextButton, !isFormValid && styles.nextButtonDisabled]}
@@ -666,5 +713,45 @@ const styles = StyleSheet.create({
   checklistUnmet: {
     color: colors.brownText,
     opacity: 0.6,
+  },
+  checkboxRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: colors.brownText,
+    backgroundColor: colors.white,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+    flexShrink: 0,
+  },
+  checkboxChecked: {
+    backgroundColor: colors.primaryBlue,
+    borderColor: colors.primaryBlue,
+  },
+  checkboxMark: {
+    color: colors.white,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  checkboxLabel: {
+    fontFamily: typography.body,
+    fontSize: 14,
+    color: colors.brownText,
+    flex: 1,
+  },
+  privacyLink: {
+    color: colors.primaryBlue,
+    textDecorationLine: 'underline',
+  },
+  required: {
+    color: '#C53030',
+    fontWeight: '700',
   },
 });
