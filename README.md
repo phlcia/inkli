@@ -246,6 +246,7 @@ Deep-linked invite URLs (`/invite/:code`) are intercepted at app launch and stor
 - View other users' profiles
 - Edit profile: name, username, bio, reading interests, profile photo (upload/delete via Supabase Storage)
 - Profile photos stored in `profile-photos` bucket with pattern `{userId}/{userId}-{timestamp}.{ext}`
+- Avatar fallback (when no photo): blue circle (`primaryBlue`) with white initial letter — consistent across all screens (Profile, Leaderboard, Activity feed, Comments, Likes, Followers/Following)
 - Account settings: change password, toggle public/private, deactivate, delete account, Privacy Policy link
 - Sign-up flow (`CreateAccountScreen`): age 13+ confirmation checkbox (gates all sign-up methods) + Privacy Policy link; `SignUpEmailScreen` also shows a "By signing up" Privacy Policy footnote
 

@@ -269,7 +269,7 @@ export default function ActivityLikesScreen() {
         ) : (
           <FlatList
             data={filteredLikes}
-            keyExtractor={(item) => item.id}
+            keyExtractor={(item) => item.user_id}
             renderItem={renderItem}
             refreshing={refreshing}
             onRefresh={handleRefresh}
@@ -382,9 +382,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: colors.white,
-    borderWidth: 1,
-    borderColor: `${colors.brownText}33`,
+    backgroundColor: colors.primaryBlue,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -392,7 +390,7 @@ const styles = StyleSheet.create({
   avatarText: {
     fontSize: 14,
     fontFamily: typography.body,
-    color: colors.brownText,
+    color: colors.white,
     fontWeight: '600',
   },
   rowText: {
