@@ -24,7 +24,8 @@ import { useNetworkStatus } from './src/hooks/useNetworkStatus';
 import { OfflineBanner } from './src/components/OfflineBanner';
 import AuthStackNavigator from './src/navigation/AuthStackNavigator';
 import { supabase } from './src/config/supabase';
-import { clearBadge, requestBadgePermission } from './src/services/notifications';
+import * as Notifications from 'expo-notifications';
+import { clearBadge, registerPushToken } from './src/services/notifications';
 import {
   storePendingInviteCode,
   clearPendingInviteCode,
@@ -33,6 +34,15 @@ import { getUserIdByUsername } from './src/services/userProfile';
 import { typography } from './src/config/theme';
 import 'react-native-get-random-values';
 import 'react-native-url-polyfill/auto';
+
+// Configure how notifications are displayed when the app is in the foreground
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: true,
+  }),
+});
 
 function AccountSuspendedScreen({
   moderationStatus,
@@ -132,11 +142,21 @@ function AppContent() {
     prevUserRef.current = user;
   }, [user]);
 
-  // Request badge-only notification permission once the user is authenticated.
+  // Register push token once the user is authenticated.
   useEffect(() => {
     if (!user) return;
-    void requestBadgePermission();
-  }, [user]);
+    void registerPushToken(user.id);
+  }, [user?.id]);
+
+  // Navigate to Notifications screen when user taps a push notification.
+  useEffect(() => {
+    const subscription = Notifications.addNotificationResponseReceivedListener(() => {
+      if (navigationRef.isReady()) {
+        navigationRef.navigate('Home', { screen: 'Notifications' });
+      }
+    });
+    return () => subscription.remove();
+  }, []);
 
   // Clear the app icon badge whenever the app returns to the foreground.
   useEffect(() => {

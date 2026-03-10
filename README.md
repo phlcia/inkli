@@ -434,7 +434,8 @@ Filter usage in the shelf view is tracked to `filter_events`:
 | `fetchUnreadNotificationsCount(userId)` | Count notifications since `notifications_last_seen_at` |
 | `getNotificationsLastSeen(userId)` | Read last-seen timestamp |
 | `updateNotificationsLastSeen(userId, timestamp?)` | Update last-seen timestamp |
-| `requestBadgePermission()` | Request iOS badge-only notification permission |
+| `registerPushToken(userId)` | Request full notification permissions (alert + sound + badge), get Expo push token, upsert to `push_tokens` table |
+| `requestBadgePermission()` | Request iOS badge-only notification permission (legacy) |
 | `setBadgeCount(count)` | Set app icon badge number |
 | `clearBadge()` | Reset app icon badge to 0 |
 

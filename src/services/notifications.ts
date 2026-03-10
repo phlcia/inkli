@@ -1,5 +1,8 @@
 import * as ExpoNotifications from 'expo-notifications';
+import { Platform } from 'react-native';
 import { supabase } from './supabase';
+
+const EXPO_PROJECT_ID = '9ed75875-385f-41e2-a97b-c163e9ebf418';
 
 export type NotificationType =
   | 'like'
@@ -145,6 +148,47 @@ export async function fetchUnreadNotificationsCount(
   if (error) throw error;
 
   return count ?? 0;
+}
+
+export async function registerPushToken(userId: string): Promise<void> {
+  try {
+    if (Platform.OS === 'android') {
+      await ExpoNotifications.setNotificationChannelAsync('default', {
+        name: 'Default',
+        importance: ExpoNotifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#4EACE3',
+        sound: 'default',
+      });
+    }
+
+    const { status: existingStatus } = await ExpoNotifications.getPermissionsAsync();
+    let finalStatus = existingStatus;
+    if (existingStatus !== 'granted') {
+      const { status } = await ExpoNotifications.requestPermissionsAsync({
+        ios: { allowAlert: true, allowBadge: true, allowSound: true },
+      });
+      finalStatus = status;
+    }
+
+    if (finalStatus !== 'granted') return;
+
+    const tokenData = await ExpoNotifications.getExpoPushTokenAsync({
+      projectId: EXPO_PROJECT_ID,
+    });
+
+    await supabase.from('push_tokens').upsert(
+      {
+        user_id: userId,
+        expo_push_token: tokenData.data,
+        platform: Platform.OS,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'user_id,expo_push_token' }
+    );
+  } catch (error) {
+    console.warn('Failed to register push token:', error);
+  }
 }
 
 export async function requestBadgePermission(): Promise<void> {
