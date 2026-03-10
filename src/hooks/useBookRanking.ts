@@ -11,6 +11,8 @@ import {
   getFinalResult,
 } from '../utils/bookRanking';
 
+const HISTORY_MAX = 20;
+
 /**
  * React hook for managing binary search-based book ranking
  * 
@@ -38,13 +40,31 @@ export function useBookRanking(initialBooks: RankedBook[] = []) {
   const [rankingState, setRankingState] = useState<RankingState>(() =>
     initializeRanking(initialBooks)
   );
+  const [history, setHistory] = useState<RankingState[]>([]);
 
   /**
    * Start the insertion process for a new book
    */
   const startInserting = useCallback(
-    (newBook: Omit<RankedBook, 'score'>, tier: 'liked' | 'fine' | 'disliked') => {
+    (newBook: Omit<RankedBook, 'score' | 'tier'>, tier: 'liked' | 'fine' | 'disliked') => {
+      setHistory([]);
       setRankingState((state) => startInsertion(state, newBook, tier));
+    },
+    []
+  );
+
+  /**
+   * Push entire current rankingState to history (max HISTORY_MAX), then apply fn
+   */
+  const pushAndApply = useCallback(
+    (fn: (state: RankingState) => RankingState) => {
+      setRankingState((prev) => {
+        setHistory((h) => {
+          const next = [...h, prev];
+          return next.length > HISTORY_MAX ? next.slice(-HISTORY_MAX) : next;
+        });
+        return fn(prev);
+      });
     },
     []
   );
@@ -53,22 +73,39 @@ export function useBookRanking(initialBooks: RankedBook[] = []) {
    * Process user's choice: user prefers the new book
    */
   const chooseNewBook = useCallback(() => {
-    setRankingState((state) => processComparison(state, true));
-  }, []);
+    pushAndApply((state) => processComparison(state, true));
+  }, [pushAndApply]);
 
   /**
    * Process user's choice: user prefers the existing book
    */
   const chooseExistingBook = useCallback(() => {
-    setRankingState((state) => processComparison(state, false));
-  }, []);
+    pushAndApply((state) => processComparison(state, false));
+  }, [pushAndApply]);
 
   /**
    * Skip comparison and place new book at bottom of tier
    */
   const skipToBottom = useCallback(() => {
-    setRankingState((state) => skipToBottomUtil(state));
+    pushAndApply((state) => skipToBottomUtil(state));
+  }, [pushAndApply]);
+
+  /**
+   * Undo the last comparison or skip; restores the previous ranking state
+   */
+  const undo = useCallback(() => {
+    setHistory((prev) => {
+      if (prev.length === 0) return prev;
+      const restored = prev[prev.length - 1];
+      if (!restored) {
+        return prev;
+      }
+      setRankingState(restored);
+      return prev.slice(0, -1);
+    });
   }, []);
+
+  const canUndo = history.length > 0;
 
   /**
    * Get the current comparison pair
@@ -105,6 +142,7 @@ export function useBookRanking(initialBooks: RankedBook[] = []) {
    * Reset the ranking state with new books
    */
   const reset = useCallback((books: RankedBook[] = []) => {
+    setHistory([]);
     setRankingState(initializeRanking(books));
   }, []);
 
@@ -113,6 +151,8 @@ export function useBookRanking(initialBooks: RankedBook[] = []) {
     chooseNewBook,
     chooseExistingBook,
     skipToBottom,
+    undo,
+    canUndo,
     getCurrentComparison,
     isComplete,
     getResult,

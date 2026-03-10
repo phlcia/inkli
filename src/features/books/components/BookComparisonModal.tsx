@@ -15,6 +15,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { useErrorHandler } from '../../../contexts/ErrorHandlerContext';
 import { useBookRanking } from '../../../hooks/useBookRanking';
 import { RankedBook } from '../../../utils/bookRanking';
+import { formatScore, getTierColor } from '../../../utils/rankScoreColors';
 import { supabase } from '../../../config/supabase';
 import goodIcon from '../../../../assets/good.png';
 import midIcon from '../../../../assets/mid.png';
@@ -69,6 +70,8 @@ export default function BookComparisonModal({
     chooseNewBook,
     chooseExistingBook,
     skipToBottom,
+    undo,
+    canUndo,
     getCurrentComparison,
     isComplete,
     getResult,
@@ -434,17 +437,19 @@ export default function BookComparisonModal({
                   disabled={processing}
                   activeOpacity={0.8}
                 >
-                  {currentBook.cover_url ? (
-                    <Image
-                      source={{ uri: currentBook.cover_url }}
-                      style={styles.bookCover}
-                      resizeMode="contain"
-                    />
-                  ) : (
-                    <View style={[styles.bookCover, styles.bookCoverPlaceholder]}>
-                      <Text style={styles.bookCoverPlaceholderText}>📖</Text>
-                    </View>
-                  )}
+                  <View style={styles.bookCardInner}>
+                    {currentBook.cover_url ? (
+                      <Image
+                        source={{ uri: currentBook.cover_url }}
+                        style={styles.bookCover}
+                        resizeMode="contain"
+                      />
+                    ) : (
+                      <View style={[styles.bookCover, styles.bookCoverPlaceholder]}>
+                        <Text style={styles.bookCoverPlaceholderText}>📖</Text>
+                      </View>
+                    )}
+                  </View>
                   <Text style={styles.bookTitle} numberOfLines={2}>
                     {currentBook.title}
                   </Text>
@@ -453,6 +458,9 @@ export default function BookComparisonModal({
                       {currentBook.authors.join(', ')}
                     </Text>
                   )}
+                  <View style={[styles.pill, styles.newPill]}>
+                    <Text style={styles.newPillText}>New</Text>
+                  </View>
                 </TouchableOpacity>
 
                 {/* VS Badge */}
@@ -489,22 +497,41 @@ export default function BookComparisonModal({
                       {comparisonBook.authors.join(', ')}
                     </Text>
                   )}
+                  <View style={[styles.pill, styles.scorePill, { backgroundColor: getTierColor(comparisonBook.tier) }]}>
+                    <Text style={styles.scorePillText}>{formatScore(comparisonBook.score)}</Text>
+                  </View>
                 </TouchableOpacity>
               </View>
 
-              {/* Skip Button */}
-              <TouchableOpacity
-                style={styles.skipButton}
-                onPress={() => {
-                  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  void handleSkip();
-                }}
-                disabled={processing}
-              >
-                <Text style={styles.skipButtonText}>
-                  {processing ? 'Processing...' : 'Too hard (skip)'}
-                </Text>
-              </TouchableOpacity>
+              {/* Undo + Skip row */}
+              <View style={styles.escapeRow}>
+                <TouchableOpacity
+                  style={[styles.undoButton, !canUndo && styles.undoButtonDisabled]}
+                  onPress={() => {
+                    if (canUndo && !processing) {
+                      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      undo();
+                    }
+                  }}
+                  disabled={processing}
+                >
+                  <Text style={[styles.undoButtonText, !canUndo && styles.undoButtonTextDisabled]}>
+                    Undo
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.skipButton}
+                  onPress={() => {
+                    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    void handleSkip();
+                  }}
+                  disabled={processing}
+                >
+                  <Text style={styles.skipButtonText}>
+                    {processing ? 'Processing...' : 'Too hard (skip)'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </>
           ) : null}
         </View>
@@ -560,6 +587,64 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     padding: 12,
+  },
+  bookCardInner: {
+    position: 'relative',
+    alignItems: 'center',
+  },
+  pill: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    alignSelf: 'center',
+  },
+  newPill: {
+    backgroundColor: colors.primaryBlue,
+    marginTop: 8,
+  },
+  newPillText: {
+    fontSize: 12,
+    fontFamily: typography.button,
+    color: colors.white,
+    fontWeight: '600',
+  },
+  scorePill: {
+    marginTop: 6,
+  },
+  scorePillText: {
+    fontSize: 12,
+    fontFamily: typography.button,
+    color: colors.white,
+    fontWeight: '600',
+  },
+  escapeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 8,
+    gap: 12,
+  },
+  undoButton: {
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    backgroundColor: colors.creamBackground,
+    borderWidth: 1,
+    borderColor: colors.primaryBlue,
+  },
+  undoButtonDisabled: {
+    borderColor: colors.brownText,
+    opacity: 0.4,
+  },
+  undoButtonText: {
+    fontSize: 16,
+    fontFamily: typography.button,
+    color: colors.primaryBlue,
+    fontWeight: '600',
+  },
+  undoButtonTextDisabled: {
+    color: colors.brownText,
+    opacity: 0.6,
   },
   bookCover: {
     width: 100,

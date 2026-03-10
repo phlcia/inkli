@@ -77,7 +77,7 @@ export function initializeRanking(existingBooks: RankedBook[]): RankingState {
  */
 export function startInsertion(
   rankingState: RankingState,
-  newBook: Omit<RankedBook, 'score'>,
+  newBook: Omit<RankedBook, 'score' | 'tier'>,
   tier: BookTier
 ): RankingState {
   const { books } = rankingState;

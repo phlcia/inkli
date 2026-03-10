@@ -1,3 +1,5 @@
+import type { BookTier } from './bookRanking';
+
 /**
  * Utility functions for rank score display and colors
  */
@@ -16,6 +18,23 @@ export function getScoreColor(score: number | null | undefined): string {
     return '#FFC107'; // Yellow
   } else {
     return '#F44336'; // Red
+  }
+}
+
+/**
+ * Get color for a tier (liked / fine / disliked).
+ * Matches the same green/yellow/red as score ranges for consistency.
+ */
+export function getTierColor(tier: BookTier): string {
+  switch (tier) {
+    case 'liked':
+      return '#4CAF50'; // Green
+    case 'fine':
+      return '#FFC107'; // Yellow
+    case 'disliked':
+      return '#F44336'; // Red
+    default:
+      return '#9E9E9E';
   }
 }
 
