@@ -8,13 +8,13 @@ import {
   TextInput,
   ActivityIndicator,
   ScrollView,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Animated,
 } from 'react-native';
 import { colors, typography } from '../../../config/theme';
 import { reportContent, type ReportReason, type ReportTargetType } from '../../../services/moderation';
+import { useErrorHandler } from '../../../contexts/ErrorHandlerContext';
 
 const REASONS: { value: ReportReason; label: string }[] = [
   { value: 'spam', label: 'Spam' },
@@ -45,6 +45,7 @@ export default function ReportSheet({
   const [details, setDetails] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const anim = useRef(new Animated.Value(0)).current;
+  const { showSuccess, showServerError } = useErrorHandler();
   const prevVisibleRef = useRef(visible);
 
   useEffect(() => {
@@ -86,13 +87,14 @@ export default function ReportSheet({
       onSuccess?.();
       onClose();
       if (result.already_reported) {
-        Alert.alert('Already reported', "You've already reported this.");
+        showSuccess("You've already reported this.");
       } else {
-        Alert.alert('Thanks!', "We'll review this.");
+        showSuccess("We'll review this.");
       }
     } catch (err) {
       console.error('Report submit error:', err);
-      Alert.alert('Error', 'Something went wrong. Please try again.');
+      onClose();
+      showServerError('Something went wrong. Please try again.');
     } finally {
       setSubmitting(false);
     }

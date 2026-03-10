@@ -1,5 +1,4 @@
 import React, { createContext, useCallback, useContext, useState } from 'react';
-import { Alert } from 'react-native';
 import {
   classifyError,
   getErrorMessage,
@@ -11,12 +10,14 @@ const RETRY_THROTTLE_MS = 2000;
 
 interface ToastState {
   message: string;
+  type: 'error' | 'success';
   onRetry?: () => void;
 }
 
 interface ErrorHandlerContextType {
   showServerError: (message: string, onRetry?: () => void) => void;
   showClientError: (message: string) => void;
+  showSuccess: (message: string) => void;
   handleApiError: (error: unknown, context: string, onRetry?: () => void) => void;
 }
 
@@ -33,13 +34,17 @@ export function ErrorHandlerProvider({ children }: { children: React.ReactNode }
 
   const showServerError = useCallback(
     (message: string, onRetry?: () => void) => {
-      setToast({ message, onRetry });
+      setToast({ message, type: 'error', onRetry });
     },
     []
   );
 
   const showClientError = useCallback((message: string) => {
-    Alert.alert('Error', message);
+    setToast({ message, type: 'error' });
+  }, []);
+
+  const showSuccess = useCallback((message: string) => {
+    setToast({ message, type: 'success' });
   }, []);
 
   const handleApiError = useCallback(
@@ -79,6 +84,7 @@ export function ErrorHandlerProvider({ children }: { children: React.ReactNode }
   const value: ErrorHandlerContextType = {
     showServerError,
     showClientError,
+    showSuccess,
     handleApiError,
   };
 
@@ -88,6 +94,7 @@ export function ErrorHandlerProvider({ children }: { children: React.ReactNode }
       {toast && (
         <ErrorToast
           message={toast.message}
+          type={toast.type}
           onRetry={toast.onRetry}
           onDismiss={dismissToast}
         />

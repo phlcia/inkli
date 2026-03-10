@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   StatusBar,
-  Alert,
   Image,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
@@ -14,6 +13,7 @@ import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography } from '../../../config/theme';
 import { useAuth } from '../../../contexts/AuthContext';
+import { useErrorHandler } from '../../../contexts/ErrorHandlerContext';
 import iconImage from '../../../../assets/icon.png';
 import appleIcon from '../../../../assets/apple.png';
 import googleIcon from '../../../../assets/google.png';
@@ -30,10 +30,17 @@ export default function SignInScreen({ onSignUp, onForgotPassword, successMessag
   const [loading, setLoading] = useState(false);
   const [oauthLoading, setOauthLoading] = useState<'apple' | 'google' | null>(null);
   const { signIn, signInWithApple, signInWithGoogle } = useAuth();
+  const { showClientError, showServerError, showSuccess } = useErrorHandler();
+
+  useEffect(() => {
+    if (successMessage) {
+      showSuccess(successMessage);
+    }
+  }, [successMessage]);
 
   const handleSignIn = async () => {
     if (!identifier || !password) {
-      Alert.alert('Error', 'Please fill in all fields');
+      showClientError('Please fill in all fields');
       return;
     }
 
@@ -43,7 +50,7 @@ export default function SignInScreen({ onSignUp, onForgotPassword, successMessag
       await signIn(identifier, password);
     } catch (error: any) {
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert('Error', error.message || 'Sign in failed');
+      showServerError(error.message || 'Sign in failed');
     } finally {
       setLoading(false);
     }
@@ -71,11 +78,6 @@ export default function SignInScreen({ onSignUp, onForgotPassword, successMessag
 
         {/* Tagline */}
         <Text style={styles.tagline}>you read it,{"\n"}you rank it!</Text>
-
-        {/* Success message (e.g. after password reset) */}
-        {successMessage ? (
-          <Text style={styles.successMessage}>{successMessage}</Text>
-        ) : null}
 
         {/* Username, email, or phone Input */}
         <TextInput
@@ -330,17 +332,6 @@ const styles = StyleSheet.create({
   signUpLink: {
     color: colors.primaryBlue,
     fontWeight: '500',
-  },
-  successMessage: {
-    backgroundColor: '#E8F8EE',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginBottom: 16,
-    fontFamily: typography.body,
-    fontSize: 14,
-    color: '#1A7A3A',
-    textAlign: 'center',
   },
   forgotContainer: {
     alignSelf: 'flex-end',

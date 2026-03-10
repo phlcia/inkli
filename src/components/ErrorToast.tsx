@@ -10,13 +10,16 @@ import { colors, typography } from '../config/theme';
 
 const TOAST_DURATION_MS = 5000;
 
+type ToastType = 'error' | 'success';
+
 interface ErrorToastProps {
   message: string;
+  type?: ToastType;
   onRetry?: () => void;
   onDismiss: () => void;
 }
 
-export function ErrorToast({ message, onRetry, onDismiss }: ErrorToastProps) {
+export function ErrorToast({ message, type = 'error', onRetry, onDismiss }: ErrorToastProps) {
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -47,9 +50,9 @@ export function ErrorToast({ message, onRetry, onDismiss }: ErrorToastProps) {
       style={[styles.wrapper, { opacity: fadeAnim }]}
       pointerEvents="box-none"
     >
-      <View style={styles.toast}>
+      <View style={[styles.toast, type === 'success' && styles.toastSuccess]}>
         <Text style={styles.message}>{message}</Text>
-        {onRetry && (
+        {type !== 'success' && onRetry && (
           <Pressable
             style={({ pressed }) => [styles.retryButton, pressed && styles.retryPressed]}
             onPress={handleRetry}
@@ -87,6 +90,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 16,
+  },
+  toastSuccess: {
+    backgroundColor: '#4CAF50',
   },
   message: {
     color: colors.white,

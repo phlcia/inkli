@@ -21,6 +21,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { colors, typography } from '../../../config/theme';
+import { useErrorHandler } from '../../../contexts/ErrorHandlerContext';
 import { useAuth } from '../../../contexts/AuthContext';
 import {
   getAccountType,
@@ -74,6 +75,7 @@ function getPasswordErrorMessage(error: unknown): string {
 export default function AccountSettingsScreen() {
   const navigation = useNavigation<AccountSettingsScreenNavigationProp>();
   const { user } = useAuth();
+  const { showServerError } = useErrorHandler();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [email, setEmail] = useState('');
@@ -246,8 +248,8 @@ export default function AccountSettingsScreen() {
     const { error } = await deleteAccount(user.id, passwordOrConfirmation, isOAuthUser(user));
     if (error) {
       setDeleting(false);
-      const msg = error instanceof Error ? error.message : 'Failed to delete account. Please try again.';
-      setDeleteError(msg);
+      setDeleteModalVisible(false);
+      showServerError('Failed to delete account. Please try again.');
       return;
     }
     setDeleteModalVisible(false);
