@@ -8,12 +8,14 @@ import {
   Alert,
   ActivityIndicator,
   StatusBar,
-  ScrollView,
   Switch,
   Modal,
   Keyboard,
   Linking,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import * as Haptics from 'expo-haptics';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -359,11 +361,13 @@ export default function AccountSettingsScreen() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView
+      <KeyboardAwareScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        enableOnAndroid={true}
+        extraScrollHeight={20}
       >
         {/* Contact Information */}
         <Text style={styles.sectionHeader}>Contact Information</Text>
@@ -492,7 +496,7 @@ export default function AccountSettingsScreen() {
             )}
           </TouchableOpacity>
         </View>
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       {/* Delete account confirmation modal */}
       <Modal
@@ -501,6 +505,10 @@ export default function AccountSettingsScreen() {
         animationType="fade"
         onRequestClose={handleDeleteModalClose}
       >
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
         <TouchableOpacity
           style={styles.modalOverlay}
           activeOpacity={1}
@@ -554,6 +562,7 @@ export default function AccountSettingsScreen() {
             </ScrollView>
           </TouchableOpacity>
         </TouchableOpacity>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Change password modal */}
@@ -563,6 +572,10 @@ export default function AccountSettingsScreen() {
         animationType="fade"
         onRequestClose={handleChangePasswordClose}
       >
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
         <TouchableOpacity
           style={styles.modalOverlay}
           activeOpacity={1}
@@ -680,6 +693,7 @@ export default function AccountSettingsScreen() {
             </ScrollView>
           </TouchableOpacity>
         </TouchableOpacity>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );
