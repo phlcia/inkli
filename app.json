@@ -75,6 +75,13 @@
         {
           "iosUrlScheme": "com.googleusercontent.apps.1095402736688-7osnai7gdf6ka6ng530ij0q83j06ju8l"
         }
+      ],
+      [
+        "@sentry/react-native/expo",
+        {
+          "organization": "inkli",
+          "project": "react-native"
+        }
       ]
     ],
     "extra": {

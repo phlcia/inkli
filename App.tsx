@@ -34,6 +34,27 @@ import { getUserIdByUsername } from './src/services/userProfile';
 import { typography } from './src/config/theme';
 import 'react-native-get-random-values';
 import 'react-native-url-polyfill/auto';
+import * as Sentry from '@sentry/react-native';
+import { Button } from 'react-native';
+
+Sentry.init({
+  dsn: 'https://d88a0dc00363a12707b44dbd0b247970@o4511021744193536.ingest.us.sentry.io/4511021744390144',
+
+  // Adds more context data to events (IP address, cookies, user, etc.)
+  // For more information, visit: https://docs.sentry.io/platforms/react-native/data-management/data-collected/
+  sendDefaultPii: true,
+
+  // Enable Logs
+  enableLogs: true,
+
+  // Configure Session Replay
+  replaysSessionSampleRate: 0.1,
+  replaysOnErrorSampleRate: 1,
+  integrations: [Sentry.mobileReplayIntegration(), Sentry.feedbackIntegration()],
+
+  // uncomment the line below to enable Spotlight (https://spotlightjs.com)
+  // spotlight: __DEV__,
+});
 
 // Configure how notifications are displayed when the app is in the foreground
 Notifications.setNotificationHandler({
@@ -401,7 +422,7 @@ setProfileFlags({
   );
 }
 
-export default function App() {
+export default Sentry.wrap(function App() {
   const [fontsLoaded] = useFonts({
     'PlayfairDisplay-Italic': PlayfairDisplay_400Regular_Italic,
     'PlayfairDisplay-Black-Italic': PlayfairDisplay_900Black_Italic,
@@ -426,7 +447,7 @@ export default function App() {
       <AppContent />
     </AuthProvider>
   );
-}
+});
 
 const styles = StyleSheet.create({
   appRoot: {
