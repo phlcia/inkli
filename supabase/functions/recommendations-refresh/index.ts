@@ -1,5 +1,5 @@
 // Supabase Edge Function: Refresh recommendations
-// Calls recommendations-generate and resets rankings_since_last_refresh counter
+// Resets rankings_since_last_refresh counter and regenerates recommendations using v2 algorithm
 // Auth required: valid JWT in Authorization header
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -16,8 +16,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-type GenreJoinRow = { genres?: { name?: string | null } | null };
-type ThemeJoinRow = { themes?: { name?: string | null } | null };
+type SupabaseClient = ReturnType<typeof createClient>;
+
 type ShelfBookRow = {
   book_id: string;
   rating: string | null;
@@ -49,14 +49,10 @@ function getRecencyWeight(createdAt: string | null): number {
 
 function getRatingWeight(rating: string | null): number {
   switch (rating) {
-    case 'liked':
-      return 1.2;
-    case 'fine':
-      return 0.5;
-    case 'disliked':
-      return -0.8;
-    default:
-      return 0;
+    case 'liked': return 1.2;
+    case 'fine': return 0.5;
+    case 'disliked': return -0.8;
+    default: return 0;
   }
 }
 
@@ -92,7 +88,6 @@ function ensureSmartDiversity(
       if (primaryGenre) {
         genreCount.set(primaryGenre, genreBooks + 1);
       }
-
       if (diverse.length >= targetCount) break;
     }
   }
@@ -108,7 +103,6 @@ function ensureSmartDiversity(
 }
 
 Deno.serve(async (req: Request) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
@@ -121,15 +115,11 @@ Deno.serve(async (req: Request) => {
       throw new Error('Missing Supabase environment variables')
     }
 
-    // Get authenticated user
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
       return new Response(
         JSON.stringify({ error: 'Missing authorization' }),
-        {
-          status: 401,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        }
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
@@ -137,14 +127,10 @@ Deno.serve(async (req: Request) => {
     const serviceRoleKey = Deno.env.get('SERVICE_ROLE_KEY') ?? ''
 
     const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey, {
-      global: {
-        headers: {
-          Authorization: authHeader,
-        },
-      },
+      global: { headers: { Authorization: authHeader } },
     })
 
-    const supabaseDb = serviceRoleKey
+    const supabaseDb: SupabaseClient = serviceRoleKey
       ? createClient(supabaseUrl, serviceRoleKey)
       : supabaseAuth
 
@@ -153,14 +139,24 @@ Deno.serve(async (req: Request) => {
     if (authError || !user) {
       return new Response(
         JSON.stringify({ error: 'Unauthorized' }),
-        {
-          status: 401,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        }
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
     const algorithmVersion = 'v2'
+
+    // Reset counter first
+    const { error: updateError } = await supabaseDb
+      .from('user_profiles')
+      .update({
+        rankings_since_last_refresh: 0,
+        last_refresh_at: new Date().toISOString(),
+      })
+      .eq('user_id', user.id)
+
+    if (updateError) {
+      throw new Error(`Failed to update user profile: ${updateError.message}`)
+    }
 
     const persistRecommendations = async (
       recommendations: Array<{ book_id: string; score: number; reasoning: string }>
@@ -197,8 +193,7 @@ Deno.serve(async (req: Request) => {
 
       const { data: stored, error: fetchError } = await supabaseDb
         .from('recommendations')
-        .select(
-          `
+        .select(`
           id,
           book_id,
           score,
@@ -216,8 +211,7 @@ Deno.serve(async (req: Request) => {
             isbn_10,
             isbn_13
           )
-        `
-        )
+        `)
         .eq('user_id', user.id)
         .order('score', { ascending: false })
         .limit(20)
@@ -239,24 +233,8 @@ Deno.serve(async (req: Request) => {
       }))
     }
 
-    // Reset rankings_since_last_refresh counter first
-    const { error: updateError } = await supabaseDb
-      .from('user_profiles')
-      .update({
-        rankings_since_last_refresh: 0,
-        last_refresh_at: new Date().toISOString()
-      })
-      .eq('user_id', user.id)
+    // --- v2 algorithm (same as recommendations-generate) ---
 
-    if (updateError) {
-      throw new Error(`Failed to update user profile: ${updateError.message}`)
-    }
-
-    // Import and use the same logic as recommendations-generate
-    // For MVP simplicity, we'll duplicate the logic here
-    // (In production, you could extract to a shared module)
-
-    // Get user's comparison history
     const { data: comparisons, error: comparisonsError } = await supabaseDb
       .from('comparisons')
       .select('winner_book_id, loser_book_id')
@@ -268,7 +246,6 @@ Deno.serve(async (req: Request) => {
 
     const userComparisons = comparisons || []
 
-    // Get shelf data for preferences
     const { data: shelfBooks, error: shelfError } = await supabaseDb
       .from('user_books')
       .select('book_id, rating, created_at, status, book:books(authors)')
@@ -297,8 +274,7 @@ Deno.serve(async (req: Request) => {
         .in('book_id', shelfBookIds)
 
       if (shelfGenres) {
-        const shelfGenreRows = shelfGenres as Array<{ book_id: string; genres?: { name?: string | null } | null }>
-        for (const row of shelfGenreRows) {
+        for (const row of shelfGenres as Array<{ book_id: string; genres?: { name?: string | null } | null }>) {
           const genreName = row.genres?.name
           if (!genreName) continue
           const current = shelfGenreMap.get(row.book_id) || []
@@ -308,8 +284,7 @@ Deno.serve(async (req: Request) => {
       }
 
       if (shelfThemes) {
-        const shelfThemeRows = shelfThemes as Array<{ book_id: string; themes?: { name?: string | null } | null }>
-        for (const row of shelfThemeRows) {
+        for (const row of shelfThemes as Array<{ book_id: string; themes?: { name?: string | null } | null }>) {
           const themeName = row.themes?.name
           if (!themeName) continue
           const current = shelfThemeMap.get(row.book_id) || []
@@ -319,31 +294,56 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // If user has <5 comparisons and minimal shelf data, return popular books
+    // Friends' liked books for social signal
+    const { data: followsData } = await supabaseDb
+      .from('user_follows')
+      .select('following_id')
+      .eq('follower_id', user.id)
+
+    const friendIds = (followsData || []).map((r: { following_id: string }) => r.following_id)
+    const friendLikedMap = new Map<string, number>()
+
+    if (friendIds.length > 0) {
+      const { data: friendBooks } = await supabaseDb
+        .from('user_books')
+        .select('book_id')
+        .in('user_id', friendIds)
+        .eq('rating', 'liked')
+        .eq('status', 'read')
+
+      for (const row of (friendBooks || []) as Array<{ book_id: string }>) {
+        friendLikedMap.set(row.book_id, (friendLikedMap.get(row.book_id) || 0) + 1)
+      }
+    }
+
+    const totalFriends = Math.max(friendIds.length, 1)
+
+    // New users: return popular books
     if (userComparisons.length < 5 && shelfRows.length < 3) {
-      const excludedIds = [
-        ...new Set([
-          ...userComparisons.map(c => c.winner_book_id),
-          ...userComparisons.map(c => c.loser_book_id)
-        ]),
-      ].filter(Boolean)
+      const bookStats = new Map<string, { wins: number; total: number }>()
+      for (const comp of userComparisons) {
+        const w = bookStats.get(comp.winner_book_id) || { wins: 0, total: 0 }
+        w.wins++; w.total++
+        bookStats.set(comp.winner_book_id, w)
+        const l = bookStats.get(comp.loser_book_id) || { wins: 0, total: 0 }
+        l.total++
+        bookStats.set(comp.loser_book_id, l)
+      }
+
+      const frequentlySeenBooks = Array.from(bookStats.entries())
+        .filter(([_, stats]) => stats.total >= 5)
+        .map(([id]) => id)
 
       let popularQuery = supabaseDb
         .from('books')
-        .select(`
-          id,
-          title,
-          authors,
-          cover_url,
-          global_win_rate,
-          total_comparisons
-        `)
+        .select('id, title, authors, cover_url, global_win_rate, total_comparisons, is_starter_book')
+        .order('is_starter_book', { ascending: false, nullsLast: true })
         .order('global_win_rate', { ascending: false, nullsLast: true })
         .order('total_comparisons', { ascending: false })
-        .limit(20)
+        .limit(30)
 
-      if (excludedIds.length > 0) {
-        popularQuery = popularQuery.not('id', 'in', `(${excludedIds.join(',')})`)
+      if (frequentlySeenBooks.length > 0) {
+        popularQuery = popularQuery.not('id', 'in', `(${frequentlySeenBooks.join(',')})`)
       }
 
       const { data: popularBooks, error: popularError } = await popularQuery
@@ -352,23 +352,11 @@ Deno.serve(async (req: Request) => {
         throw new Error(`Failed to fetch popular books: ${popularError.message}`)
       }
 
-      const recommendations = (popularBooks || []).map(book => ({
-        book_id: book.id,
-        book: {
-          id: book.id,
-          title: book.title,
-          authors: book.authors,
-          cover_url: book.cover_url,
-        },
-        reasoning: 'Popular book',
-        score: (book.global_win_rate || 0) * (book.total_comparisons || 0),
-      }))
-
       const storedRecommendations = await persistRecommendations(
-        recommendations.map((rec) => ({
-          book_id: rec.book_id,
-          score: rec.score,
-          reasoning: rec.reasoning,
+        (popularBooks || []).map((book) => ({
+          book_id: book.id,
+          score: (book.global_win_rate || 0) * (book.total_comparisons || 0),
+          reasoning: 'Popular book',
         }))
       )
 
@@ -378,112 +366,92 @@ Deno.serve(async (req: Request) => {
       )
     }
 
-    // Calculate win rate per book (same logic as generate)
+    // Build win rate stats from comparison history
     const bookStats = new Map<string, { wins: number; total: number }>()
 
     for (const comp of userComparisons) {
-      const winnerStats = bookStats.get(comp.winner_book_id) || { wins: 0, total: 0 }
-      winnerStats.wins++
-      winnerStats.total++
-      bookStats.set(comp.winner_book_id, winnerStats)
-
-      const loserStats = bookStats.get(comp.loser_book_id) || { wins: 0, total: 0 }
-      loserStats.total++
-      bookStats.set(comp.loser_book_id, loserStats)
+      const w = bookStats.get(comp.winner_book_id) || { wins: 0, total: 0 }
+      w.wins++; w.total++
+      bookStats.set(comp.winner_book_id, w)
+      const l = bookStats.get(comp.loser_book_id) || { wins: 0, total: 0 }
+      l.total++
+      bookStats.set(comp.loser_book_id, l)
     }
 
-    const winnerBookIds: string[] = []
-    const loserBookIds: string[] = []
+    // Batch fetch genres/themes for all comparison books
+    const allComparisonBookIds = Array.from(bookStats.keys())
+
+    const { data: compGenresData } = await supabaseDb
+      .from('book_genres')
+      .select('book_id, genres!inner(name)')
+      .in('book_id', allComparisonBookIds.length > 0 ? allComparisonBookIds : ['00000000-0000-0000-0000-000000000000'])
+
+    const { data: compThemesData } = await supabaseDb
+      .from('book_themes')
+      .select('book_id, themes!inner(name)')
+      .in('book_id', allComparisonBookIds.length > 0 ? allComparisonBookIds : ['00000000-0000-0000-0000-000000000000'])
+
+    const compGenreMap = new Map<string, string[]>()
+    const compThemeMap = new Map<string, string[]>()
+
+    if (compGenresData) {
+      for (const row of compGenresData as Array<{ book_id: string; genres?: { name?: string | null } | null }>) {
+        const genreName = row.genres?.name
+        if (!genreName) continue
+        const current = compGenreMap.get(row.book_id) || []
+        current.push(genreName)
+        compGenreMap.set(row.book_id, current)
+      }
+    }
+
+    if (compThemesData) {
+      for (const row of compThemesData as Array<{ book_id: string; themes?: { name?: string | null } | null }>) {
+        const themeName = row.themes?.name
+        if (!themeName) continue
+        const current = compThemeMap.get(row.book_id) || []
+        current.push(themeName)
+        compThemeMap.set(row.book_id, current)
+      }
+    }
+
+    // Build preference vectors using win rate signal with confidence dampening
+    const genrePreferences = new Map<string, number>()
+    const themePreferences = new Map<string, number>()
+    const genreExposureCount = new Map<string, number>()
+    const authorPreferences = new Set<string>()
 
     for (const [bookId, stats] of bookStats.entries()) {
       const winRate = stats.total > 0 ? stats.wins / stats.total : 0
-      if (winRate >= 0.6) {
-        winnerBookIds.push(bookId)
-      } else if (winRate < 0.4) {
-        loserBookIds.push(bookId)
-      }
-    }
+      const confidence = Math.min(stats.total / 5, 1)
+      const signal = (winRate - 0.5) * 2 * confidence
 
-    // Get genres and themes for winner/loser books
-    const { data: winnerGenres } = await supabaseDb
-      .from('book_genres')
-      .select('book_id, genres!inner(name)')
-      .in('book_id', winnerBookIds.length > 0 ? winnerBookIds : ['00000000-0000-0000-0000-000000000000'])
-
-    const { data: winnerThemes } = await supabaseDb
-      .from('book_themes')
-      .select('book_id, themes!inner(name)')
-      .in('book_id', winnerBookIds.length > 0 ? winnerBookIds : ['00000000-0000-0000-0000-000000000000'])
-
-    const { data: loserGenres } = await supabaseDb
-      .from('book_genres')
-      .select('book_id, genres!inner(name)')
-      .in('book_id', loserBookIds.length > 0 ? loserBookIds : ['00000000-0000-0000-0000-000000000000'])
-
-    const { data: loserThemes } = await supabaseDb
-      .from('book_themes')
-      .select('book_id, themes!inner(name)')
-      .in('book_id', loserBookIds.length > 0 ? loserBookIds : ['00000000-0000-0000-0000-000000000000'])
-
-    // Build preference vectors
-    const genrePreferences = new Map<string, number>()
-    const themePreferences = new Map<string, number>()
-    const authorPreferences = new Set<string>()
-
-    if (winnerGenres) {
-      const winnerGenreRows = winnerGenres as GenreJoinRow[]
-      for (const bg of winnerGenreRows) {
-        const genreName = bg.genres?.name
-        if (genreName) {
-          genrePreferences.set(genreName, (genrePreferences.get(genreName) || 0) + 1)
+      for (const genreName of compGenreMap.get(bookId) || []) {
+        genrePreferences.set(genreName, (genrePreferences.get(genreName) || 0) + signal)
+        if (winRate >= 0.5 && stats.total >= 2) {
+          genreExposureCount.set(genreName, (genreExposureCount.get(genreName) || 0) + 1)
         }
       }
-    }
 
-    if (winnerThemes) {
-      const winnerThemeRows = winnerThemes as ThemeJoinRow[]
-      for (const bt of winnerThemeRows) {
-        const themeName = bt.themes?.name
-        if (themeName) {
-          themePreferences.set(themeName, (themePreferences.get(themeName) || 0) + 1)
-        }
+      for (const themeName of compThemeMap.get(bookId) || []) {
+        themePreferences.set(themeName, (themePreferences.get(themeName) || 0) + signal)
       }
     }
 
-    if (loserGenres) {
-      const loserGenreRows = loserGenres as GenreJoinRow[]
-      for (const bg of loserGenreRows) {
-        const genreName = bg.genres?.name
-        if (genreName) {
-          genrePreferences.set(genreName, (genrePreferences.get(genreName) || 0) - 1)
-        }
-      }
-    }
-
-    if (loserThemes) {
-      const loserThemeRows = loserThemes as ThemeJoinRow[]
-      for (const bt of loserThemeRows) {
-        const themeName = bt.themes?.name
-        if (themeName) {
-          themePreferences.set(themeName, (themePreferences.get(themeName) || 0) - 1)
-        }
-      }
-    }
-
-    // Add shelf signals (rating + recency)
+    // Add shelf signals
     for (const row of shelfRows) {
       const ratingWeight = getRatingWeight(row.rating)
       if (ratingWeight === 0) continue
       const recencyWeight = getRecencyWeight(row.created_at)
       const totalWeight = ratingWeight * recencyWeight
 
-      const shelfGenres = shelfGenreMap.get(row.book_id) || []
-      for (const genreName of shelfGenres) {
+      for (const genreName of shelfGenreMap.get(row.book_id) || []) {
         genrePreferences.set(genreName, (genrePreferences.get(genreName) || 0) + totalWeight)
+        if (row.rating === 'liked') {
+          genreExposureCount.set(genreName, (genreExposureCount.get(genreName) || 0) + 1)
+        }
       }
 
-      const shelfThemes = shelfThemeMap.get(row.book_id) || []
-      for (const themeName of shelfThemes) {
+      for (const themeName of shelfThemeMap.get(row.book_id) || []) {
         themePreferences.set(themeName, (themePreferences.get(themeName) || 0) + totalWeight)
       }
 
@@ -494,18 +462,27 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    const comparedBookIds = new Set([
-      ...userComparisons.map(c => c.winner_book_id),
-      ...userComparisons.map(c => c.loser_book_id)
+    // Exclude disliked books and shelf books from candidates
+    const reallyDislikedBookIds = new Set<string>()
+    for (const [bookId, stats] of bookStats.entries()) {
+      const winRate = stats.total > 0 ? stats.wins / stats.total : 0
+      if (winRate < 0.3 && stats.total >= 3) {
+        reallyDislikedBookIds.add(bookId)
+      }
+    }
+
+    const excludedBookIds = new Set([
+      ...Array.from(reallyDislikedBookIds),
+      ...shelfBookIds,
     ])
 
     let allBooksQuery = supabaseDb
       .from('books')
-      .select('id, title, authors, cover_url, total_comparisons')
+      .select('id, title, authors, cover_url, open_library_id, isbn_10, isbn_13, total_comparisons')
       .limit(1000)
 
-    if (comparedBookIds.size > 0) {
-      allBooksQuery = allBooksQuery.not('id', 'in', `(${Array.from(comparedBookIds).join(',')})`)
+    if (excludedBookIds.size > 0) {
+      allBooksQuery = allBooksQuery.not('id', 'in', `(${Array.from(excludedBookIds).join(',')})`)
     }
 
     const { data: allBooks, error: allBooksError } = await allBooksQuery
@@ -513,47 +490,62 @@ Deno.serve(async (req: Request) => {
       throw new Error(`Failed to fetch books: ${allBooksError.message}`)
     }
 
-    // Score each book
-    const bookScores: BookScore[] = []
+    // Batch fetch genres/themes for all candidate books
+    const allCandidateIds = (allBooks || []).map((b) => b.id)
+
+    const { data: allCandidateGenres } = await supabaseDb
+      .from('book_genres')
+      .select('book_id, genres!inner(name)')
+      .in('book_id', allCandidateIds.length > 0 ? allCandidateIds : ['00000000-0000-0000-0000-000000000000'])
+
+    const { data: allCandidateThemes } = await supabaseDb
+      .from('book_themes')
+      .select('book_id, themes!inner(name)')
+      .in('book_id', allCandidateIds.length > 0 ? allCandidateIds : ['00000000-0000-0000-0000-000000000000'])
+
     const bookGenreMap = new Map<string, string[]>()
+    const bookThemeMap = new Map<string, string[]>()
+
+    if (allCandidateGenres) {
+      for (const row of allCandidateGenres as Array<{ book_id: string; genres?: { name?: string | null } | null }>) {
+        const genreName = row.genres?.name
+        if (!genreName) continue
+        const current = bookGenreMap.get(row.book_id) || []
+        current.push(genreName)
+        bookGenreMap.set(row.book_id, current)
+      }
+    }
+
+    if (allCandidateThemes) {
+      for (const row of allCandidateThemes as Array<{ book_id: string; themes?: { name?: string | null } | null }>) {
+        const themeName = row.themes?.name
+        if (!themeName) continue
+        const current = bookThemeMap.get(row.book_id) || []
+        current.push(themeName)
+        bookThemeMap.set(row.book_id, current)
+      }
+    }
+
+    // First pass: compute raw scores for normalization
+    type RawScore = {
+      book_id: string
+      exploitScore: number
+      explorationBonus: number
+      popularityScore: number
+      friendSignal: number
+      genreNames: string[]
+      reasoning: string
+    }
+
+    const rawScores: RawScore[] = []
 
     for (const book of allBooks || []) {
-      const { data: bookGenres } = await supabaseDb
-        .from('book_genres')
-        .select('genres!inner(name)')
-        .eq('book_id', book.id)
-
-      const { data: bookThemes } = await supabaseDb
-        .from('book_themes')
-        .select('themes!inner(name)')
-        .eq('book_id', book.id)
-
-      const genreNames: string[] = []
-      if (bookGenres) {
-        const bookGenreRows = bookGenres as GenreJoinRow[]
-        for (const bg of bookGenreRows) {
-          const genreName = bg.genres?.name
-          if (genreName) {
-            genreNames.push(genreName)
-          }
-        }
-      }
-      bookGenreMap.set(book.id, genreNames)
+      const genreNames = bookGenreMap.get(book.id) || []
+      const themeNames = bookThemeMap.get(book.id) || []
 
       let genreScore = 0
       for (const genreName of genreNames) {
         genreScore += genrePreferences.get(genreName) || 0
-      }
-
-      const themeNames: string[] = []
-      if (bookThemes) {
-        const bookThemeRows = bookThemes as ThemeJoinRow[]
-        for (const bt of bookThemeRows) {
-          const themeName = bt.themes?.name
-          if (themeName) {
-            themeNames.push(themeName)
-          }
-        }
       }
 
       let themeScore = 0
@@ -565,14 +557,11 @@ Deno.serve(async (req: Request) => {
 
       let explorationBonus = 0
       for (const genreName of genreNames) {
-        const userExperience = genrePreferences.get(genreName) || 0
-        if (userExperience < 2) {
-          explorationBonus += 0.3
-        }
+        const exposure = genreExposureCount.get(genreName) || 0
+        if (exposure < 2) explorationBonus += 0.3
       }
 
-      const firstAuthor =
-        book.authors && book.authors.length > 0 ? book.authors[0] : null
+      const firstAuthor = book.authors && book.authors.length > 0 ? book.authors[0] : null
       if (firstAuthor && !authorPreferences.has(firstAuthor)) {
         explorationBonus += 0.2
       }
@@ -580,67 +569,53 @@ Deno.serve(async (req: Request) => {
 
       const popularityScore = Math.log((book.total_comparisons || 0) + 1) * 0.1
 
-      const totalScore =
-        (exploitScore * 0.7) +
-        (explorationBonus * 0.2) +
-        (popularityScore * 0.1)
-
-      if (totalScore <= 0 && genreNames.length === 0 && themeNames.length === 0) {
-        continue
-      }
+      const friendLikedCount = friendLikedMap.get(book.id) || 0
+      const friendSignal = friendLikedCount / totalFriends
 
       let reasoning = 'Recommended for you'
-      if (explorationBonus >= 0.6) {
+      if (friendLikedCount >= 2) {
+        reasoning = `${friendLikedCount} friends loved this`
+      } else if (friendLikedCount === 1) {
+        reasoning = 'A friend loved this'
+      } else if (explorationBonus >= 0.6) {
         reasoning = 'A fresh pick outside your usual reads'
       } else if (genreScore > 0 && genreNames.length > 0) {
         reasoning = `Popular in ${genreNames[0]}`
-      } else if (totalScore > 0) {
+      } else if (exploitScore > 0) {
         reasoning = 'Based on your preferences'
       }
 
-      bookScores.push({
-        book_id: book.id,
-        score: totalScore,
-        reasoning,
-      })
+      rawScores.push({ book_id: book.id, exploitScore, explorationBonus, popularityScore, friendSignal, genreNames, reasoning })
     }
+
+    // Normalize and compute final scores
+    const maxAbsExploit = rawScores.reduce((max, s) => Math.max(max, Math.abs(s.exploitScore)), 1)
+    const maxPopularity = rawScores.reduce((max, s) => Math.max(max, s.popularityScore), 1)
+
+    const bookScores: BookScore[] = rawScores
+      .map((raw) => {
+        const normExploit = raw.exploitScore / maxAbsExploit
+        const normExploration = raw.explorationBonus
+        const normPopularity = raw.popularityScore / maxPopularity
+        const normFriends = raw.friendSignal
+        const totalScore =
+          (normExploit * 0.60) +
+          (normExploration * 0.15) +
+          (normPopularity * 0.10) +
+          (normFriends * 0.15)
+        return { book_id: raw.book_id, score: totalScore, reasoning: raw.reasoning }
+      })
+      .filter((s) => s.score > 0)
 
     bookScores.sort((a, b) => b.score - a.score)
     const topScores = ensureSmartDiversity(bookScores, allBooks || [], bookGenreMap, 20)
 
-    const topBookIds = topScores.map(bs => bs.book_id)
-    const { data: recommendedBooks, error: booksError } = await supabaseDb
-      .from('books')
-      .select('id, title, authors, cover_url')
-      .in('id', topBookIds.length > 0 ? topBookIds : ['00000000-0000-0000-0000-000000000000'])
-
-    if (booksError) {
-      throw new Error(`Failed to fetch recommended books: ${booksError.message}`)
-    }
-
-    const recommendations = topScores.map(score => {
-      const book = recommendedBooks?.find(b => b.id === score.book_id)
-      return {
-        book_id: score.book_id,
-        book: book || null,
-        reasoning: score.reasoning,
-        score: score.score,
-      }
-    }).filter(rec => rec.book !== null)
-
     const storedRecommendations = await persistRecommendations(
-      recommendations.map((rec) => ({
-        book_id: rec.book_id,
-        score: rec.score,
-        reasoning: rec.reasoning,
-      }))
+      topScores.map((s) => ({ book_id: s.book_id, score: s.score, reasoning: s.reasoning }))
     )
 
     return new Response(
-      JSON.stringify({
-        success: true,
-        recommendations: storedRecommendations
-      }),
+      JSON.stringify({ success: true, recommendations: storedRecommendations }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
 
@@ -648,10 +623,7 @@ Deno.serve(async (req: Request) => {
     console.error('Edge function error:', error)
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : 'Internal server error' }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      }
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }
 })

@@ -449,7 +449,7 @@ Filter usage in the shelf view is tracked to `filter_events`:
 | `markRecommendationsShown(recommendationIds)` | Batch-set `shown_at` |
 | `markRecommendationClicked(recommendationId)` | Set `clicked_at` |
 | `generateRecommendations()` | Call `recommendations-generate` edge function |
-| `refreshRecommendations()` | Call `recommendations-refresh` edge function |
+| `refreshRecommendations()` | Call `recommendations-refresh` edge function (resets counter + runs v2 algorithm) |
 
 ### `services/recommendationTriggers.ts`
 | Function | Description |
@@ -571,7 +571,7 @@ All functions are in `supabase/functions/`. They run as Deno services.
 | `quiz-start` | GET | Return a random pair of starter books, excluding already-compared pairs |
 | `recalculate-ranks` | POST | Recalculate all rank scores for a user within each tier |
 | `recommendations-generate` | POST | Generate and store personalized book recommendations |
-| `recommendations-refresh` | POST | Regenerate recommendations and reset the comparison counter |
+| `recommendations-refresh` | POST | Regenerate recommendations using v2 algorithm (batched queries, correct exclusions, friends signal) and reset the comparison counter |
 | `resolve-phone` | POST | Look up email address for a phone number (used by sign-in) |
 | `resolve-username` | POST | Look up email address for a username (used by sign-in) |
 | `spend-invite-point` | POST | Deduct one point and insert a row into `user_unlocked_features` |
