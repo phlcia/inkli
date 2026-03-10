@@ -104,7 +104,7 @@ export default function HomeScreen() {
       const result = await fetchFollowedActivityCards(user.id, { limit: 20 });
       setCards(result.cards);
       setCursor(result.nextCursor);
-      setHasMore(result.cards.length === 20);
+      setHasMore(result.nextCursor !== null);
       await hydrateViewerShelfMap(result.cards, true);
     } catch (error) {
       handleApiError(error, 'load feed', loadInitial);
@@ -159,7 +159,7 @@ export default function HomeScreen() {
       const result = await fetchFollowedActivityCards(user.id, { limit: 20 });
       setCards(result.cards);
       setCursor(result.nextCursor);
-      setHasMore(result.cards.length === 20);
+      setHasMore(result.nextCursor !== null);
       await hydrateViewerShelfMap(result.cards, true);
     } catch (error) {
       handleApiError(error, 'load feed', loadInitial);
@@ -179,7 +179,7 @@ export default function HomeScreen() {
       });
       setCards((prev) => [...prev, ...result.cards]);
       setCursor(result.nextCursor);
-      setHasMore(result.cards.length === 20);
+      setHasMore(result.nextCursor !== null);
       await hydrateViewerShelfMap(result.cards, false);
     } catch (error) {
       handleApiError(error, 'load feed', loadInitial);

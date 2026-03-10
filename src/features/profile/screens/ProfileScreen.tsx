@@ -226,7 +226,7 @@ export default function ProfileScreen() {
       setBookCounts(counts);
       setRecentBooks(activityResult.cards);
       setActivityCursor(activityResult.nextCursor);
-      setHasMoreActivity(activityResult.cards.length === 20);
+      setHasMoreActivity(activityResult.nextCursor !== null);
       const map: Record<string, { id: string; status: UserBook['status'] }> = {};
       activityResult.cards.forEach((item) => {
         if (item.userBook.book_id) {
@@ -303,7 +303,7 @@ export default function ProfileScreen() {
       });
       setRecentBooks((prev) => [...prev, ...result.cards]);
       setActivityCursor(result.nextCursor);
-      setHasMoreActivity(result.cards.length === 20);
+      setHasMoreActivity(result.nextCursor !== null);
       setViewerShelfMap((prev) => {
         const next = { ...prev };
         result.cards.forEach((item) => {

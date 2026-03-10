@@ -193,6 +193,7 @@ Deep-linked invite URLs (`/invite/:code`) are intercepted at app launch and stor
 - Paginated feed of followed users' shelf activity, sourced from `activity_cards` via RPC `get_followed_activity_cards`
 - Feed source is configurable via `EXPO_PUBLIC_FEED_SOURCE` env var (`activity_cards` | `user_books` | `auto`)
 - Each card shows the book, user, status, rank score, read count, like/comment counts
+- Pagination uses cursor presence (`nextCursor !== null`) rather than batch size to determine if more pages exist, avoiding early termination caused by client-side deduplication
 
 **Likes and comments**
 - Like/unlike a shelf entry (`activity_likes`) — toggle via unique constraint
