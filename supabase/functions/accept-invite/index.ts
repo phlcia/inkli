@@ -88,7 +88,7 @@ Deno.serve(async (req: Request) => {
     // Load invitee profile to check already linked and onboarding status
     const { data: inviteeProfile, error: inviteeProfileError } = await supabaseDb
       .from('user_profiles')
-      .select('invited_by_user_id, completed_onboarding_quiz, skipped_onboarding_quiz')
+      .select('invited_by_user_id')
       .eq('user_id', inviteeUserId)
       .single()
 
@@ -98,12 +98,6 @@ Deno.serve(async (req: Request) => {
 
     if (inviteeProfile.invited_by_user_id != null) {
       return jsonResponse({ error: 'You have already been linked to an inviter' }, 400)
-    }
-
-    const completed = Boolean(inviteeProfile.completed_onboarding_quiz)
-    const skipped = Boolean(inviteeProfile.skipped_onboarding_quiz)
-    if (!completed && !skipped) {
-      return jsonResponse({ error: 'Complete or skip onboarding before accepting an invite' }, 400)
     }
 
     const now = new Date().toISOString()

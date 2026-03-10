@@ -107,21 +107,36 @@ export default function InviteGateScreen({
     }
   }, [isWallCleared, onInviteGateCleared]);
 
+  // Only attempt to accept a pending invite once the account is ready.
+  // Permanently clear the code on success or known-permanent errors; keep it
+  // for transient failures so a retry is possible on the next mount.
+  const PERMANENT_INVITE_ERRORS = [
+    'already been used',
+    'already been linked',
+    'cannot use your own invite code',
+    'Invalid or expired invite code',
+  ];
+
   useEffect(() => {
+    if (!signupComplete) return;
     let cancelled = false;
     (async () => {
       const code = await getPendingInviteCode();
       if (cancelled || !code) return;
       const { error } = await acceptInvite(code);
-      await clearPendingInviteCode();
-      if (error && !cancelled) {
+      if (cancelled) return;
+      if (!error || PERMANENT_INVITE_ERRORS.some((msg) => error.includes(msg))) {
+        await clearPendingInviteCode();
+      }
+      if (error) {
         console.warn('InviteGateScreen: acceptInvite failed', error);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signupComplete]);
 
   const handleShare = async () => {
     if (sharing) return;

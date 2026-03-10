@@ -16,6 +16,9 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.inkli.app",
+      "associatedDomains": [
+        "applinks:inkliapp.com"
+      ],
       "infoPlist": {
         "GIDClientID": "1095402736688-7osnai7gdf6ka6ng530ij0q83j06ju8l.apps.googleusercontent.com",
         "ITSAppUsesNonExemptEncryption": false,
@@ -37,6 +40,21 @@
           "data": [
             {
               "scheme": "inkli"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        },
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "inkliapp.com",
+              "pathPrefix": "/invite"
             }
           ],
           "category": [

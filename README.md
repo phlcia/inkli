@@ -557,7 +557,7 @@ All functions are in `supabase/functions/`. They run as Deno services.
 
 | Function | Method | Purpose |
 |---|---|---|
-| `accept-invite` | POST | Accept an invite code; update counts on both users |
+| `accept-invite` | POST | Accept an invite code; credits inviter (`successful_invites_count`, `unspent_invite_points`). No longer requires quiz completion before acceptance. |
 | `book-feedback` | POST | Store a book data issue report |
 | `books-enrich` | POST | Fetch Open Library data and update a book record |
 | `books-update-community-stats` | POST | Recalculate `community_average_score` and `community_rank_count` on `books` |
