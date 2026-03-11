@@ -148,6 +148,20 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ error: 'Failed to link invite' }, 500)
     }
 
+    // Notify the inviter that someone joined via their link (best-effort, non-blocking)
+    supabaseDb
+      .from('notifications')
+      .insert({
+        recipient_id: inviterUserId,
+        actor_id: inviteeUserId,
+        type: 'invite_accepted',
+      })
+      .then(({ error: notifError }) => {
+        if (notifError) {
+          console.warn('accept-invite: failed to insert notification', notifError)
+        }
+      })
+
     return jsonResponse({ success: true }, 200)
   } catch (error) {
     console.error('accept-invite error:', error)

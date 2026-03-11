@@ -151,6 +151,7 @@ function AppContent() {
     sent_invites_count: number;
     grandfathered_invite_unlock: boolean;
     moderation_status: string | null;
+    completed_contact_discovery: boolean;
   } | null>(null);
   const [profileRefreshCount, setProfileRefreshCount] = useState(0);
   const prevUserRef = useRef(user);
@@ -295,23 +296,24 @@ function AppContent() {
       try {
         const { data, error } = await supabase
           .from('user_profiles')
-          .select('completed_onboarding_quiz, skipped_onboarding_quiz, member_since, created_at, sent_invites_count, grandfathered_invite_unlock, moderation_status')
+          .select('completed_onboarding_quiz, skipped_onboarding_quiz, member_since, created_at, sent_invites_count, grandfathered_invite_unlock, moderation_status, completed_contact_discovery')
           .eq('user_id', user.id)
           .single();
 
         if (error || !data) {
           console.error('Error loading onboarding flags:', error);
-setProfileFlags({
-          completed_onboarding_quiz: false,
-          skipped_onboarding_quiz: false,
-          member_since: null,
-          created_at: null,
-          sent_invites_count: 0,
-          grandfathered_invite_unlock: false,
-          moderation_status: null,
-        });
-        return;
-      }
+          setProfileFlags({
+            completed_onboarding_quiz: false,
+            skipped_onboarding_quiz: false,
+            member_since: null,
+            created_at: null,
+            sent_invites_count: 0,
+            grandfathered_invite_unlock: false,
+            moderation_status: null,
+            completed_contact_discovery: false,
+          });
+          return;
+        }
 
         setProfileFlags({
           completed_onboarding_quiz: Boolean(data.completed_onboarding_quiz),
@@ -321,6 +323,7 @@ setProfileFlags({
           sent_invites_count: Number(data.sent_invites_count) || 0,
           grandfathered_invite_unlock: Boolean(data.grandfathered_invite_unlock),
           moderation_status: data.moderation_status ?? null,
+          completed_contact_discovery: Boolean(data.completed_contact_discovery),
         });
       } catch (error) {
         console.error('Exception loading onboarding flags:', error);
@@ -332,6 +335,7 @@ setProfileFlags({
           sent_invites_count: 0,
           grandfathered_invite_unlock: false,
           moderation_status: null,
+          completed_contact_discovery: false,
         });
       } finally {
         setProfileLoading(false);
@@ -356,6 +360,11 @@ setProfileFlags({
     })() &&
     !profileFlags.completed_onboarding_quiz &&
     !profileFlags.skipped_onboarding_quiz;
+
+  const needsContactDiscovery =
+    hasUser &&
+    profileFlags !== null &&
+    !profileFlags.completed_contact_discovery;
 
   const needsInviteGate =
     hasUser &&
@@ -397,15 +406,20 @@ setProfileFlags({
               moderationStatus={profileFlags?.moderation_status ?? null}
               onSignOut={signOut}
             />
-          ) : needsInviteGate ? (
-            <AuthStackNavigator
-              initialRouteName="InviteGate"
-              onInviteGateCleared={() => setProfileRefreshCount((count) => count + 1)}
-            />
           ) : needsOnboardingQuiz ? (
             <AuthStackNavigator
               initialRouteName="Quiz"
               onQuizComplete={() => setProfileRefreshCount((count) => count + 1)}
+            />
+          ) : needsContactDiscovery ? (
+            <AuthStackNavigator
+              initialRouteName="DiscoverFriends"
+              onInviteGateCleared={() => setProfileRefreshCount((count) => count + 1)}
+            />
+          ) : needsInviteGate ? (
+            <AuthStackNavigator
+              initialRouteName="InviteGate"
+              onInviteGateCleared={() => setProfileRefreshCount((count) => count + 1)}
             />
           ) : (
             <TabNavigator />

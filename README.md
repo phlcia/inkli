@@ -128,8 +128,9 @@ The root `AppContent` component drives navigation based on state checks evaluate
 1. **Password recovery pending** (`pendingPasswordRecovery` in `AuthContext`) → `AuthStackNavigator` at `ResetPassword`
 2. **No user** → `AuthStackNavigator` (starts at `Welcome`, or `SignIn` with a success message after password reset)
 3. **New user** (< 10 min since signup) who has not completed or skipped the quiz → `AuthStackNavigator` at `Quiz`
-4. **User** with fewer than 4 sent invites and no `grandfathered_invite_unlock` → `AuthStackNavigator` at `InviteGate`
-5. **Otherwise** → `TabNavigator`
+4. **User** who has not completed contact discovery (`completed_contact_discovery = false` on `user_profiles`) → `AuthStackNavigator` at `DiscoverFriends`
+5. **User** with fewer than 4 sent invites and no `grandfathered_invite_unlock` → `AuthStackNavigator` at `InviteGate`
+6. **Otherwise** → `TabNavigator`
 
 Deep-linked invite URLs (`/invite/:code`) are intercepted at app launch and stored in AsyncStorage for post-auth redemption. Password reset deep links (`/reset-password`) are handled by extracting the Supabase auth code (PKCE) or token (implicit) and establishing a recovery session.
 
@@ -152,7 +153,8 @@ Deep-linked invite URLs (`/invite/:code`) are intercepted at app launch and stor
 ### Onboarding
 
 - **Comparison quiz** (`QuizScreen`) — shown to new users within 10 minutes of signup. Presents pairs of starter books; each choice is stored as a `Comparison` row and used to seed initial rankings.
-- **Invite gate** (`InviteGateScreen`) — soft wall requiring the user to share at least 4 invites before accessing the full app. Users with `grandfathered_invite_unlock = true` bypass it.
+- **Discover friends** (`DiscoverFriendsScreen`) — requests device contacts permission, normalizes phone numbers to E.164, calls the `match-contacts` edge function to find existing Inkli users, auto-follows matched users via `request_follow` RPC, and displays the match list. On "Continue", sets `completed_contact_discovery = true` on `user_profiles` and navigates to `InviteGateScreen` passing all contacts. Tracked via `completed_contact_discovery` boolean on `user_profiles`.
+- **Invite gate** (`InviteGateScreen`) — soft wall requiring the user to invite 4 friends before accessing the full app. When arriving from `DiscoverFriendsScreen` with contacts, shows a contact-picker UI: user selects exactly 4 contacts, each gets a unique invite link via `create-invite-link` edge function sent as an SMS (`expo-sms`). When shown directly (no contacts), falls back to the native share sheet. Users with `grandfathered_invite_unlock = true` bypass the gate.
 
 ### Books
 
@@ -424,6 +426,7 @@ Filter usage in the shelf view is tracked to `filter_events`:
 | `acceptInvite(inviteCode)` | Call `accept-invite` edge function |
 | `spendInvitePoint(featureKey)` | Call `spend-invite-point` edge function |
 | `shareInviteLink()` | Create a single-use invite link via `create-invite-link` and open native share sheet |
+| `createInviteLinkForContact()` | Create a single-use invite link via `create-invite-link` and return the URL (no share sheet) — used by `InviteGateScreen` for SMS sending |
 | `storePendingInviteCode(code)` | Save deep-linked code to AsyncStorage |
 | `getPendingInviteCode()` | Read pending code from AsyncStorage |
 | `clearPendingInviteCode()` | Remove pending code from AsyncStorage |
@@ -591,7 +594,7 @@ Main tables and their purpose. Full DDL is in `supabase/schema.sql`.
 |---|---|
 | `books` | Book metadata: title, authors, ISBNs, description, cover_url, `community_average_score`, `community_rank_count` |
 | `books_stats` | Denormalized per-book stats: global avg score, review count, shelf counts by status |
-| `user_profiles` | Public profile: name, username, bio, photo URL, account_type (`public`/`private`), invite fields, onboarding flags, `notifications_last_seen_at` |
+| `user_profiles` | Public profile: name, username, bio, photo URL, account_type (`public`/`private`), invite fields, onboarding flags (`completed_onboarding_quiz`, `skipped_onboarding_quiz`, `completed_contact_discovery`), `notifications_last_seen_at` |
 | `user_private_data` | Owner-only: email, phone |
 | `user_books` | Shelf entries: `status`, `rating` (`liked`/`fine`/`disliked`), `rank_score` (NUMERIC 6,3), `progress_percent`, `notes`, `custom_labels[]`, `user_genres[]`, `likes_count`, `comments_count` |
 | `user_book_read_sessions` | Multiple started/finished date pairs per `user_book` |

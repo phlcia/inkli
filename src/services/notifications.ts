@@ -10,7 +10,8 @@ export type NotificationType =
   | 'follow'
   | 'follow_request'
   | 'follow_accept'
-  | 'follow_reject';
+  | 'follow_reject'
+  | 'invite_accepted';
 
 export type NotificationItem = {
   id: string;

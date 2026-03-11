@@ -153,7 +153,7 @@ export async function shareInviteLink(): Promise<void> {
 
     const url = data.url;
     const message =
-      "HELLO i've been ranking all my books on inkli and i think you'd love it. join me? my link expires in 24 hours (˶ˆᗜˆ˵)"
+      "HELLO i've been ranking all my books on inkli and i think you'd love it. join me? (this invite is only valid for 24 hours so act fast!) (˶ˆᗜˆ˵)"
 
     await Share.share({
       message,
@@ -165,6 +165,32 @@ export async function shareInviteLink(): Promise<void> {
       'shareInviteLink: unexpected error',
       e instanceof Error ? e.message : String(e),
     );
+  }
+}
+
+/**
+ * Creates a single-use invite link and returns the URL without opening a share sheet.
+ * Used by InviteGateScreen to send invites via SMS to specific contacts.
+ */
+export async function createInviteLinkForContact(): Promise<{ url: string | null; error: string | null }> {
+  try {
+    const { data, error } = await supabase.functions.invoke<{
+      code?: string;
+      url?: string;
+      error?: string;
+    }>('create-invite-link', {
+      method: 'POST',
+    });
+
+    if (error) {
+      return { url: null, error: error.message ?? 'Failed to create invite link' };
+    }
+    if (!data?.url) {
+      return { url: null, error: 'Missing URL from invite link creation' };
+    }
+    return { url: data.url, error: null };
+  } catch (e) {
+    return { url: null, error: e instanceof Error ? e.message : 'Failed to create invite link' };
   }
 }
 

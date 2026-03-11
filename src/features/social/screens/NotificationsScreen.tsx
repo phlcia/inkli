@@ -210,6 +210,11 @@ export default function NotificationsScreen() {
       navigation.navigate('ActivityComments', {
         userBookId: item.userBookId,
       });
+      return;
+    }
+
+    if (item.type === 'invite_accepted') {
+      navigation.navigate('InviteHub');
     }
   };
 
@@ -287,6 +292,13 @@ export default function NotificationsScreen() {
         return (
           <Text style={styles.actionText} onTextLayout={onLayout}>
             {user} declined your follow request
+            {timestamp}
+          </Text>
+        );
+      case 'invite_accepted':
+        return (
+          <Text style={styles.actionText} onTextLayout={onLayout}>
+            {user} joined Inkli using your invite — you've earned a credit!
             {timestamp}
           </Text>
         );

@@ -191,7 +191,7 @@ export default function SignUpEmailScreen({ onNext, onBack: _onBack }: SignUpEma
 
   const validatePhoneBlur = () => {
     if (!phone.trim()) {
-      setPhoneError('');
+      setPhoneError('Phone number is required');
       return;
     }
     const normalized = normalizePhone(phone.trim());
@@ -231,7 +231,7 @@ export default function SignUpEmailScreen({ onNext, onBack: _onBack }: SignUpEma
     usernameStatus === 'available' &&
     EMAIL_REGEX.test(email.trim()) &&
     !emailError &&
-    (phone.trim() === '' || !!normalizePhone(phone.trim())) &&
+    !!normalizePhone(phone.trim()) &&
     !phoneError &&
     passwordRequirementsMet &&
     password === confirmPassword &&
@@ -266,7 +266,11 @@ export default function SignUpEmailScreen({ onNext, onBack: _onBack }: SignUpEma
       setEmailError('Please enter a valid email');
       return;
     }
-    if (phone.trim() && !normalizePhone(phone.trim())) {
+    if (!phone.trim()) {
+      setPhoneError('Phone number is required');
+      return;
+    }
+    if (!normalizePhone(phone.trim())) {
       setPhoneError('Please enter a valid US phone number');
       return;
     }
@@ -277,15 +281,7 @@ export default function SignUpEmailScreen({ onNext, onBack: _onBack }: SignUpEma
       return;
     }
 
-    let normalizedPhone: string | null = null;
-    if (phone.trim()) {
-      normalizedPhone = normalizePhone(phone.trim());
-      if (!normalizedPhone) {
-        setPhoneError('Please enter a valid phone number');
-        return;
-      }
-    }
-
+    const normalizedPhone = normalizePhone(phone.trim());
     onNext(email.trim(), password, name.trim(), username.trim().toLowerCase(), normalizedPhone);
   };
 
@@ -402,7 +398,7 @@ export default function SignUpEmailScreen({ onNext, onBack: _onBack }: SignUpEma
           {emailError ? <Text style={styles.errorText}>{emailError}</Text> : null}
         </View>
 
-        {/* Phone Input (optional) */}
+        {/* Phone Input */}
         <View>
           <View style={styles.phoneRow}>
             <View style={styles.areaCodeBox}>
@@ -410,7 +406,7 @@ export default function SignUpEmailScreen({ onNext, onBack: _onBack }: SignUpEma
             </View>
             <TextInput
               style={[styles.phoneInput, phoneError ? styles.inputError : null]}
-              placeholder="Phone (optional)"
+              placeholder="Phone"
               placeholderTextColor={colors.brownText}
               value={phone}
               onChangeText={(v) => {
@@ -421,7 +417,7 @@ export default function SignUpEmailScreen({ onNext, onBack: _onBack }: SignUpEma
               keyboardType="phone-pad"
               autoCapitalize="none"
               autoCorrect={false}
-              accessibilityLabel="Phone number, optional"
+              accessibilityLabel="Phone number"
               accessibilityHint={phoneError ? phoneError : 'US numbers only'}
             />
           </View>

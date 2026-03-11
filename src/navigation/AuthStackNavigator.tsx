@@ -6,10 +6,12 @@ import CreateAccountScreen from '../features/auth/screens/CreateAccountScreen';
 import SignUpEmailScreen from '../features/auth/screens/SignUpEmailScreen';
 import QuizScreen from '../features/onboarding/screens/QuizScreen';
 import InviteGateScreen from '../features/onboarding/screens/InviteGateScreen';
+import DiscoverFriendsScreen from '../features/onboarding/screens/DiscoverFriendsScreen';
 import SignInScreen from '../features/auth/screens/SignInScreen';
 import ForgotPasswordScreen from '../features/auth/screens/ForgotPasswordScreen';
 import ResetPasswordScreen from '../features/auth/screens/ResetPasswordScreen';
 import { useAuth } from '../contexts/AuthContext';
+import type { ContactEntry } from '../features/onboarding/screens/DiscoverFriendsScreen';
 
 export type AuthStackParamList = {
   Welcome: undefined;
@@ -27,13 +29,15 @@ export type AuthStackParamList = {
         phone?: string | null;
       }
     | undefined;
+  DiscoverFriends: undefined;
   InviteGate:
     | {
-        email: string;
-        password: string;
-        name: string;
-        username: string;
+        email?: string;
+        password?: string;
+        name?: string;
+        username?: string;
         phone?: string | null;
+        unmatchedContacts?: ContactEntry[];
       }
     | undefined;
 };
@@ -123,7 +127,6 @@ export default function AuthStackNavigator({
               try {
                 await signInWithApple();
               } catch (error) {
-                // Error handling is done in the OAuth method
                 console.error('Apple Sign In error:', error);
               }
             }}
@@ -131,7 +134,6 @@ export default function AuthStackNavigator({
               try {
                 await signInWithGoogle();
               } catch (error) {
-                // Error handling is done in the OAuth method
                 console.error('Google Sign In error:', error);
               }
             }}
@@ -164,18 +166,31 @@ export default function AuthStackNavigator({
             signupParams={props.route.params}
             onSignupComplete={() => {
               // Signup is handled inside QuizScreen
-              // Navigation to main app happens automatically via AuthContext
             }}
             onQuizComplete={onQuizComplete}
           />
         )}
       </Stack.Screen>
 
+      <Stack.Screen name="DiscoverFriends">
+        {() => <DiscoverFriendsScreen />}
+      </Stack.Screen>
+
       <Stack.Screen name="InviteGate">
         {(props) => (
           <InviteGateScreen
             {...props}
-            signupParams={props.route.params}
+            signupParams={
+              props.route.params?.email
+                ? {
+                    email: props.route.params.email,
+                    password: props.route.params.password,
+                    name: props.route.params.name,
+                    username: props.route.params.username,
+                    phone: props.route.params.phone,
+                  }
+                : undefined
+            }
             onInviteGateCleared={onInviteGateCleared}
           />
         )}
