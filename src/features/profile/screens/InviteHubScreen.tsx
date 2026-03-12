@@ -15,7 +15,6 @@ import { colors, typography } from '../../../config/theme';
 import { useInviteTier } from '../../../hooks/useInviteTier';
 import {
   type FeatureKey,
-  shareInviteLink,
   spendInvitePoint,
   FEATURE_KEYS,
 } from '../../../services/invites';
@@ -41,17 +40,6 @@ export default function InviteHubScreen() {
   } = useInviteTier();
 
   const [spendingKey, setSpendingKey] = useState<FeatureKey | null>(null);
-  const [sharing, setSharing] = useState(false);
-
-  const handleShare = async () => {
-    if (sharing) return;
-    setSharing(true);
-    try {
-      await shareInviteLink();
-    } finally {
-      setSharing(false);
-    }
-  };
 
   const handleUnlock = async (featureKey: FeatureKey) => {
     if (!isWallCleared || unspentPoints < 1 || hasFeature(featureKey)) return;
@@ -92,15 +80,10 @@ export default function InviteHubScreen() {
         <View style={styles.section}>
           <TouchableOpacity
             style={styles.shareButton}
-            onPress={handleShare}
+            onPress={() => navigation.navigate('InviteContactsPicker' as never)}
             activeOpacity={0.8}
-            disabled={sharing}
           >
-            {sharing ? (
-              <ActivityIndicator size="small" color={colors.white} />
-            ) : (
-              <Text style={styles.shareButtonText}>Share invite link</Text>
-            )}
+            <Text style={styles.shareButtonText}>Invite from contacts</Text>
           </TouchableOpacity>
         </View>
 

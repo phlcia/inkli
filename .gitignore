@@ -46,3 +46,6 @@ yarn-error.*
 .claude/
 .cursor/
 .env.local
+
+# sentry
+sentry.properties

@@ -14,6 +14,7 @@ import {
   Linking,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import * as Haptics from 'expo-haptics';

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -44,6 +44,10 @@ export default function HomeScreen() {
   const [unreadCount, setUnreadCount] = useState(0);
   const { handleApiError } = useErrorHandler();
   const [viewerShelfMap, setViewerShelfMap] = useState<Record<string, { id: string; status: UserBook['status'] }>>({});
+  const viewerShelfMapRef = useRef(viewerShelfMap);
+  useEffect(() => {
+    viewerShelfMapRef.current = viewerShelfMap;
+  }, [viewerShelfMap]);
 
   const handleToggleWantToRead = useToggleWantToRead({
     currentUserId: user?.id,
@@ -68,7 +72,7 @@ export default function HomeScreen() {
         if (replace) setViewerShelfMap({});
         return;
       }
-      const missingIds = replace ? bookIds : bookIds.filter((id) => !viewerShelfMap[id]);
+      const missingIds = replace ? bookIds : bookIds.filter((id) => !viewerShelfMapRef.current[id]);
       if (missingIds.length === 0) return;
 
       const { data, error } = await supabase
@@ -90,7 +94,7 @@ export default function HomeScreen() {
 
       setViewerShelfMap((prev) => (replace ? map : { ...prev, ...map }));
     },
-    [user?.id, viewerShelfMap]
+    [user?.id]
   );
 
   const loadInitial = useCallback(async () => {

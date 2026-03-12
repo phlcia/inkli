@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,14 +7,15 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import * as Contacts from 'expo-contacts';
 import * as SMS from 'expo-sms';
 import { colors, typography } from '../../../config/theme';
 import { useInviteTier } from '../../../hooks/useInviteTier';
 import {
-  shareInviteLink,
   createInviteLinkForContact,
   getPendingInviteCode,
   acceptInvite,
@@ -23,8 +24,10 @@ import {
 import { useAuth } from '../../../contexts/AuthContext';
 import { supabase } from '../../../config/supabase';
 import { updatePrivateData } from '../../../services/userPrivateData';
+import { normalizePhone } from '../../../utils/phone';
 import type { AuthStackParamList } from '../../../navigation/AuthStackNavigator';
 import type { ContactEntry } from './DiscoverFriendsScreen';
+import ContactInvitePicker from '../../profile/components/ContactInvitePicker';
 
 export type InviteGateSignupParams = {
   email?: string;
@@ -85,11 +88,71 @@ export default function InviteGateScreen({
     refetch,
   } = useInviteTier();
 
-  const [sharing, setSharing] = useState(false);
   const [signingUp, setSigningUp] = useState(false);
   const [signupComplete, setSignupComplete] = useState(false);
   const [selectedPhones, setSelectedPhones] = useState<Set<string>>(new Set());
   const [sending, setSending] = useState(false);
+
+  // When we have no contacts from route (denied at DiscoverFriends or direct nav to InviteGate): reprompt for permission and load contacts
+  type ContactsPermissionStatus = 'requesting' | 'granted' | 'denied';
+  const [contactsPermission, setContactsPermission] = useState<ContactsPermissionStatus>('requesting');
+  const [loadedContacts, setLoadedContacts] = useState<ContactEntry[]>([]);
+  const [loadingContacts, setLoadingContacts] = useState(false);
+
+  const loadContactsForInvite = useCallback(async () => {
+    setLoadingContacts(true);
+    try {
+      const { data: contactData } = await Contacts.getContactsAsync({
+        fields: [Contacts.Fields.PhoneNumbers, Contacts.Fields.Name],
+      });
+      const seenPhones = new Set<string>();
+      const list: ContactEntry[] = [];
+      for (const contact of contactData ?? []) {
+        const displayName = (contact.name ?? '').trim();
+        for (const pn of contact.phoneNumbers ?? []) {
+          const raw = pn.number ?? '';
+          const normalized = normalizePhone(raw);
+          if (normalized && !seenPhones.has(normalized)) {
+            seenPhones.add(normalized);
+            list.push({ name: displayName || normalized, phone: normalized });
+          }
+        }
+      }
+      setLoadedContacts(list);
+      setContactsPermission('granted');
+    } catch (e) {
+      console.warn('InviteGateScreen: loadContactsForInvite error', e);
+      setContactsPermission('denied');
+    } finally {
+      setLoadingContacts(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (unmatchedContacts.length > 0) return;
+    let cancelled = false;
+    (async () => {
+      const { status } = await Contacts.getPermissionsAsync();
+      if (cancelled) return;
+      if (status === 'granted') {
+        await loadContactsForInvite();
+      } else {
+        setContactsPermission(status === 'denied' ? 'denied' : 'requesting');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [unmatchedContacts.length, loadContactsForInvite]);
+
+  const requestContactsAndLoad = useCallback(async () => {
+    const { status } = await Contacts.requestPermissionsAsync();
+    if (status === 'granted') {
+      await loadContactsForInvite();
+    } else {
+      setContactsPermission('denied');
+    }
+  }, [loadContactsForInvite]);
 
   // ------- Account creation (when arriving from email signup) -------
   useEffect(() => {
@@ -169,18 +232,6 @@ export default function InviteGateScreen({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [signupComplete]);
 
-  // ------- Simple share handler (fallback mode) -------
-  const handleShare = async () => {
-    if (sharing) return;
-    setSharing(true);
-    try {
-      await shareInviteLink();
-      refetch();
-    } finally {
-      setSharing(false);
-    }
-  };
-
   // ------- Contact-picker mode handlers -------
   const toggleContact = (phone: string) => {
     setSelectedPhones((prev) => {
@@ -241,63 +292,86 @@ export default function InviteGateScreen({
 
   // ------- Contact-picker mode -------
   if (unmatchedContacts.length > 0) {
-    const selectionCount = selectedPhones.size;
-    const canSend = selectionCount === REQUIRED_SELECTIONS;
-
     return (
       <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-        <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-        >
-          <Text style={styles.title}>invite 4 friends</Text>
+        <ContactInvitePicker
+          title="invite 4 friends"
+          subtitle="Select 4 contacts to invite to Inkli! For each one that joins, you'll earn points to unlock bonus features."
+          requiredSelections={REQUIRED_SELECTIONS}
+          contacts={unmatchedContacts}
+          selectedPhones={selectedPhones}
+          onToggleContact={toggleContact}
+          onSendInvites={handleSendInvites}
+          sending={sending}
+        />
+      </SafeAreaView>
+    );
+  }
+
+  // ------- No contacts from route: reprompt for permission or show contact picker with loaded contacts -------
+  if (loadingContacts) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color={colors.primaryBlue} />
+          <Text style={styles.loadingText}>Loading contacts...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (contactsPermission === 'denied' || contactsPermission === 'requesting') {
+    return (
+      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          <Text style={styles.title}>Invite from contacts</Text>
           <Text style={styles.subtitle}>
-            Select 4 contacts to invite to Inkli! For each one that joins, you'll earn points to unlock bonus features.
+            To invite friends to Inkli, we need access to your contacts. Choose 4 people to send an
+            invite to — when they join, you'll earn unlock points.
           </Text>
-
-          <Text style={styles.selectionCount}>
-            {selectionCount}/{REQUIRED_SELECTIONS} selected
-          </Text>
-
-          <View style={styles.contactList}>
-            {unmatchedContacts.map((contact) => {
-              const selected = selectedPhones.has(contact.phone);
-              return (
-                <TouchableOpacity
-                  key={contact.phone}
-                  style={[styles.contactRow, selected && styles.contactRowSelected]}
-                  onPress={() => toggleContact(contact.phone)}
-                  activeOpacity={0.7}
-                >
-                  <View style={[styles.contactAvatar, selected && styles.contactAvatarSelected]}>
-                    <Text style={[styles.contactInitial, selected && styles.contactInitialSelected]}>
-                      {contact.name[0]?.toUpperCase() ?? '?'}
-                    </Text>
-                  </View>
-                  <View style={styles.contactInfo}>
-                    <Text style={styles.contactName}>{contact.name}</Text>
-                    <Text style={styles.contactPhone}>{contact.phone}</Text>
-                  </View>
-                  {selected && (
-                    <View style={styles.checkmark}>
-                      <Text style={styles.checkmarkText}>✓</Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
-              );
-            })}
+          <View style={styles.progressCard}>
+            <Text style={styles.progressMain}>{sentCount}/4 invites sent</Text>
+            <Text style={styles.progressSub}>
+              {inviteCount} friend{inviteCount !== 1 ? 's' : ''} joined so far
+            </Text>
           </View>
-
           <TouchableOpacity
-            style={[styles.sendButton, !canSend && styles.sendButtonDisabled]}
-            onPress={handleSendInvites}
-            disabled={!canSend || sending}
+            style={styles.shareButton}
+            onPress={requestContactsAndLoad}
             activeOpacity={0.8}
           >
-            {sending ? (
+            <Text style={styles.shareButtonText}>Allow access to contacts</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.shareButton, styles.shareButtonSecondary]}
+            onPress={() => Linking.openSettings()}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.shareButtonSecondaryText}>Open Settings</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  if (loadedContacts.length === 0) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          <Text style={styles.title}>No contacts found</Text>
+          <Text style={styles.subtitle}>
+            Add contacts in your phone's contacts app, then tap below to try again.
+          </Text>
+          <TouchableOpacity
+            style={styles.shareButton}
+            onPress={loadContactsForInvite}
+            activeOpacity={0.8}
+            disabled={loadingContacts}
+          >
+            {loadingContacts ? (
               <ActivityIndicator size="small" color={colors.white} />
             ) : (
-              <Text style={styles.sendButtonText}>Send Invites</Text>
+              <Text style={styles.shareButtonText}>Try again</Text>
             )}
           </TouchableOpacity>
         </ScrollView>
@@ -305,39 +379,18 @@ export default function InviteGateScreen({
     );
   }
 
-  // ------- Simple share mode (no contacts / fallback) -------
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        <Text style={styles.title}>Before you go in...</Text>
-        <Text style={styles.subtitle}>
-          Send your invite link to 4 friends to unlock the full Inkli experience. When they join,
-          you'll earn unlock points for extra features.
-        </Text>
-
-        <View style={styles.progressCard}>
-          <Text style={styles.progressMain}>{sentCount}/4 invites sent</Text>
-          <Text style={styles.progressSub}>
-            {inviteCount} friend{inviteCount !== 1 ? 's' : ''} joined so far
-          </Text>
-        </View>
-
-        <TouchableOpacity
-          style={styles.shareButton}
-          onPress={handleShare}
-          activeOpacity={0.8}
-          disabled={sharing}
-        >
-          {sharing ? (
-            <ActivityIndicator size="small" color={colors.white} />
-          ) : (
-            <Text style={styles.shareButtonText}>Share invite link</Text>
-          )}
-        </TouchableOpacity>
-      </ScrollView>
+      <ContactInvitePicker
+        title="invite 4 friends"
+        subtitle="Select 4 contacts to invite to Inkli! For each one that joins, you'll earn points to unlock bonus features."
+        requiredSelections={REQUIRED_SELECTIONS}
+        contacts={loadedContacts}
+        selectedPhones={selectedPhones}
+        onToggleContact={toggleContact}
+        onSendInvites={handleSendInvites}
+        sending={sending}
+      />
     </SafeAreaView>
   );
 }
@@ -376,101 +429,6 @@ const styles = StyleSheet.create({
     opacity: 0.9,
   },
 
-  // Contact-picker mode
-  selectionCount: {
-    fontFamily: typography.button,
-    fontSize: 15,
-    color: colors.primaryBlue,
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  contactList: {
-    marginBottom: 24,
-  },
-  contactRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.white,
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    marginBottom: 8,
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  contactRowSelected: {
-    borderColor: colors.primaryBlue,
-  },
-  contactAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.creamBackground,
-    borderWidth: 1,
-    borderColor: colors.brownText,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  contactAvatarSelected: {
-    backgroundColor: colors.primaryBlue,
-    borderColor: colors.primaryBlue,
-  },
-  contactInitial: {
-    fontFamily: typography.button,
-    fontSize: 16,
-    color: colors.brownText,
-    fontWeight: '600',
-  },
-  contactInitialSelected: {
-    color: colors.white,
-  },
-  contactInfo: {
-    flex: 1,
-  },
-  contactName: {
-    fontFamily: typography.body,
-    fontSize: 15,
-    fontWeight: '500',
-    color: colors.brownText,
-  },
-  contactPhone: {
-    fontFamily: typography.body,
-    fontSize: 12,
-    color: colors.brownText,
-    opacity: 0.6,
-    marginTop: 2,
-  },
-  checkmark: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: colors.primaryBlue,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginLeft: 8,
-  },
-  checkmarkText: {
-    color: colors.white,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  sendButton: {
-    backgroundColor: colors.primaryBlue,
-    paddingVertical: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  sendButtonDisabled: {
-    opacity: 0.4,
-  },
-  sendButtonText: {
-    fontFamily: typography.button,
-    fontSize: 17,
-    color: colors.white,
-    fontWeight: '600',
-  },
-
   // Simple share mode
   progressCard: {
     backgroundColor: colors.white,
@@ -497,11 +455,30 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderRadius: 12,
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 12,
+  },
+  shareButtonSecondary: {
+    backgroundColor: 'transparent',
+    borderWidth: 2,
+    borderColor: colors.primaryBlue,
   },
   shareButtonText: {
     fontFamily: typography.button,
     fontSize: 17,
     color: colors.white,
+  },
+  shareButtonSecondaryText: {
+    fontFamily: typography.button,
+    fontSize: 17,
+    color: colors.primaryBlue,
+    fontWeight: '600',
+  },
+  loadingText: {
+    marginTop: 16,
+    fontFamily: typography.body,
+    fontSize: 15,
+    color: colors.brownText,
+    opacity: 0.8,
+    textAlign: 'center',
   },
 });

@@ -10,6 +10,7 @@ import {
   Image,
   Platform,
   Linking,
+  Alert,
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -31,7 +32,7 @@ import iconImage from '../../../../assets/icon.png';
 type UsernameStatus = 'idle' | 'checking' | 'available' | 'taken' | 'error';
 
 interface SignUpEmailScreenProps {
-  onNext: (email: string, password: string, name: string, username: string, phone: string | null) => void;
+  onNext: (email: string, password: string, name: string, username: string, phone: string | null) => void | Promise<void>;
   onBack?: () => void;
 }
 
@@ -45,6 +46,7 @@ export default function SignUpEmailScreen({ onNext, onBack: _onBack }: SignUpEma
   const [phone, setPhone] = useState('');
   const [ageConfirmed, setAgeConfirmed] = useState(false);
   const [privacyConfirmed, setPrivacyConfirmed] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   // Validation state
   const [usernameStatus, setUsernameStatus] = useState<UsernameStatus>('idle');
@@ -282,7 +284,15 @@ export default function SignUpEmailScreen({ onNext, onBack: _onBack }: SignUpEma
     }
 
     const normalizedPhone = normalizePhone(phone.trim());
-    onNext(email.trim(), password, name.trim(), username.trim().toLowerCase(), normalizedPhone);
+    setSubmitting(true);
+    try {
+      await onNext(email.trim(), password, name.trim(), username.trim().toLowerCase(), normalizedPhone);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Failed to create account. Please try again.';
+      Alert.alert('Signup Error', message);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -545,17 +555,21 @@ export default function SignUpEmailScreen({ onNext, onBack: _onBack }: SignUpEma
 
         {/* Next Button */}
         <TouchableOpacity
-          style={[styles.nextButton, !isFormValid && styles.nextButtonDisabled]}
+          style={[styles.nextButton, (!isFormValid || submitting) && styles.nextButtonDisabled]}
           onPress={() => {
             void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
             void handleNext();
           }}
-          disabled={!isFormValid}
+          disabled={!isFormValid || submitting}
           accessibilityRole="button"
           accessibilityLabel="Next"
-          accessibilityState={{ disabled: !isFormValid }}
+          accessibilityState={{ disabled: !isFormValid || submitting }}
         >
-          <Text style={styles.nextButtonText}>Next</Text>
+          {submitting ? (
+            <ActivityIndicator size="small" color={colors.white} />
+          ) : (
+            <Text style={styles.nextButtonText}>Next</Text>
+          )}
         </TouchableOpacity>
       </KeyboardAwareScrollView>
     </SafeAreaView>

@@ -11,6 +11,8 @@ import SignInScreen from '../features/auth/screens/SignInScreen';
 import ForgotPasswordScreen from '../features/auth/screens/ForgotPasswordScreen';
 import ResetPasswordScreen from '../features/auth/screens/ResetPasswordScreen';
 import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../config/supabase';
+import { updatePrivateData } from '../services/userPrivateData';
 import type { ContactEntry } from '../features/onboarding/screens/DiscoverFriendsScreen';
 
 export type AuthStackParamList = {
@@ -59,7 +61,7 @@ export default function AuthStackNavigator({
   onPasswordReset,
   successMessage,
 }: AuthStackNavigatorProps) {
-  const { signInWithApple, signInWithGoogle } = useAuth();
+  const { signInWithApple, signInWithGoogle, signUp } = useAuth();
 
   return (
     <Stack.Navigator
@@ -146,14 +148,15 @@ export default function AuthStackNavigator({
         {(props) => (
           <SignUpEmailScreen
             {...props}
-            onNext={(email, password, name, username, phone) => {
-              props.navigation.navigate('InviteGate', {
-                email,
-                password,
-                name,
-                username,
-                phone: phone ?? null,
-              });
+            onNext={async (email, password, name, username, phone) => {
+              await signUp(email, password, username, name, []);
+              if (phone) {
+                const { data } = await supabase.auth.getSession();
+                const userId = data?.session?.user?.id;
+                if (userId) {
+                  await updatePrivateData(userId, { phone_number: phone });
+                }
+              }
             }}
           />
         )}

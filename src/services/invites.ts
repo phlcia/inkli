@@ -1,4 +1,3 @@
-import { Share } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../config/supabase';
 
@@ -123,48 +122,6 @@ export async function spendInvitePoint(featureKey: FeatureKey): Promise<{ error:
     return { error: null };
   } catch (e) {
     return { error: e instanceof Error ? e.message : 'Failed to unlock feature' };
-  }
-}
-
-/**
- * Opens the native share sheet with a fresh, single-use invite link.
- * The actual sent-invites count is incremented in the create-invite-link
- * edge function when the link row is created.
- */
-export async function shareInviteLink(): Promise<void> {
-  try {
-    const { data, error } = await supabase.functions.invoke<{
-      code?: string;
-      url?: string;
-      error?: string;
-    }>('create-invite-link', {
-      method: 'POST',
-    });
-
-    if (error) {
-      console.warn('shareInviteLink: create-invite-link error', error);
-      return;
-    }
-
-    if (!data || !data.url) {
-      console.warn('shareInviteLink: missing url from create-invite-link');
-      return;
-    }
-
-    const url = data.url;
-    const message =
-      "HELLO i've been ranking all my books on inkli and i think you'd love it. join me? (this invite is only valid for 24 hours so act fast!) (˶ˆᗜˆ˵)"
-
-    await Share.share({
-      message,
-      url,
-      title: 'Join me on Inkli',
-    });
-  } catch (e) {
-    console.warn(
-      'shareInviteLink: unexpected error',
-      e instanceof Error ? e.message : String(e),
-    );
   }
 }
 

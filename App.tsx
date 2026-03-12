@@ -142,6 +142,8 @@ function AppContent() {
   const isLoading = Boolean(loading);
   const hasUser = Boolean(user);
   const [postResetMessage, setPostResetMessage] = useState<string | null>(null);
+  const [initialUrlProcessed, setInitialUrlProcessed] = useState(false);
+  const initialUrlHandledRef = useRef(false);
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileFlags, setProfileFlags] = useState<{
     completed_onboarding_quiz: boolean;
@@ -278,9 +280,13 @@ function AppContent() {
       }
     };
     const subscription = Linking.addEventListener('url', handleDeepLink);
-    void Linking.getInitialURL().then((url) => {
-      if (url) handleDeepLink({ url });
-    });
+    if (!initialUrlHandledRef.current) {
+      initialUrlHandledRef.current = true;
+      Linking.getInitialURL().then(async (url) => {
+        if (url) await handleDeepLink({ url });
+        setInitialUrlProcessed(true);
+      });
+    }
     return () => subscription.remove();
   }, [user, setPendingPasswordRecovery]);
 
@@ -376,7 +382,7 @@ function AppContent() {
     profileFlags !== null &&
     (profileFlags.moderation_status === 'suspended' || profileFlags.moderation_status === 'banned');
 
-  if (isLoading || (hasUser && (profileLoading || profileFlags === null))) {
+  if (!initialUrlProcessed || isLoading || (hasUser && (profileLoading || profileFlags === null))) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={colors.primaryBlue} />
@@ -406,11 +412,6 @@ function AppContent() {
               moderationStatus={profileFlags?.moderation_status ?? null}
               onSignOut={signOut}
             />
-          ) : needsOnboardingQuiz ? (
-            <AuthStackNavigator
-              initialRouteName="Quiz"
-              onQuizComplete={() => setProfileRefreshCount((count) => count + 1)}
-            />
           ) : needsContactDiscovery ? (
             <AuthStackNavigator
               initialRouteName="DiscoverFriends"
@@ -420,6 +421,11 @@ function AppContent() {
             <AuthStackNavigator
               initialRouteName="InviteGate"
               onInviteGateCleared={() => setProfileRefreshCount((count) => count + 1)}
+            />
+          ) : needsOnboardingQuiz ? (
+            <AuthStackNavigator
+              initialRouteName="Quiz"
+              onQuizComplete={() => setProfileRefreshCount((count) => count + 1)}
             />
           ) : (
             <TabNavigator />

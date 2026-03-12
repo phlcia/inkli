@@ -154,7 +154,7 @@ Deep-linked invite URLs (`/invite/:code`) are intercepted at app launch and stor
 
 - **Comparison quiz** (`QuizScreen`) — shown to new users within 10 minutes of signup. Presents pairs of starter books; each choice is stored as a `Comparison` row and used to seed initial rankings.
 - **Discover friends** (`DiscoverFriendsScreen`) — requests device contacts permission, normalizes phone numbers to E.164, calls the `match-contacts` edge function to find existing Inkli users, auto-follows matched users via `request_follow` RPC, and displays the match list. On "Continue", sets `completed_contact_discovery = true` on `user_profiles` and navigates to `InviteGateScreen` passing all contacts. Tracked via `completed_contact_discovery` boolean on `user_profiles`.
-- **Invite gate** (`InviteGateScreen`) — soft wall requiring the user to invite 4 friends before accessing the full app. When arriving from `DiscoverFriendsScreen` with contacts, shows a contact-picker UI: user selects exactly 4 contacts, each gets a unique invite link via `create-invite-link` edge function sent as an SMS (`expo-sms`). When shown directly (no contacts), falls back to the native share sheet. Users with `grandfathered_invite_unlock = true` bypass the gate.
+- **Invite gate** (`InviteGateScreen`) — soft wall requiring the user to invite 4 friends before accessing the full app. Invites are contact-based only: user selects exactly 4 contacts, each gets a unique invite link via `create-invite-link` edge function sent as an SMS (`expo-sms`). When the user has no contacts (e.g. denied permission on Discover Friends or landed on the gate directly), the screen reprompts for contacts access and loads contacts once granted; if permission is denied, "Allow access to contacts" and "Open Settings" are shown. Users with `grandfathered_invite_unlock = true` bypass the gate.
 
 ### Books
 
@@ -266,7 +266,7 @@ Home activity feed and Recommended for You are always available (not gated). Fiv
 - Points are spent via `spend-invite-point` edge function to unlock individual features
 - `grandfathered_invite_unlock` bypasses all feature gates
 - Invite links use deep link scheme `https://inkliapp.com/invite/{code}`
-- Native share sheet used to send; a "send" is counted when the share sheet is dismissed
+- Invites are sent via contact picker and SMS only; each link creation increments sent count
 
 ### Analytics
 
@@ -425,8 +425,7 @@ Filter usage in the shelf view is tracked to `filter_events`:
 | `fetchUnlockedFeatures(userId)` | List of unlocked feature keys |
 | `acceptInvite(inviteCode)` | Call `accept-invite` edge function |
 | `spendInvitePoint(featureKey)` | Call `spend-invite-point` edge function |
-| `shareInviteLink()` | Create a single-use invite link via `create-invite-link` and open native share sheet |
-| `createInviteLinkForContact()` | Create a single-use invite link via `create-invite-link` and return the URL (no share sheet) — used by `InviteGateScreen` for SMS sending |
+| `createInviteLinkForContact()` | Create a single-use invite link via `create-invite-link` and return the URL (no share sheet) — used for contact-based invite SMS sending |
 | `storePendingInviteCode(code)` | Save deep-linked code to AsyncStorage |
 | `getPendingInviteCode()` | Read pending code from AsyncStorage |
 | `clearPendingInviteCode()` | Remove pending code from AsyncStorage |
