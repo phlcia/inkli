@@ -14,7 +14,7 @@ import {
   Inter_500Medium,
   Inter_600SemiBold,
 } from '@expo-google-fonts/inter';
-import { ActivityIndicator, AppState, Text, TouchableOpacity, View, StyleSheet, Linking } from 'react-native';
+import { AppState, Text, TouchableOpacity, View, StyleSheet, Linking } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { colors } from './src/config/theme';
 import TabNavigator from './src/navigation/TabNavigator';
@@ -36,6 +36,9 @@ import 'react-native-get-random-values';
 import 'react-native-url-polyfill/auto';
 import * as Sentry from '@sentry/react-native';
 import { Button } from 'react-native';
+import * as SplashScreen from 'expo-splash-screen';
+
+SplashScreen.preventAutoHideAsync();
 
 Sentry.init({
   dsn: 'https://d88a0dc00363a12707b44dbd0b247970@o4511021744193536.ingest.us.sentry.io/4511021744390144',
@@ -382,12 +385,19 @@ function AppContent() {
     profileFlags !== null &&
     (profileFlags.moderation_status === 'suspended' || profileFlags.moderation_status === 'banned');
 
-  if (!initialUrlProcessed || isLoading || (hasUser && (profileLoading || profileFlags === null))) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.primaryBlue} />
-      </View>
-    );
+  const appReady =
+    initialUrlProcessed &&
+    !isLoading &&
+    (!hasUser || (!profileLoading && profileFlags !== null));
+
+  useEffect(() => {
+    if (appReady) {
+      SplashScreen.hideAsync();
+    }
+  }, [appReady]);
+
+  if (!appReady) {
+    return null;
   }
 
   return (
@@ -455,11 +465,7 @@ export default Sentry.wrap(function App() {
   const areFontsLoaded = Boolean(fontsLoaded);
 
   if (!areFontsLoaded) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.primaryBlue} />
-      </View>
-    );
+    return null;
   }
 
   return (
@@ -472,11 +478,5 @@ export default Sentry.wrap(function App() {
 const styles = StyleSheet.create({
   appRoot: {
     flex: 1,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: colors.creamBackground,
   },
 });

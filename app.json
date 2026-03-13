@@ -9,8 +9,6 @@
     "newArchEnabled": true,
     "scheme": "com.inkli.app",
     "splash": {
-      "image": "./assets/icon.png",
-      "resizeMode": "contain",
       "backgroundColor": "#F5EDE1"
     },
     "ios": {

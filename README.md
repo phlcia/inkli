@@ -27,6 +27,10 @@ Defined in `src/config/theme.ts`.
 
 Both font families are loaded via `@expo-google-fonts/*` in `App.tsx` before rendering.
 
+### Startup / splash screen
+
+`expo-splash-screen` is used to hold the native splash screen until fonts, auth session, and profile flags are all resolved. `SplashScreen.preventAutoHideAsync()` is called at module level in `App.tsx`; `SplashScreen.hideAsync()` is called inside `AppContent` once the app is fully ready. This eliminates the double-logo flash that would otherwise occur between the native splash and the `WelcomeScreen`.
+
 ---
 
 ## Architecture
