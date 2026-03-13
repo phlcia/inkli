@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
+  TextInput,
 } from 'react-native';
 import { colors, typography } from '../../../config/theme';
 
@@ -17,7 +18,7 @@ export interface ContactEntry {
 interface ContactInvitePickerProps {
   title: string;
   subtitle: string;
-  requiredSelections: number;
+  requiredSelections?: number;
   contacts: ContactEntry[];
   selectedPhones: Set<string>;
   onToggleContact: (phone: string) => void;
@@ -35,23 +36,49 @@ export default function ContactInvitePicker({
   onSendInvites,
   sending,
 }: ContactInvitePickerProps) {
+  const [query, setQuery] = useState('');
   const selectionCount = selectedPhones.size;
-  const canSend = selectionCount === requiredSelections;
+  const canSend = requiredSelections != null
+    ? selectionCount === requiredSelections
+    : selectionCount >= 1;
+
+  const filteredContacts = useMemo(() => {
+    const sorted = [...contacts].sort((a, b) =>
+      a.name.localeCompare(b.name)
+    );
+    if (!query.trim()) return sorted;
+    const lower = query.toLowerCase();
+    return sorted.filter((c) => c.name.toLowerCase().includes(lower));
+  }, [contacts, query]);
 
   return (
-    <ScrollView
-      contentContainerStyle={styles.scrollContent}
-      showsVerticalScrollIndicator={false}
-    >
-      <Text style={styles.title}>{title}</Text>
-      <Text style={styles.subtitle}>{subtitle}</Text>
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.title}>{title}</Text>
+        <Text style={styles.subtitle}>{subtitle}</Text>
+        <Text style={styles.selectionCount}>
+          {requiredSelections != null
+            ? `${selectionCount}/${requiredSelections} selected`
+            : `${selectionCount} selected`}
+        </Text>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search contacts…"
+          placeholderTextColor={`${colors.brownText}66`}
+          value={query}
+          onChangeText={setQuery}
+          autoCorrect={false}
+          clearButtonMode="while-editing"
+        />
+      </View>
 
-      <Text style={styles.selectionCount}>
-        {selectionCount}/{requiredSelections} selected
-      </Text>
-
-      <View style={styles.contactList}>
-        {contacts.map((contact) => {
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        {filteredContacts.map((contact) => {
           const selected = selectedPhones.has(contact.phone);
           return (
             <TouchableOpacity
@@ -65,10 +92,7 @@ export default function ContactInvitePicker({
                   {contact.name[0]?.toUpperCase() ?? '?'}
                 </Text>
               </View>
-              <View style={styles.contactInfo}>
-                <Text style={styles.contactName}>{contact.name}</Text>
-                <Text style={styles.contactPhone}>{contact.phone}</Text>
-              </View>
+              <Text style={styles.contactName}>{contact.name}</Text>
               {selected && (
                 <View style={styles.checkmark}>
                   <Text style={styles.checkmarkText}>✓</Text>
@@ -77,29 +101,34 @@ export default function ContactInvitePicker({
             </TouchableOpacity>
           );
         })}
-      </View>
+      </ScrollView>
 
-      <TouchableOpacity
-        style={[styles.sendButton, !canSend && styles.sendButtonDisabled]}
-        onPress={() => void onSendInvites()}
-        disabled={!canSend || sending}
-        activeOpacity={0.8}
-      >
-        {sending ? (
-          <ActivityIndicator size="small" color={colors.white} />
-        ) : (
-          <Text style={styles.sendButtonText}>Send Invites</Text>
-        )}
-      </TouchableOpacity>
-    </ScrollView>
+      <View style={styles.stickyFooter}>
+        <TouchableOpacity
+          style={[styles.sendButton, !canSend && styles.sendButtonDisabled]}
+          onPress={() => void onSendInvites()}
+          disabled={!canSend || sending}
+          activeOpacity={0.8}
+        >
+          {sending ? (
+            <ActivityIndicator size="small" color={colors.white} />
+          ) : (
+            <Text style={styles.sendButtonText}>Send Invites</Text>
+          )}
+        </TouchableOpacity>
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  scrollContent: {
+  container: {
+    flex: 1,
+  },
+  header: {
     paddingHorizontal: 24,
     paddingTop: 40,
-    paddingBottom: 40,
+    paddingBottom: 12,
   },
   title: {
     fontFamily: typography.heroTitle,
@@ -113,7 +142,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.brownText,
     lineHeight: 24,
-    marginBottom: 24,
+    marginBottom: 16,
     textAlign: 'center',
     opacity: 0.9,
   },
@@ -122,10 +151,26 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: colors.primaryBlue,
     textAlign: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
   },
-  contactList: {
-    marginBottom: 24,
+  searchInput: {
+    backgroundColor: colors.white,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontFamily: typography.body,
+    fontSize: 15,
+    color: colors.brownText,
+    borderWidth: 1,
+    borderColor: `${colors.brownText}22`,
+  },
+  scroll: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: 24,
+    paddingTop: 12,
+    paddingBottom: 16,
   },
   contactRow: {
     flexDirection: 'row',
@@ -165,21 +210,12 @@ const styles = StyleSheet.create({
   contactInitialSelected: {
     color: colors.white,
   },
-  contactInfo: {
-    flex: 1,
-  },
   contactName: {
+    flex: 1,
     fontFamily: typography.body,
     fontSize: 15,
     fontWeight: '500',
     color: colors.brownText,
-  },
-  contactPhone: {
-    fontFamily: typography.body,
-    fontSize: 12,
-    color: colors.brownText,
-    opacity: 0.6,
-    marginTop: 2,
   },
   checkmark: {
     width: 24,
@@ -194,6 +230,12 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontSize: 13,
     fontWeight: '700',
+  },
+  stickyFooter: {
+    paddingHorizontal: 24,
+    paddingTop: 12,
+    paddingBottom: 32,
+    backgroundColor: colors.creamBackground,
   },
   sendButton: {
     backgroundColor: colors.primaryBlue,
