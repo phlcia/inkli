@@ -66,12 +66,8 @@ export function useActivityComments(params: {
   const [headerAvatarFallback, setHeaderAvatarFallback] = useState<string>(
     headerParams.avatarFallback || 'U'
   );
-  const [currentUserAvatarUrl, setCurrentUserAvatarUrl] = useState<string | null>(
-    currentUser?.user_metadata?.avatar_url || null
-  );
-  const [currentUserAvatarFallback, setCurrentUserAvatarFallback] = useState<string>(
-    (currentUser?.email?.charAt(0) || 'U').toUpperCase()
-  );
+  const [currentUserAvatarUrl, setCurrentUserAvatarUrl] = useState<string | null>(null);
+  const [currentUserAvatarFallback, setCurrentUserAvatarFallback] = useState<string>('U');
   const [headerViewerStatus, setHeaderViewerStatus] = useState<
     'read' | 'currently_reading' | 'want_to_read' | null
   >(headerParams.viewerStatus ?? null);
@@ -170,24 +166,9 @@ export function useActivityComments(params: {
     }
   }, [headerParams, userBookId]);
 
-  useEffect(() => {
-    setCurrentUserAvatarUrl(currentUser?.user_metadata?.avatar_url || null);
-    setCurrentUserAvatarFallback(
-      (currentUser?.email?.charAt(0) || 'U').toUpperCase()
-    );
-  }, [currentUser?.email, currentUser?.user_metadata?.avatar_url]);
 
   const loadCurrentUserProfile = useCallback(async () => {
     if (!currentUser?.id) return;
-
-    const metadataAvatar = currentUser.user_metadata?.avatar_url || null;
-    if (metadataAvatar) {
-      setCurrentUserAvatarUrl(metadataAvatar);
-      setCurrentUserAvatarFallback(
-        (currentUser.email?.charAt(0) || 'U').toUpperCase()
-      );
-      return;
-    }
 
     try {
       const { data: profile } = await supabase
@@ -198,13 +179,12 @@ export function useActivityComments(params: {
 
       setCurrentUserAvatarUrl(profile?.profile_photo_url || null);
       setCurrentUserAvatarFallback(
-        profile?.username?.charAt(0)?.toUpperCase() ||
-          (currentUser.email?.charAt(0) || 'U').toUpperCase()
+        profile?.username?.charAt(0)?.toUpperCase() || 'U'
       );
     } catch (error) {
       console.error('Error loading current user profile:', error);
     }
-  }, [currentUser?.id, currentUser?.email, currentUser?.user_metadata?.avatar_url]);
+  }, [currentUser?.id]);
 
   useFocusEffect(
     useCallback(() => {
