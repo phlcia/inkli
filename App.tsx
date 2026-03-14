@@ -199,6 +199,7 @@ function AppContent() {
   useEffect(() => {
     const handleDeepLink = async (event: { url: string }) => {
       if (!event?.url) return;
+      console.log('[DeepLink] received:', event.url);
       try {
         const inviteMatch = event.url.match(/\/invite\/([a-zA-Z0-9]+)/);
         if (inviteMatch?.[1]) {
@@ -259,11 +260,28 @@ function AppContent() {
                 access_token: accessToken,
                 refresh_token: refreshToken,
               });
-              if (error) console.error('Error setting recovery session:', error);
+              if (error) console.error('[DeepLink] Error setting recovery session:', error);
               else setPendingPasswordRecovery(true);
             }
             return;
           }
+        }
+
+        // Handle token_hash query param (newer Supabase email OTP format)
+        const tokenHash = url.searchParams.get('token_hash');
+        if (tokenHash) {
+          const urlType = url.searchParams.get('type');
+          console.log('[DeepLink] token_hash flow, type:', urlType);
+          const { error } = await supabase.auth.verifyOtp({
+            token_hash: tokenHash,
+            type: (urlType ?? 'recovery') as Parameters<typeof supabase.auth.verifyOtp>[0]['type'],
+          });
+          if (error) {
+            console.error('[DeepLink] Error verifying token hash:', error);
+          } else if (urlType === 'recovery' || isResetPasswordLink) {
+            setPendingPasswordRecovery(true);
+          }
+          return;
         }
 
         let code = url.searchParams.get('code');
@@ -272,16 +290,17 @@ function AppContent() {
           code = hashParams.get('code');
         }
         if (!code) {
-          const codeMatch = event.url.match(/[#&]code=([^&]+)/);
+          const codeMatch = event.url.match(/[?#&]code=([^&]+)/);
           code = codeMatch?.[1] ?? null;
         }
+        console.log('[DeepLink] isResetPasswordLink:', isResetPasswordLink, 'code present:', Boolean(code));
         if (code) {
           const { error } = await supabase.auth.exchangeCodeForSession(code);
-          if (error) console.error('Error exchanging code for session:', error);
+          if (error) console.error('[DeepLink] Error exchanging code:', error);
           else if (isResetPasswordLink) setPendingPasswordRecovery(true);
         }
       } catch (error) {
-        console.error('Error handling deep link:', error);
+        console.error('[DeepLink] Error handling deep link:', error);
       }
     };
     const subscription = Linking.addEventListener('url', handleDeepLink);
@@ -413,6 +432,7 @@ function AppContent() {
         >
           {pendingPasswordRecovery ? (
           <AuthStackNavigator
+            key="recovery"
             initialRouteName="ResetPassword"
             onPasswordReset={() =>
               setPostResetMessage('Password updated. Sign in with your new password.')
@@ -444,6 +464,7 @@ function AppContent() {
           )
         ) : (
           <AuthStackNavigator
+            key="auth"
             initialRouteName={postResetMessage ? 'SignIn' : 'Welcome'}
             successMessage={postResetMessage ?? undefined}
           />

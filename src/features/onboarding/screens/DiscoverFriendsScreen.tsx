@@ -22,6 +22,10 @@ import type { AuthStackParamList } from '../../../navigation/AuthStackNavigator'
 
 type NavigationProp = NativeStackNavigationProp<AuthStackParamList, 'DiscoverFriends'>;
 
+interface DiscoverFriendsScreenProps {
+  onSkip?: () => void;
+}
+
 interface MatchedUser {
   user_id: string;
   username: string;
@@ -36,7 +40,7 @@ export interface ContactEntry {
 
 type ScreenStatus = 'requesting' | 'loading' | 'denied' | 'done';
 
-export default function DiscoverFriendsScreen() {
+export default function DiscoverFriendsScreen({ onSkip }: DiscoverFriendsScreenProps) {
   const { user } = useAuth();
   const navigation = useNavigation<NavigationProp>();
 
@@ -247,6 +251,11 @@ export default function DiscoverFriendsScreen() {
             <Text style={styles.continueButtonText}>Continue</Text>
           )}
         </TouchableOpacity>
+        {onSkip && (
+          <TouchableOpacity onPress={onSkip} activeOpacity={0.7} style={styles.skipLink}>
+            <Text style={styles.skipLinkText}>skip for now</Text>
+          </TouchableOpacity>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -392,5 +401,16 @@ const styles = StyleSheet.create({
     fontSize: 17,
     color: colors.white,
     fontWeight: '600',
+  },
+  skipLink: {
+    marginTop: 14,
+    alignItems: 'center',
+  },
+  skipLinkText: {
+    fontFamily: typography.body,
+    fontSize: 14,
+    color: colors.brownText,
+    opacity: 0.5,
+    textDecorationLine: 'underline',
   },
 });

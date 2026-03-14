@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -18,19 +18,32 @@ import { ERROR_RED } from '../../../utils/validation';
 import { AuthStackParamList } from '../../../navigation/AuthStackNavigator';
 import iconImage from '../../../../assets/icon.png';
 
-type Props = NativeStackScreenProps<AuthStackParamList, 'ForgotPassword'> & {
+type Props = NativeStackScreenProps<AuthStackParamList, 'EnterCode'> & {
   onBack?: () => void;
 };
 
-export default function ForgotPasswordScreen({ navigation, onBack }: Props) {
-  const [identifier, setIdentifier] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+const COOLDOWN_SECONDS = 60;
 
-  const handleSubmit = async () => {
-    const trimmed = identifier.trim();
-    if (!trimmed) {
-      setError('Please enter your email or username');
+export default function EnterCodeScreen({ route, onBack }: Props) {
+  const { email } = route.params;
+  const [code, setCode] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [error, setError] = useState('');
+  const [cooldownRemaining, setCooldownRemaining] = useState(COOLDOWN_SECONDS);
+
+  useEffect(() => {
+    if (cooldownRemaining <= 0) return;
+    const timer = setInterval(() => {
+      setCooldownRemaining((prev) => (prev <= 1 ? 0 : prev - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [cooldownRemaining]);
+
+  const handleVerify = async () => {
+    const trimmed = code.trim();
+    if (trimmed.length !== 6) {
+      setError('Please enter the 6-digit code');
       return;
     }
 
@@ -39,32 +52,38 @@ export default function ForgotPasswordScreen({ navigation, onBack }: Props) {
     setLoading(true);
 
     try {
-      let email = trimmed;
+      const { error: verifyError } = await supabase.auth.verifyOtp({
+        email,
+        token: trimmed,
+        type: 'recovery',
+      });
 
-      if (!trimmed.includes('@')) {
-        const { data, error: resolveError } = await supabase.functions.invoke('resolve-username', {
-          body: { username: trimmed },
-        });
-        if (resolveError) throw resolveError;
-        email = data?.email ?? '';
-        if (!email) {
-          // Don't reveal whether the username exists
-          navigation.navigate('EnterCode', { email: trimmed });
-          return;
-        }
-      }
+      if (verifyError) throw verifyError;
 
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      // PASSWORD_RECOVERY event fires → AuthContext sets pendingPasswordRecovery → ResetPasswordScreen shown
+    } catch (err: any) {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      setError(err.message || 'Invalid code. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResend = async () => {
+    setResending(true);
+    setError('');
+
+    try {
       const { error: resetError } = await supabase.auth.resetPasswordForEmail(email);
-
       if (resetError) throw resetError;
 
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      navigation.navigate('EnterCode', { email });
+      setCooldownRemaining(COOLDOWN_SECONDS);
     } catch (err: any) {
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      setError(err.message || 'Something went wrong. Please try again.');
+      setError(err.message || 'Failed to resend code. Please try again.');
     } finally {
-      setLoading(false);
+      setResending(false);
     }
   };
 
@@ -83,44 +102,57 @@ export default function ForgotPasswordScreen({ navigation, onBack }: Props) {
           <Image source={iconImage} style={styles.logoImage} resizeMode="contain" />
         </View>
 
-        <Text style={styles.title}>forgot password</Text>
+        <Text style={styles.title}>enter code</Text>
 
         <Text style={styles.subtitle}>
-          Enter your email or username and we'll send you a 6-digit code.
+          We sent a 6-digit code to {email}. Enter it below to continue.
         </Text>
 
         <View>
           <TextInput
             style={[styles.input, error ? styles.inputError : null]}
-            placeholder="Email or username"
+            placeholder="6-digit code"
             placeholderTextColor={colors.brownText}
-            value={identifier}
+            value={code}
             onChangeText={(v) => {
-              setIdentifier(v);
+              setCode(v);
               if (error) setError('');
             }}
             autoCapitalize="none"
             autoCorrect={false}
-            keyboardType="email-address"
-            onSubmitEditing={handleSubmit}
-            returnKeyType="send"
+            keyboardType="number-pad"
+            maxLength={6}
+            onSubmitEditing={handleVerify}
+            returnKeyType="done"
           />
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
         </View>
 
         <TouchableOpacity
-          style={[styles.button, loading && styles.buttonDisabled]}
-          onPress={handleSubmit}
-          disabled={loading}
+          style={[styles.button, (loading || code.trim().length !== 6) && styles.buttonDisabled]}
+          onPress={handleVerify}
+          disabled={loading || code.trim().length !== 6}
         >
           <Text style={styles.buttonText}>
-            {loading ? 'Sending...' : 'Send Code'}
+            {loading ? 'Verifying...' : 'Verify Code'}
           </Text>
         </TouchableOpacity>
 
+        <View style={styles.resendRow}>
+          {cooldownRemaining > 0 ? (
+            <Text style={styles.cooldownText}>Resend code in {cooldownRemaining}s</Text>
+          ) : (
+            <TouchableOpacity onPress={handleResend} disabled={resending} activeOpacity={0.7}>
+              <Text style={styles.resendText}>
+                {resending ? 'Sending...' : 'Resend code'}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
         {onBack && (
           <TouchableOpacity onPress={onBack} style={styles.backContainer}>
-            <Text style={styles.backText}>Back to Sign In</Text>
+            <Text style={styles.backText}>Back</Text>
           </TouchableOpacity>
         )}
       </KeyboardAwareScrollView>
@@ -175,10 +207,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     marginBottom: 16,
     fontFamily: typography.body,
-    fontSize: 16,
+    fontSize: 20,
     color: colors.brownText,
     borderWidth: 1,
     borderColor: colors.brownText,
+    textAlign: 'center',
+    letterSpacing: 6,
   },
   inputError: {
     borderColor: ERROR_RED,
@@ -206,6 +240,21 @@ const styles = StyleSheet.create({
     fontFamily: typography.button,
     fontSize: 16,
     fontWeight: '600',
+  },
+  resendRow: {
+    marginTop: 20,
+    alignItems: 'center',
+  },
+  cooldownText: {
+    fontFamily: typography.body,
+    fontSize: 14,
+    color: colors.brownText,
+    opacity: 0.8,
+  },
+  resendText: {
+    fontFamily: typography.body,
+    fontSize: 14,
+    color: colors.primaryBlue,
   },
   backContainer: {
     marginTop: 16,

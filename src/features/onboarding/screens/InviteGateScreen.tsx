@@ -305,6 +305,7 @@ export default function InviteGateScreen({
           onToggleContact={toggleContact}
           onSendInvites={handleSendInvites}
           sending={sending}
+          onSkip={onInviteGateCleared}
         />
       </SafeAreaView>
     );
@@ -351,6 +352,11 @@ export default function InviteGateScreen({
           >
             <Text style={styles.shareButtonSecondaryText}>Open Settings</Text>
           </TouchableOpacity>
+          {onInviteGateCleared && (
+            <TouchableOpacity onPress={onInviteGateCleared} activeOpacity={0.7} style={styles.skipLink}>
+              <Text style={styles.skipLinkText}>skip for now</Text>
+            </TouchableOpacity>
+          )}
         </ScrollView>
       </SafeAreaView>
     );
@@ -376,6 +382,11 @@ export default function InviteGateScreen({
               <Text style={styles.shareButtonText}>Try again</Text>
             )}
           </TouchableOpacity>
+          {onInviteGateCleared && (
+            <TouchableOpacity onPress={onInviteGateCleared} activeOpacity={0.7} style={styles.skipLink}>
+              <Text style={styles.skipLinkText}>skip for now</Text>
+            </TouchableOpacity>
+          )}
         </ScrollView>
       </SafeAreaView>
     );
@@ -392,6 +403,7 @@ export default function InviteGateScreen({
         onToggleContact={toggleContact}
         onSendInvites={handleSendInvites}
         sending={sending}
+        onSkip={onInviteGateCleared}
       />
     </SafeAreaView>
   );
@@ -482,5 +494,16 @@ const styles = StyleSheet.create({
     color: colors.brownText,
     opacity: 0.8,
     textAlign: 'center',
+  },
+  skipLink: {
+    marginTop: 14,
+    alignItems: 'center',
+  },
+  skipLinkText: {
+    fontFamily: typography.body,
+    fontSize: 14,
+    color: colors.brownText,
+    opacity: 0.5,
+    textDecorationLine: 'underline',
   },
 });

@@ -9,6 +9,7 @@ import InviteGateScreen from '../features/onboarding/screens/InviteGateScreen';
 import DiscoverFriendsScreen from '../features/onboarding/screens/DiscoverFriendsScreen';
 import SignInScreen from '../features/auth/screens/SignInScreen';
 import ForgotPasswordScreen from '../features/auth/screens/ForgotPasswordScreen';
+import EnterCodeScreen from '../features/auth/screens/EnterCodeScreen';
 import ResetPasswordScreen from '../features/auth/screens/ResetPasswordScreen';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../config/supabase';
@@ -22,6 +23,7 @@ export type AuthStackParamList = {
   CreateAccount: undefined;
   SignUpEmail: undefined;
   ForgotPassword: undefined;
+  EnterCode: { email: string };
   ResetPassword: undefined;
   Quiz:
     | {
@@ -97,7 +99,7 @@ export default function AuthStackNavigator({
         {(props) => (
           <SignInScreen
             {...props}
-            onSignUp={() => props.navigation.navigate('CreateAccount')}
+            onSignUp={() => props.navigation.navigate('SignUpEmail')}
             onForgotPassword={() => props.navigation.navigate('ForgotPassword')}
             successMessage={successMessage}
           />
@@ -107,6 +109,15 @@ export default function AuthStackNavigator({
       <Stack.Screen name="ForgotPassword">
         {(props) => (
           <ForgotPasswordScreen
+            {...props}
+            onBack={() => props.navigation.goBack()}
+          />
+        )}
+      </Stack.Screen>
+
+      <Stack.Screen name="EnterCode">
+        {(props) => (
+          <EnterCodeScreen
             {...props}
             onBack={() => props.navigation.goBack()}
           />
@@ -178,7 +189,7 @@ export default function AuthStackNavigator({
       </Stack.Screen>
 
       <Stack.Screen name="DiscoverFriends">
-        {() => <DiscoverFriendsScreen />}
+        {() => <DiscoverFriendsScreen onSkip={onInviteGateCleared} />}
       </Stack.Screen>
 
       <Stack.Screen name="InviteGate">

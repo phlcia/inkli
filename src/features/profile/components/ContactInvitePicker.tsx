@@ -24,6 +24,7 @@ interface ContactInvitePickerProps {
   onToggleContact: (phone: string) => void;
   onSendInvites: () => void | Promise<void>;
   sending: boolean;
+  onSkip?: () => void;
 }
 
 export default function ContactInvitePicker({
@@ -35,6 +36,7 @@ export default function ContactInvitePicker({
   onToggleContact,
   onSendInvites,
   sending,
+  onSkip,
 }: ContactInvitePickerProps) {
   const [query, setQuery] = useState('');
   const selectionCount = selectedPhones.size;
@@ -116,6 +118,11 @@ export default function ContactInvitePicker({
             <Text style={styles.sendButtonText}>Send Invites</Text>
           )}
         </TouchableOpacity>
+        {onSkip && (
+          <TouchableOpacity onPress={onSkip} activeOpacity={0.7} style={styles.skipLink}>
+            <Text style={styles.skipLinkText}>skip for now</Text>
+          </TouchableOpacity>
+        )}
       </View>
     </View>
   );
@@ -251,5 +258,16 @@ const styles = StyleSheet.create({
     fontSize: 17,
     color: colors.white,
     fontWeight: '600',
+  },
+  skipLink: {
+    marginTop: 14,
+    alignItems: 'center',
+  },
+  skipLinkText: {
+    fontFamily: typography.body,
+    fontSize: 14,
+    color: colors.brownText,
+    opacity: 0.5,
+    textDecorationLine: 'underline',
   },
 });
