@@ -25,6 +25,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { useErrorHandler } from '../../../contexts/ErrorHandlerContext';
 import { AuthStackParamList } from '../../../navigation/AuthStackNavigator';
 import { updatePrivateData } from '../../../services/userPrivateData';
+import { acceptInviteByPhone } from '../../../services/invites';
 
 const QUIZ_COMPARISON_COUNT = 12; // Default number of comparisons
 
@@ -106,6 +107,8 @@ export default function QuizScreen({ signupParams, onSignupComplete, onQuizCompl
               } else {
                 console.warn('Failed to save phone to private data:', updateError);
               }
+            } else {
+              await acceptInviteByPhone();
             }
           }
         }

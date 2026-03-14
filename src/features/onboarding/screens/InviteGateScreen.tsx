@@ -19,6 +19,7 @@ import {
   createInviteLinkForContact,
   getPendingInviteCode,
   acceptInvite,
+  acceptInviteByPhone,
   clearPendingInviteCode,
 } from '../../../services/invites';
 import { useAuth } from '../../../contexts/AuthContext';
@@ -183,6 +184,7 @@ export default function InviteGateScreen({
           const userId = sessionData?.session?.user?.id;
           if (userId) {
             await updatePrivateData(userId, { phone_number: phone });
+            await acceptInviteByPhone();
           }
         }
         if (!cancelled) setSignupComplete(true);
@@ -258,7 +260,7 @@ export default function InviteGateScreen({
     try {
       const phones = Array.from(selectedPhones);
       for (const phone of phones) {
-        const { url, error } = await createInviteLinkForContact();
+        const { url, error } = await createInviteLinkForContact(phone);
         if (error || !url) {
           console.warn('InviteGateScreen: createInviteLinkForContact error', error);
           continue;

@@ -127,9 +127,11 @@ export async function spendInvitePoint(featureKey: FeatureKey): Promise<{ error:
 
 /**
  * Creates a single-use invite link and returns the URL without opening a share sheet.
- * Used by InviteGateScreen to send invites via SMS to specific contacts.
+ * Used by InviteGateScreen and InviteContactsPickerScreen to send invites via SMS.
+ * Pass targetPhone (E.164) to associate the link with a specific contact — this enables
+ * phone-based invite matching at signup even if the deep link URL is lost on new installs.
  */
-export async function createInviteLinkForContact(): Promise<{ url: string | null; error: string | null }> {
+export async function createInviteLinkForContact(targetPhone?: string | null): Promise<{ url: string | null; error: string | null }> {
   try {
     const { data, error } = await supabase.functions.invoke<{
       code?: string;
@@ -137,6 +139,7 @@ export async function createInviteLinkForContact(): Promise<{ url: string | null
       error?: string;
     }>('create-invite-link', {
       method: 'POST',
+      body: targetPhone ? { target_phone: targetPhone } : undefined,
     });
 
     if (error) {
@@ -148,6 +151,24 @@ export async function createInviteLinkForContact(): Promise<{ url: string | null
     return { url: data.url, error: null };
   } catch (e) {
     return { url: null, error: e instanceof Error ? e.message : 'Failed to create invite link' };
+  }
+}
+
+/**
+ * Attempts to match the current user to a pending invite by phone number.
+ * Should be called immediately after the user's phone is saved to user_private_data.
+ * Non-fatal: errors are logged but not thrown.
+ */
+export async function acceptInviteByPhone(): Promise<void> {
+  try {
+    const { error } = await supabase.functions.invoke('accept-invite-by-phone', {
+      method: 'POST',
+    });
+    if (error) {
+      console.warn('acceptInviteByPhone failed (non-fatal):', error);
+    }
+  } catch (e) {
+    console.warn('acceptInviteByPhone failed (non-fatal):', e);
   }
 }
 

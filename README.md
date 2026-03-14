@@ -427,9 +427,10 @@ Filter usage in the shelf view is tracked to `filter_events`:
 |---|---|
 | `fetchInviteProfile(userId)` | Invite code, sent/successful counts, unspent points, grandfathered flag |
 | `fetchUnlockedFeatures(userId)` | List of unlocked feature keys |
-| `acceptInvite(inviteCode)` | Call `accept-invite` edge function |
+| `acceptInvite(inviteCode)` | Call `accept-invite` edge function (deep-link path) |
+| `acceptInviteByPhone()` | Call `accept-invite-by-phone` edge function — matches invitee to inviter by phone number; called after phone is saved to `user_private_data` |
 | `spendInvitePoint(featureKey)` | Call `spend-invite-point` edge function |
-| `createInviteLinkForContact()` | Create a single-use invite link via `create-invite-link` and return the URL (no share sheet) — used for contact-based invite SMS sending |
+| `createInviteLinkForContact(targetPhone?)` | Create a single-use invite link via `create-invite-link`, optionally associating the target contact's phone number for phone-based matching at signup |
 | `storePendingInviteCode(code)` | Save deep-linked code to AsyncStorage |
 | `getPendingInviteCode()` | Read pending code from AsyncStorage |
 | `clearPendingInviteCode()` | Remove pending code from AsyncStorage |
@@ -567,7 +568,8 @@ All functions are in `supabase/functions/`. They run as Deno services.
 
 | Function | Method | Purpose |
 |---|---|---|
-| `accept-invite` | POST | Accept an invite code; credits inviter (`successful_invites_count`, `unspent_invite_points`). No longer requires quiz completion before acceptance. |
+| `accept-invite` | POST | Accept an invite code (deep-link path); credits inviter (`successful_invites_count`, `unspent_invite_points`). |
+| `accept-invite-by-phone` | POST | Phone-based invite matching; called after signup phone save. Looks up any pending `invite_links` row with `target_phone` matching the user's stored phone and credits the inviter. Idempotent — safe to call multiple times. |
 | `book-feedback` | POST | Store a book data issue report |
 | `books-enrich` | POST | Fetch Open Library data and update a book record |
 | `books-update-community-stats` | POST | Recalculate `community_average_score` and `community_rank_count` on `books` |

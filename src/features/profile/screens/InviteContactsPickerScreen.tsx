@@ -95,7 +95,7 @@ export default function InviteContactsPickerScreen() {
     try {
       const phones = Array.from(selectedPhones);
       for (const phone of phones) {
-        const { url, error } = await createInviteLinkForContact();
+        const { url, error } = await createInviteLinkForContact(phone);
         if (error || !url) continue;
         const message = `${INVITE_MESSAGE_PREFIX}${url}`;
         await SMS.sendSMSAsync([phone], message);

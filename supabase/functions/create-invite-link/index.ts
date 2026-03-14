@@ -1,7 +1,11 @@
 // Supabase Edge Function: Create per-share invite link
 // Auth required. Generates a single-use, 24h invite link row and increments sent_invites_count.
+// Accepts optional target_phone (E.164) in the request body; stored on the invite_links row
+// so that the invitee can be matched by phone at signup even if the deep link URL is lost.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+// @ts-expect-error - esm.sh module
+import { parsePhoneNumber } from 'https://esm.sh/libphonenumber-js@1'
 
 declare const Deno: {
   serve: (handler: (req: Request) => Response | Promise<Response>) => void
@@ -66,6 +70,18 @@ Deno.serve(async (req: Request) => {
 
     const userId = user.id
 
+    // Parse optional target_phone from request body and normalize to E.164
+    const body = await req.json().catch(() => ({})) as { target_phone?: string }
+    let targetPhone: string | null = null
+    if (typeof body?.target_phone === 'string' && body.target_phone.trim()) {
+      try {
+        const parsed = parsePhoneNumber(body.target_phone.trim(), 'US')
+        targetPhone = parsed?.isValid() ? parsed.format('E.164') : null
+      } catch {
+        targetPhone = null
+      }
+    }
+
     const code = generateInviteCode(10)
 
     const { data: link, error: insertError } = await supabaseDb
@@ -73,6 +89,7 @@ Deno.serve(async (req: Request) => {
       .insert({
         inviter_user_id: userId,
         code,
+        ...(targetPhone ? { target_phone: targetPhone } : {}),
       })
       .select('code')
       .single()

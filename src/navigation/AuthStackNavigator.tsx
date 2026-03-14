@@ -13,6 +13,7 @@ import ResetPasswordScreen from '../features/auth/screens/ResetPasswordScreen';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../config/supabase';
 import { updatePrivateData } from '../services/userPrivateData';
+import { acceptInviteByPhone } from '../services/invites';
 import type { ContactEntry } from '../features/onboarding/screens/DiscoverFriendsScreen';
 
 export type AuthStackParamList = {
@@ -155,6 +156,7 @@ export default function AuthStackNavigator({
                 const userId = data?.session?.user?.id;
                 if (userId) {
                   await updatePrivateData(userId, { phone_number: phone });
+                  await acceptInviteByPhone();
                 }
               }
             }}
