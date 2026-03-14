@@ -113,7 +113,12 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(userId);
+    // Use direct SQL delete instead of admin.deleteUser to bypass GoTrue service issues.
+    // CASCADE constraints handle all related data; JWTs are naturally invalidated since
+    // the user no longer exists in auth.users.
+    const { error: deleteError } = await supabaseAdmin.rpc('delete_auth_user', {
+      target_user_id: userId,
+    });
 
     if (deleteError) {
       console.error('Delete user error:', deleteError);

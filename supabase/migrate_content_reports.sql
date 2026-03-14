@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS content_reports (
 
   status TEXT NOT NULL DEFAULT 'pending'
     CHECK (status IN ('pending', 'reviewed', 'actioned', 'dismissed')),
-  reviewed_by UUID REFERENCES auth.users(id),
+  reviewed_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   reviewed_at TIMESTAMPTZ,
   action_taken TEXT,
 
@@ -33,14 +33,6 @@ CREATE INDEX IF NOT EXISTS content_reports_target
   ON content_reports(target_type, target_id);
 
 ALTER TABLE content_reports ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Users can insert own reports"
-  ON content_reports FOR INSERT
-  WITH CHECK (reporter_id = auth.uid());
-
-CREATE POLICY "Users can read own reports"
-  ON content_reports FOR SELECT
-  USING (reporter_id = auth.uid());
 
 -- Optional: is_admin on user_profiles for future admin edge function
 ALTER TABLE user_profiles
