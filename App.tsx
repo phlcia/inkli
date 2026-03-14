@@ -211,7 +211,9 @@ function AppContent() {
         const url = new URL(event.url);
 
         const isResetPasswordLink =
-          url.pathname === '/reset-password' || url.pathname === 'reset-password';
+          url.pathname === '/reset-password' ||
+          url.pathname === 'reset-password' ||
+          url.hostname === 'reset-password';
 
         let usernameFromProfileLink: string | null = null;
 
