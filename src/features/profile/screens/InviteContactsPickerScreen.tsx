@@ -22,8 +22,6 @@ import { normalizePhone } from '../../../utils/phone';
 const INVITE_MESSAGE_PREFIX =
   "HELLO i've been ranking all my books on inkli and i think you'd love it. join me? (this invite is only valid for 24 hours so act fast!) (˶ˆᗜˆ˵)\n";
 
-const REQUIRED_SELECTIONS = 4;
-
 type Status = 'requesting' | 'loading' | 'denied' | 'ready' | 'empty';
 
 export default function InviteContactsPickerScreen() {
@@ -77,7 +75,7 @@ export default function InviteContactsPickerScreen() {
       const next = new Set(prev);
       if (next.has(phone)) {
         next.delete(phone);
-      } else if (next.size < REQUIRED_SELECTIONS) {
+      } else {
         next.add(phone);
       }
       return next;
@@ -85,7 +83,7 @@ export default function InviteContactsPickerScreen() {
   };
 
   const handleSendInvites = async () => {
-    if (sending || selectedPhones.size !== REQUIRED_SELECTIONS) return;
+    if (sending || selectedPhones.size === 0) return;
     const smsAvailable = await SMS.isAvailableAsync();
     if (!smsAvailable) {
       Alert.alert('SMS Unavailable', 'SMS is not available on this device.');
@@ -173,9 +171,8 @@ export default function InviteContactsPickerScreen() {
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       {renderHeader()}
       <ContactInvitePicker
-        title="Invite 4 friends"
-        subtitle="Select 4 contacts to invite to Inkli! For each one that joins, you'll earn points to unlock bonus features."
-        requiredSelections={REQUIRED_SELECTIONS}
+        title="Invite friends"
+        subtitle="Select contacts to invite to Inkli! For each one that joins, you'll earn points to unlock bonus features."
         contacts={contacts}
         selectedPhones={selectedPhones}
         onToggleContact={toggleContact}

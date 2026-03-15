@@ -1,5 +1,5 @@
 // Supabase Edge Function: Spend invite point to unlock a feature
-// Auth required. Validates wall cleared (sent_invites_count >= 4), points available, feature not already unlocked.
+// Auth required. Validates points available, feature not already unlocked.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -68,16 +68,12 @@ Deno.serve(async (req: Request) => {
 
     const { data: profile, error: profileError } = await supabaseDb
       .from('user_profiles')
-      .select('sent_invites_count, unspent_invite_points, successful_invites_count')
+      .select('unspent_invite_points, successful_invites_count')
       .eq('user_id', userId)
       .single()
 
     if (profileError || !profile) {
       return jsonResponse({ error: 'Profile not found' }, 500)
-    }
-
-    if ((profile.sent_invites_count ?? 0) < 4) {
-      return jsonResponse({ error: 'Clear the invite wall first (send 4 invites)' }, 400)
     }
 
     if ((profile.unspent_invite_points ?? 0) < 1) {
@@ -111,20 +107,7 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ error: 'Feature already unlocked' }, 400)
     }
 
-    const now = new Date().toISOString()
-
-    const { error: insertError } = await supabaseDb
-      .from('user_unlocked_features')
-      .insert({ user_id: userId, feature_key: featureKey, unlocked_at: now })
-
-    if (insertError) {
-      if (insertError.code === '23505') {
-        return jsonResponse({ error: 'Feature already unlocked' }, 400)
-      }
-      console.error('spend-invite-point insert error:', insertError)
-      return jsonResponse({ error: 'Failed to unlock feature' }, 500)
-    }
-
+    // Decrement first — if this fails nothing is inserted, no inconsistency
     const { error: updateError } = await supabaseDb
       .from('user_profiles')
       .update({ unspent_invite_points: (profile.unspent_invite_points ?? 0) - 1 })
@@ -133,6 +116,25 @@ Deno.serve(async (req: Request) => {
     if (updateError) {
       console.error('spend-invite-point decrement error:', updateError)
       return jsonResponse({ error: 'Failed to spend point' }, 500)
+    }
+
+    const now = new Date().toISOString()
+
+    const { error: insertError } = await supabaseDb
+      .from('user_unlocked_features')
+      .insert({ user_id: userId, feature_key: featureKey, unlocked_at: now })
+
+    if (insertError) {
+      // Roll back the decrement so the user doesn't lose their point
+      await supabaseDb
+        .from('user_profiles')
+        .update({ unspent_invite_points: profile.unspent_invite_points ?? 0 })
+        .eq('user_id', userId)
+      if (insertError.code === '23505') {
+        return jsonResponse({ error: 'Feature already unlocked' }, 400)
+      }
+      console.error('spend-invite-point insert error:', insertError)
+      return jsonResponse({ error: 'Failed to unlock feature' }, 500)
     }
 
     return jsonResponse({ success: true }, 200)

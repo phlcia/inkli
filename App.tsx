@@ -447,7 +447,15 @@ function AppContent() {
           ) : needsContactDiscovery ? (
             <AuthStackNavigator
               initialRouteName="DiscoverFriends"
-              onInviteGateCleared={() => setProfileRefreshCount((count) => count + 1)}
+              onInviteGateCleared={async () => {
+                if (user) {
+                  await supabase
+                    .from('user_profiles')
+                    .update({ completed_contact_discovery: true })
+                    .eq('user_id', user.id);
+                }
+                setProfileRefreshCount((count) => count + 1);
+              }}
             />
           ) : needsInviteGate ? (
             <AuthStackNavigator
