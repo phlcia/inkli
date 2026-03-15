@@ -157,6 +157,7 @@ function AppContent() {
     grandfathered_invite_unlock: boolean;
     moderation_status: string | null;
     completed_contact_discovery: boolean;
+  skipped_invite_gate: boolean;
   } | null>(null);
   const [profileRefreshCount, setProfileRefreshCount] = useState(0);
   const prevUserRef = useRef(user);
@@ -326,7 +327,7 @@ function AppContent() {
       try {
         const { data, error } = await supabase
           .from('user_profiles')
-          .select('completed_onboarding_quiz, skipped_onboarding_quiz, member_since, created_at, sent_invites_count, grandfathered_invite_unlock, moderation_status, completed_contact_discovery')
+          .select('completed_onboarding_quiz, skipped_onboarding_quiz, member_since, created_at, sent_invites_count, grandfathered_invite_unlock, moderation_status, completed_contact_discovery, skipped_invite_gate')
           .eq('user_id', user.id)
           .single();
 
@@ -341,6 +342,7 @@ function AppContent() {
             grandfathered_invite_unlock: false,
             moderation_status: null,
             completed_contact_discovery: false,
+            skipped_invite_gate: false,
           });
           return;
         }
@@ -354,6 +356,7 @@ function AppContent() {
           grandfathered_invite_unlock: Boolean(data.grandfathered_invite_unlock),
           moderation_status: data.moderation_status ?? null,
           completed_contact_discovery: Boolean(data.completed_contact_discovery),
+          skipped_invite_gate: Boolean(data.skipped_invite_gate),
         });
       } catch (error) {
         console.error('Exception loading onboarding flags:', error);
@@ -366,6 +369,7 @@ function AppContent() {
           grandfathered_invite_unlock: false,
           moderation_status: null,
           completed_contact_discovery: false,
+          skipped_invite_gate: false,
         });
       } finally {
         setProfileLoading(false);
@@ -399,6 +403,7 @@ function AppContent() {
   const needsInviteGate =
     hasUser &&
     !profileFlags?.grandfathered_invite_unlock &&
+    !profileFlags?.skipped_invite_gate &&
     (profileFlags?.sent_invites_count ?? 0) < 4;
 
   const isSuspendedOrBanned =
@@ -460,7 +465,15 @@ function AppContent() {
           ) : needsInviteGate ? (
             <AuthStackNavigator
               initialRouteName="InviteGate"
-              onInviteGateCleared={() => setProfileRefreshCount((count) => count + 1)}
+              onInviteGateCleared={async () => {
+                if (user) {
+                  await supabase
+                    .from('user_profiles')
+                    .update({ skipped_invite_gate: true })
+                    .eq('user_id', user.id);
+                }
+                setProfileRefreshCount((count) => count + 1);
+              }}
             />
           ) : needsOnboardingQuiz ? (
             <AuthStackNavigator

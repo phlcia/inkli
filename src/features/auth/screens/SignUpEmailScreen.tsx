@@ -311,7 +311,7 @@ export default function SignUpEmailScreen({ onNext, onBack: _onBack }: SignUpEma
           <Image source={iconImage} style={styles.logoImage} resizeMode="contain" />
         </View>
 
-        <Text style={styles.title}>sign up with email</Text>
+        <Text style={styles.title}>sign up</Text>
 
         {/* Name Input */}
         <View>
