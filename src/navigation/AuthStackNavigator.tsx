@@ -64,7 +64,7 @@ export default function AuthStackNavigator({
   onPasswordReset,
   successMessage,
 }: AuthStackNavigatorProps) {
-  const { signInWithApple, signInWithGoogle, signUp } = useAuth();
+  const { /* signInWithApple, signInWithGoogle, */ signUp } = useAuth();
 
   return (
     <Stack.Navigator
@@ -133,24 +133,11 @@ export default function AuthStackNavigator({
         )}
       </Stack.Screen>
 
+      {/* CreateAccount OAuth: pass onAppleSignIn / onGoogleSignIn again when restoring; useAuth().signInWithApple / signInWithGoogle */}
       <Stack.Screen name="CreateAccount">
         {(props) => (
           <CreateAccountScreen
             {...props}
-            onAppleSignIn={async () => {
-              try {
-                await signInWithApple();
-              } catch (error) {
-                console.error('Apple Sign In error:', error);
-              }
-            }}
-            onGoogleSignIn={async () => {
-              try {
-                await signInWithGoogle();
-              } catch (error) {
-                console.error('Google Sign In error:', error);
-              }
-            }}
             onEmailSignUp={() => props.navigation.navigate('SignUpEmail')}
           />
         )}
@@ -162,10 +149,17 @@ export default function AuthStackNavigator({
             {...props}
             onNext={async (email, password, name, username, phone) => {
               await signUp(email, password, username, name, []);
-              if (phone) {
-                const { data } = await supabase.auth.getSession();
-                const userId = data?.session?.user?.id;
-                if (userId) {
+              const { data } = await supabase.auth.getSession();
+              const userId = data?.session?.user?.id;
+              if (userId) {
+                const { error: ageError } = await supabase
+                  .from('user_profiles')
+                  .update({ age_confirmed_at: new Date().toISOString() })
+                  .eq('user_id', userId);
+                if (ageError) {
+                  console.warn('age_confirmed_at update failed', ageError);
+                }
+                if (phone) {
                   await updatePrivateData(userId, { phone_number: phone });
                   await acceptInviteByPhone();
                 }

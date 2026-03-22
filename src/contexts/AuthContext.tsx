@@ -346,7 +346,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Use native Google Sign-In SDK
       // Client IDs are configured in Info.plist (secure, public values)
       await GoogleSignin.hasPlayServices();
-      await GoogleSignin.signIn();
+      const signInResult = await GoogleSignin.signIn();
+      if (signInResult.type === 'cancelled') {
+        return;
+      }
       const { idToken } = await GoogleSignin.getTokens();
 
       if (!idToken) {

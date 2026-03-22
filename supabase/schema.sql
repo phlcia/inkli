@@ -69,7 +69,8 @@ CREATE TABLE IF NOT EXISTS user_profiles (
   sent_invites_count INTEGER NOT NULL DEFAULT 0,
   successful_invites_count INTEGER NOT NULL DEFAULT 0,
   unspent_invite_points INTEGER NOT NULL DEFAULT 0,
-  grandfathered_invite_unlock BOOLEAN NOT NULL DEFAULT false
+  grandfathered_invite_unlock BOOLEAN NOT NULL DEFAULT false,
+  age_confirmed_at TIMESTAMPTZ
 );
 
 CREATE INDEX IF NOT EXISTS idx_user_profiles_user_id ON user_profiles(user_id);

@@ -20,7 +20,9 @@
       "infoPlist": {
         "GIDClientID": "1095402736688-7osnai7gdf6ka6ng530ij0q83j06ju8l.apps.googleusercontent.com",
         "ITSAppUsesNonExemptEncryption": false,
-        "NSContactsUsageDescription": "Inkli uses your contacts to find friends who are already on the app! Contact information is never stored."
+        "NSContactsUsageDescription": "Inkli uses your contacts to find friends who are already on the app! Contact information is never stored.",
+        "NSCameraUsageDescription": "Inkli uses your camera to let you take a new profile photo. The photo is only used as your profile picture and is not shared without your permission.",
+        "NSPhotoLibraryUsageDescription": "Inkli accesses your photo library so you can choose an existing photo as your profile picture. Photos are only used as your profile picture and are not stored beyond what you upload."
       }
     },
     "android": {

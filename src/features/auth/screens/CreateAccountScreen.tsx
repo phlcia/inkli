@@ -1,26 +1,25 @@
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, StatusBar, Alert, Image } from 'react-native';
+import React from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, StatusBar, Image } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography } from '../../../config/theme';
 import iconImage from '../../../../assets/icon.png';
-import appleIcon from '../../../../assets/apple.png';
-import googleIcon from '../../../../assets/google.png';
+// import appleIcon from '../../../../assets/apple.png';
+// import googleIcon from '../../../../assets/google.png';
 import emailIcon from '../../../../assets/email.png';
 
 interface CreateAccountScreenProps {
-  onAppleSignIn: () => Promise<void>;
-  onGoogleSignIn: () => Promise<void>;
+  /** OAuth — restore when re-enabling Apple/Google on this screen */
+  onAppleSignIn?: () => Promise<void>;
+  onGoogleSignIn?: () => Promise<void>;
   onEmailSignUp: () => void;
   onBack?: () => void;
 }
 
 export default function CreateAccountScreen({
-  onAppleSignIn,
-  onGoogleSignIn,
   onEmailSignUp,
 }: CreateAccountScreenProps) {
-  const [oauthLoading, setOauthLoading] = useState<'apple' | 'google' | null>(null);
+  // const [oauthLoading, setOauthLoading] = useState<'apple' | 'google' | null>(null);
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <StatusBar barStyle="dark-content" backgroundColor={colors.creamBackground} />
@@ -37,7 +36,7 @@ export default function CreateAccountScreen({
         {/* Title */}
         <Text style={styles.title}>create an account</Text>
 
-        {/* Apple Sign In */}
+        {/* OAuth (Apple / Google) — commented out temporarily
         <TouchableOpacity
           style={[styles.appleButton, oauthLoading === 'apple' && styles.buttonDisabled]}
           onPress={async () => {
@@ -65,7 +64,6 @@ export default function CreateAccountScreen({
           </Text>
         </TouchableOpacity>
 
-        {/* Google Sign In */}
         <TouchableOpacity
           style={[styles.googleButton, oauthLoading === 'google' && styles.buttonDisabled]}
           onPress={async () => {
@@ -93,12 +91,12 @@ export default function CreateAccountScreen({
           </Text>
         </TouchableOpacity>
 
-        {/* Separator */}
         <View style={styles.separator}>
           <View style={styles.separatorLine} />
           <Text style={styles.separatorText}>or</Text>
           <View style={styles.separatorLine} />
         </View>
+        */}
 
         {/* Email Sign Up */}
         <TouchableOpacity style={styles.emailButton} onPress={() => {

@@ -133,7 +133,7 @@ export default function EditProfileScreen() {
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission needed', 'Please grant camera roll permissions');
+        Alert.alert('Photo Library Access Denied', 'Inkli needs access to your photo library to set a profile picture. Go to Settings > Inkli > Photos and allow access.');
         return;
       }
 
@@ -159,7 +159,7 @@ export default function EditProfileScreen() {
     try {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission needed', 'Please grant camera permissions');
+        Alert.alert('Camera Access Denied', 'Inkli needs access to your camera to take a profile photo. Go to Settings > Inkli > Camera and allow access.');
         return;
       }
 

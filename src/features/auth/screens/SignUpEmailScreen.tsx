@@ -547,7 +547,7 @@ export default function SignUpEmailScreen({ onNext, onBack: _onBack }: SignUpEma
               style={styles.privacyLink}
               onPress={() => void Linking.openURL('https://inkliapp.com/privacy-policy')}
             >
-              Privacy Policy
+              Privacy Policy.
             </Text>
             {' '}<Text style={styles.required}>*</Text>
           </Text>

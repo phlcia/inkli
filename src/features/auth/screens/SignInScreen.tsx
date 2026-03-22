@@ -7,7 +7,6 @@ import {
   StyleSheet,
   StatusBar,
   Image,
-  Alert,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
@@ -16,8 +15,8 @@ import { colors, typography } from '../../../config/theme';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useErrorHandler } from '../../../contexts/ErrorHandlerContext';
 import iconImage from '../../../../assets/icon.png';
-import appleIcon from '../../../../assets/apple.png';
-import googleIcon from '../../../../assets/google.png';
+// import appleIcon from '../../../../assets/apple.png';
+// import googleIcon from '../../../../assets/google.png';
 
 interface SignInScreenProps {
   onSignUp?: () => void;
@@ -29,8 +28,8 @@ export default function SignInScreen({ onSignUp, onForgotPassword, successMessag
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [oauthLoading, setOauthLoading] = useState<'apple' | 'google' | null>(null);
-  const { signIn, signInWithApple, signInWithGoogle } = useAuth();
+  // const [oauthLoading, setOauthLoading] = useState<'apple' | 'google' | null>(null);
+  const { signIn /* , signInWithApple, signInWithGoogle */ } = useAuth();
   const { showClientError, showServerError, showSuccess } = useErrorHandler();
 
   useEffect(() => {
@@ -122,14 +121,13 @@ export default function SignInScreen({ onSignUp, onForgotPassword, successMessag
           </Text>
         </TouchableOpacity>
 
-        {/* Separator */}
+        {/* OAuth sign-in (Apple / Google) — commented out temporarily
         <View style={styles.separator}>
           <View style={styles.separatorLine} />
           <Text style={styles.separatorText}>or</Text>
           <View style={styles.separatorLine} />
         </View>
 
-        {/* Apple Sign In */}
         <TouchableOpacity
           style={[styles.appleButton, oauthLoading === 'apple' && styles.buttonDisabled]}
           onPress={async () => {
@@ -148,9 +146,9 @@ export default function SignInScreen({ onSignUp, onForgotPassword, successMessag
           }}
           disabled={oauthLoading !== null}
         >
-          <Image 
-            source={appleIcon} 
-            style={styles.appleIcon} 
+          <Image
+            source={appleIcon}
+            style={styles.appleIcon}
             resizeMode="contain"
             tintColor={colors.white}
           />
@@ -159,7 +157,6 @@ export default function SignInScreen({ onSignUp, onForgotPassword, successMessag
           </Text>
         </TouchableOpacity>
 
-        {/* Google Sign In */}
         <TouchableOpacity
           style={[styles.googleButton, oauthLoading === 'google' && styles.buttonDisabled]}
           onPress={async () => {
@@ -178,15 +175,16 @@ export default function SignInScreen({ onSignUp, onForgotPassword, successMessag
           }}
           disabled={oauthLoading !== null}
         >
-          <Image 
-            source={googleIcon} 
-            style={styles.googleIcon} 
+          <Image
+            source={googleIcon}
+            style={styles.googleIcon}
             resizeMode="contain"
           />
           <Text style={styles.googleButtonText}>
             {oauthLoading === 'google' ? 'Signing in...' : 'Sign in with Google'}
           </Text>
         </TouchableOpacity>
+        */}
 
           {/* Sign Up Link */}
           <TouchableOpacity onPress={onSignUp} style={styles.signUpContainer}>
