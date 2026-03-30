@@ -26,6 +26,7 @@ import { useErrorHandler } from '../../../contexts/ErrorHandlerContext';
 import { AuthStackParamList } from '../../../navigation/AuthStackNavigator';
 import { updatePrivateData } from '../../../services/userPrivateData';
 import { acceptInviteByPhone } from '../../../services/invites';
+import { trackEvent } from '../../../services/analytics';
 
 const QUIZ_COMPARISON_COUNT = 12; // Default number of comparisons
 
@@ -201,6 +202,8 @@ export default function QuizScreen({ signupParams, onSignupComplete, onQuizCompl
         .from('user_profiles')
         .update({ completed_onboarding_quiz: true, skipped_onboarding_quiz: false })
         .eq('user_id', user.id);
+
+      void trackEvent(user.id, 'onboarding_quiz_completed', {});
 
       setQuizComplete(true);
     } catch (error) {

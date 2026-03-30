@@ -4,6 +4,7 @@ import type { Book, ReadSession, UserBook } from './types';
 import { upsertBookViaEdge } from './upsert';
 import { onUserAction } from '../recommendationTriggers';
 import { normalizeBookForEdge } from './utils';
+import { trackEvent } from '../analytics';
 
 /**
  * Check if user already has this book
@@ -218,6 +219,8 @@ export async function addBookToShelf(
       }
     }
 
+    void trackEvent(userId, 'book_added', { book_id: bookId });
+
     return result;
   } catch (error) {
     console.error('Error adding book to shelf:', error);
@@ -311,6 +314,8 @@ export async function addExistingBookToShelf(
         console.error('Error triggering recommendations after shelf add:', actionError);
       }
     }
+
+    void trackEvent(userId, 'book_added', { book_id: bookId });
 
     return {
       userBookId: newUserBook.id,

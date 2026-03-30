@@ -288,11 +288,23 @@ export default function HomeScreen() {
 
     return (
       <View style={styles.emptyState}>
-        <Text style={styles.emptyTitle}>Home</Text>
-        <Text style={styles.emptySubtitle}>No posts to see!</Text>
+        <Text style={styles.emptyTitle}>Your feed is empty</Text>
+        <Text style={styles.emptySubtitle}>
+          Follow readers to see their rankings and activity here.
+        </Text>
+        <Pressable
+          style={({ pressed }) => [styles.emptyActionButton, pressed && styles.emptyActionButtonPressed]}
+          onPress={() => {
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            navigation.getParent()?.navigate('Search');
+          }}
+          android_ripple={{ color: 'rgba(0, 0, 0, 0.06)' }}
+        >
+          <Text style={styles.emptyActionText}>Find people to follow</Text>
+        </Pressable>
       </View>
     );
-  }, [initialLoading, user]);
+  }, [initialLoading, user, navigation]);
 
   const listFooterComponent = useMemo(() => {
     if (!paginating) return null;
@@ -513,6 +525,23 @@ const styles = StyleSheet.create({
     color: colors.brownText,
     opacity: 0.6,
     textAlign: 'center',
+    marginBottom: 8,
+  },
+  emptyActionButton: {
+    marginTop: 20,
+    backgroundColor: colors.primaryBlue,
+    paddingHorizontal: 22,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  emptyActionButtonPressed: {
+    opacity: 0.9,
+  },
+  emptyActionText: {
+    color: colors.white,
+    fontFamily: typography.button,
+    fontSize: 16,
+    fontWeight: '600',
   },
   retryButton: {
     marginTop: 16,

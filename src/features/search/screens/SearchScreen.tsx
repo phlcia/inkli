@@ -1175,7 +1175,10 @@ export default function SearchScreen() {
                   return (item as MemberResult).user_id;
                 }
               }}
-              contentContainerStyle={styles.listContainer}
+              contentContainerStyle={[
+                styles.listContainer,
+                results.length === 0 && query.trim().length >= 2 && styles.listContainerEmptyResults,
+              ]}
               keyboardDismissMode="on-drag"
               keyboardShouldPersistTaps="handled"
               refreshControl={
@@ -1184,6 +1187,20 @@ export default function SearchScreen() {
                   onRefresh={handleRefresh}
                   tintColor={colors.primaryBlue}
                 />
+              }
+              ListEmptyComponent={
+                query.trim().length >= 2 ? (
+                  <View style={styles.emptyResults}>
+                    <Text style={styles.emptyResultsText}>
+                      No {activeTab === 'books' ? 'books' : 'members'} found for &quot;{query.trim()}&quot;
+                    </Text>
+                    {activeTab === 'books' ? (
+                      <Text style={styles.emptyResultsSubtext}>
+                        Try a different title, author, or ISBN.
+                      </Text>
+                    ) : null}
+                  </View>
+                ) : null
               }
             />
           )
@@ -1349,6 +1366,29 @@ const styles = StyleSheet.create({
   },
   listContainer: {
     paddingBottom: 16,
+  },
+  listContainerEmptyResults: {
+    flexGrow: 1,
+    justifyContent: 'center',
+  },
+  emptyResults: {
+    paddingVertical: 32,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+  },
+  emptyResultsText: {
+    fontFamily: typography.body,
+    fontSize: 16,
+    color: colors.brownText,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  emptyResultsSubtext: {
+    fontFamily: typography.body,
+    fontSize: 14,
+    color: colors.brownText,
+    opacity: 0.7,
+    textAlign: 'center',
   },
   bookItem: {
     flexDirection: 'row',

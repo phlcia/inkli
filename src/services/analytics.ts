@@ -1,6 +1,29 @@
 import { supabase } from '../config/supabase';
 
 /**
+ * Generic product analytics (funnel, activation). Inserts into `analytics_events`.
+ * Fails silently so callers never block UX.
+ */
+export async function trackEvent(
+  userId: string,
+  eventName: string,
+  properties?: Record<string, unknown>
+): Promise<void> {
+  try {
+    const { error } = await supabase.from('analytics_events').insert({
+      user_id: userId,
+      event_name: eventName,
+      properties: properties ?? {},
+    });
+    if (error) {
+      console.error(`Failed to track "${eventName}":`, error);
+    }
+  } catch (err) {
+    console.error(`Failed to track "${eventName}":`, err);
+  }
+}
+
+/**
  * Analytics service for tracking filter usage
  * MVP: Only 2 event types (filter_applied, filter_cleared)
  */

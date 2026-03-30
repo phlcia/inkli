@@ -17,7 +17,7 @@ import { colors, typography } from '../../../config/theme';
 import { useInviteTier } from '../../../hooks/useInviteTier';
 import {
   createInviteLinkForContact,
-  getPendingInviteCode,
+  getPendingInviteWithStoredAt,
   acceptInvite,
   acceptInviteByPhone,
   clearPendingInviteCode,
@@ -29,6 +29,7 @@ import { normalizePhone } from '../../../utils/phone';
 import type { AuthStackParamList } from '../../../navigation/AuthStackNavigator';
 import type { ContactEntry } from './DiscoverFriendsScreen';
 import ContactInvitePicker from '../../profile/components/ContactInvitePicker';
+import { trackEvent } from '../../../services/analytics';
 
 export type InviteGateSignupParams = {
   email?: string;
@@ -47,6 +48,8 @@ const INVITE_MESSAGE_PREFIX =
   "HELLO i've been ranking all my books on inkli and i think you'd love it. join me? (this invite is only valid for 24 hours so act fast!) (˶ˆᗜˆ˵)\n";
 
 const REQUIRED_SELECTIONS = 4;
+
+const PENDING_INVITE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 const PERMANENT_INVITE_ERRORS = [
   'already been used',
@@ -88,6 +91,13 @@ export default function InviteGateScreen({
     loading: tierLoading,
     refetch,
   } = useInviteTier();
+
+  const notifyInviteGateCleared = useCallback(() => {
+    if (user?.id) {
+      void trackEvent(user.id, 'onboarding_invite_gate_completed', {});
+    }
+    onInviteGateCleared?.();
+  }, [user?.id, onInviteGateCleared]);
 
   const [signingUp, setSigningUp] = useState(false);
   const [signupComplete, setSignupComplete] = useState(false);
@@ -208,20 +218,25 @@ export default function InviteGateScreen({
   // ------- Wall-cleared detection -------
   useEffect(() => {
     if (isWallCleared) {
-      onInviteGateCleared?.();
+      notifyInviteGateCleared();
     }
-  }, [isWallCleared, onInviteGateCleared]);
+  }, [isWallCleared, notifyInviteGateCleared]);
 
   // ------- Accept any pending deep-linked invite code -------
   useEffect(() => {
     if (!signupComplete) return;
     let cancelled = false;
     (async () => {
-      const code = await getPendingInviteCode();
-      if (cancelled || !code) return;
+      const pending = await getPendingInviteWithStoredAt();
+      if (cancelled || !pending) return;
+      const { code, savedAt } = pending;
+      const codeAge = Date.now() - savedAt;
       const { error } = await acceptInvite(code);
       if (cancelled) return;
-      if (!error || PERMANENT_INVITE_ERRORS.some((msg) => error.includes(msg))) {
+      const isPermanentFailure =
+        Boolean(error) && PERMANENT_INVITE_ERRORS.some((msg) => error!.includes(msg));
+      const isExpiredByAge = codeAge > PENDING_INVITE_MAX_AGE_MS;
+      if (!error || isPermanentFailure || isExpiredByAge) {
         await clearPendingInviteCode();
       }
       if (error) {
@@ -271,6 +286,10 @@ export default function InviteGateScreen({
       refetch();
       // onInviteGateCleared will fire via the isWallCleared effect once the server
       // reflects the new sent_invites_count. Call it directly too for reliability.
+      if (user?.id) {
+        void trackEvent(user.id, 'invite_sent', { count: phones.length });
+      }
+      // Parent callback only here — `notifyInviteGateCleared` also runs via `isWallCleared` for analytics
       onInviteGateCleared?.();
     } catch (e) {
       console.warn('InviteGateScreen: handleSendInvites error', e);
@@ -305,7 +324,7 @@ export default function InviteGateScreen({
           onToggleContact={toggleContact}
           onSendInvites={handleSendInvites}
           sending={sending}
-          onSkip={onInviteGateCleared}
+          onSkip={notifyInviteGateCleared}
         />
       </SafeAreaView>
     );
@@ -353,7 +372,7 @@ export default function InviteGateScreen({
             <Text style={styles.shareButtonSecondaryText}>Open Settings</Text>
           </TouchableOpacity>
           {onInviteGateCleared && (
-            <TouchableOpacity onPress={onInviteGateCleared} activeOpacity={0.7} style={styles.skipLink}>
+            <TouchableOpacity onPress={notifyInviteGateCleared} activeOpacity={0.7} style={styles.skipLink}>
               <Text style={styles.skipLinkText}>skip for now</Text>
             </TouchableOpacity>
           )}
@@ -383,7 +402,7 @@ export default function InviteGateScreen({
             )}
           </TouchableOpacity>
           {onInviteGateCleared && (
-            <TouchableOpacity onPress={onInviteGateCleared} activeOpacity={0.7} style={styles.skipLink}>
+            <TouchableOpacity onPress={notifyInviteGateCleared} activeOpacity={0.7} style={styles.skipLink}>
               <Text style={styles.skipLinkText}>skip for now</Text>
             </TouchableOpacity>
           )}
@@ -403,7 +422,7 @@ export default function InviteGateScreen({
         onToggleContact={toggleContact}
         onSendInvites={handleSendInvites}
         sending={sending}
-        onSkip={onInviteGateCleared}
+        onSkip={notifyInviteGateCleared}
       />
     </SafeAreaView>
   );

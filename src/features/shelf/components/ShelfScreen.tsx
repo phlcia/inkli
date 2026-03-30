@@ -6,9 +6,11 @@ import {
   ScrollView,
   ActivityIndicator,
   TouchableOpacity,
+  Pressable,
   Alert,
   RefreshControl,
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -184,6 +186,22 @@ export default function ShelfScreen({
     setSelectedGenres([]);
     setSelectedCustomLabels([]);
   }, []);
+
+  const handleNavigateToSearch = useCallback(() => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    navigation.getParent()?.navigate('Search');
+  }, [navigation]);
+
+  const handleEmptyClearFilters = useCallback(() => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    handleClearFilters();
+  }, [handleClearFilters]);
+
+  const emptySearchCtaLabel = useMemo(() => {
+    if (!isOwnerViewing) return 'Discover books';
+    if (activeTab === 'want_to_read') return 'Find books to add';
+    return 'Find books';
+  }, [isOwnerViewing, activeTab]);
 
   const handleTrackFilterApplied = useCallback((genres: string[], customLabels: string[], resultCount: number) => {
     if (!currentUser?.id) return;
@@ -462,6 +480,41 @@ export default function ShelfScreen({
         >
           <Text style={styles.emptyText}>{emptyState.title}</Text>
           <Text style={styles.emptySubtext}>{emptyState.subtitle}</Text>
+          {hasActiveFilters ? (
+            <>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.emptyActionButton,
+                  pressed && styles.emptyActionButtonPressed,
+                ]}
+                onPress={handleEmptyClearFilters}
+                android_ripple={{ color: 'rgba(0, 0, 0, 0.06)' }}
+              >
+                <Text style={styles.emptyActionText}>Clear filters</Text>
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.emptyActionButtonSecondary,
+                  pressed && styles.emptyActionButtonSecondaryPressed,
+                ]}
+                onPress={handleNavigateToSearch}
+                android_ripple={{ color: 'rgba(0, 0, 0, 0.06)' }}
+              >
+                <Text style={styles.emptyActionTextSecondary}>Search for books</Text>
+              </Pressable>
+            </>
+          ) : (
+            <Pressable
+              style={({ pressed }) => [
+                styles.emptyActionButton,
+                pressed && styles.emptyActionButtonPressed,
+              ]}
+              onPress={handleNavigateToSearch}
+              android_ripple={{ color: 'rgba(0, 0, 0, 0.06)' }}
+            >
+              <Text style={styles.emptyActionText}>{emptySearchCtaLabel}</Text>
+            </Pressable>
+          )}
         </ScrollView>
       ) : (
         <ScrollView
@@ -621,6 +674,42 @@ const styles = StyleSheet.create({
     fontFamily: typography.body,
     color: colors.brownText,
     opacity: 0.6,
+    textAlign: 'center',
+  },
+  emptyActionButton: {
+    marginTop: 20,
+    backgroundColor: colors.primaryBlue,
+    paddingHorizontal: 22,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  emptyActionButtonPressed: {
+    opacity: 0.9,
+  },
+  emptyActionText: {
+    color: colors.white,
+    fontFamily: typography.button,
+    fontSize: 16,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  emptyActionButtonSecondary: {
+    marginTop: 12,
+    backgroundColor: colors.white,
+    paddingHorizontal: 22,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.primaryBlue,
+  },
+  emptyActionButtonSecondaryPressed: {
+    opacity: 0.85,
+  },
+  emptyActionTextSecondary: {
+    color: colors.primaryBlue,
+    fontFamily: typography.button,
+    fontSize: 16,
+    fontWeight: '600',
     textAlign: 'center',
   },
   scrollView: {

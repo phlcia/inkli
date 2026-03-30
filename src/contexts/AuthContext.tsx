@@ -108,7 +108,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (error) throw error;
     setSession(data.session);
     setUser(data.user);
-    supabase.from('user_profiles').update({ deactivated_at: null }).eq('user_id', data.user.id).then(() => {});
+    const { error: reactivateError } = await supabase
+      .from('user_profiles')
+      .update({ deactivated_at: null })
+      .eq('user_id', data.user.id);
+    if (reactivateError) {
+      console.error('Failed to clear deactivated_at on sign-in:', reactivateError);
+    }
   };
 
   const signUp = async (
@@ -254,7 +260,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
           setSession(data.session);
           setUser(data.user);
-          supabase.from('user_profiles').update({ deactivated_at: null }).eq('user_id', data.user.id).then(() => {});
+          {
+            const { error: reactivateError } = await supabase
+              .from('user_profiles')
+              .update({ deactivated_at: null })
+              .eq('user_id', data.user.id);
+            if (reactivateError) {
+              console.error('Failed to clear deactivated_at on sign-in:', reactivateError);
+            }
+          }
           return;
         } catch (error: any) {
           if (error.code === 'ERR_REQUEST_CANCELED' || error.code === 'ERR_CANCELED') {
@@ -324,7 +338,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Ensure profile is created
         if (sessionData.user) {
           await ensureUserProfile(sessionData.user);
-          supabase.from('user_profiles').update({ deactivated_at: null }).eq('user_id', sessionData.user.id).then(() => {});
+          const { error: reactivateError } = await supabase
+            .from('user_profiles')
+            .update({ deactivated_at: null })
+            .eq('user_id', sessionData.user.id);
+          if (reactivateError) {
+            console.error('Failed to clear deactivated_at on sign-in:', reactivateError);
+          }
         }
 
         setSession(sessionData.session);
@@ -369,7 +389,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       setSession(data.session);
       setUser(data.user);
-      supabase.from('user_profiles').update({ deactivated_at: null }).eq('user_id', data.user.id).then(() => {});
+      const { error: reactivateError } = await supabase
+        .from('user_profiles')
+        .update({ deactivated_at: null })
+        .eq('user_id', data.user.id);
+      if (reactivateError) {
+        console.error('Failed to clear deactivated_at on sign-in:', reactivateError);
+      }
     } catch (error: any) {
       // Handle user cancellation
       if (error.code === 'SIGN_IN_CANCELLED' ||

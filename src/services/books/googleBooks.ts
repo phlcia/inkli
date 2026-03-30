@@ -10,7 +10,18 @@ const GOOGLE_BOOKS_API_BASE = 'https://www.googleapis.com/books/v1/volumes';
 // ============================================================================
 
 // Cache Google Books lookups in memory to avoid repeat API calls
+const GB_CACHE_MAX = 300;
 const gbCache = new Map<string, any>();
+
+function gbCacheSet(key: string, value: any): void {
+  if (gbCache.size >= GB_CACHE_MAX) {
+    const oldest = gbCache.keys().next().value as string | undefined;
+    if (oldest !== undefined) {
+      gbCache.delete(oldest);
+    }
+  }
+  gbCacheSet(key, value);
+}
 
 /**
  * Get cache key for a book
@@ -753,7 +764,7 @@ export async function enrichBookWithGoogleBooks(olBook: any): Promise<any> {
       console.warn('Google Books quota exceeded (429), using Open Library only');
       const fallbackBook = buildBookFromOpenLibrary(olBook);
       // Cache the fallback to avoid retrying immediately
-      gbCache.set(cacheKey, fallbackBook);
+      gbCacheSet(cacheKey, fallbackBook);
       return fallbackBook;
     }
 
@@ -767,7 +778,7 @@ export async function enrichBookWithGoogleBooks(olBook: any): Promise<any> {
       });
       const fallbackBook = buildBookFromOpenLibrary(olBook);
       // Cache the fallback to avoid retrying immediately
-      gbCache.set(cacheKey, fallbackBook);
+      gbCacheSet(cacheKey, fallbackBook);
       return fallbackBook;
     }
 
@@ -777,7 +788,7 @@ export async function enrichBookWithGoogleBooks(olBook: any): Promise<any> {
     } catch (jsonError) {
       console.error('Failed to parse Google Books JSON response:', jsonError);
       const fallbackBook = buildBookFromOpenLibrary(olBook);
-      gbCache.set(cacheKey, fallbackBook);
+      gbCacheSet(cacheKey, fallbackBook);
       return fallbackBook;
     }
 
@@ -788,14 +799,14 @@ export async function enrichBookWithGoogleBooks(olBook: any): Promise<any> {
         console.warn('Google Books quota exceeded, using Open Library only');
       }
       const fallbackBook = buildBookFromOpenLibrary(olBook);
-      gbCache.set(cacheKey, fallbackBook);
+      gbCacheSet(cacheKey, fallbackBook);
       return fallbackBook;
     }
 
     // Check if response has items
     if (!gbData || !gbData.items || !Array.isArray(gbData.items) || gbData.items.length === 0) {
       const fallbackBook = buildBookFromOpenLibrary(olBook);
-      gbCache.set(cacheKey, fallbackBook);
+      gbCacheSet(cacheKey, fallbackBook);
       return fallbackBook;
     }
 
@@ -804,7 +815,7 @@ export async function enrichBookWithGoogleBooks(olBook: any): Promise<any> {
 
     if (!gbBook) {
       const fallbackBook = buildBookFromOpenLibrary(olBook);
-      gbCache.set(cacheKey, fallbackBook);
+      gbCacheSet(cacheKey, fallbackBook);
       return fallbackBook;
     }
 
@@ -861,7 +872,7 @@ export async function enrichBookWithGoogleBooks(olBook: any): Promise<any> {
     };
 
     // Cache the result
-    gbCache.set(cacheKey, enrichedBook);
+    gbCacheSet(cacheKey, enrichedBook);
     return enrichedBook;
 
   } catch (error: any) {
@@ -874,7 +885,7 @@ export async function enrichBookWithGoogleBooks(olBook: any): Promise<any> {
     const fallbackBook = buildBookFromOpenLibrary(olBook);
     // Cache the fallback to avoid retrying immediately
     const cacheKey = getCacheKey(olBook);
-    gbCache.set(cacheKey, fallbackBook);
+    gbCacheSet(cacheKey, fallbackBook);
     return fallbackBook;
   }
 }

@@ -172,12 +172,50 @@ export async function acceptInviteByPhone(): Promise<void> {
   }
 }
 
+/** Stored with a timestamp so we can expire stale pending codes without relying only on edge error strings. */
+export type PendingInvitePayload = { code: string; savedAt: number };
+
+function parsePendingInviteRaw(raw: string): PendingInvitePayload | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      'code' in parsed &&
+      typeof (parsed as PendingInvitePayload).code === 'string'
+    ) {
+      const p = parsed as PendingInvitePayload;
+      return {
+        code: p.code,
+        savedAt: typeof p.savedAt === 'number' ? p.savedAt : Date.now(),
+      };
+    }
+  } catch {
+    // Legacy: plain invite code string (before JSON payload)
+    return { code: raw, savedAt: Date.now() };
+  }
+  return null;
+}
+
 export async function storePendingInviteCode(code: string): Promise<void> {
-  await AsyncStorage.setItem(PENDING_INVITE_CODE_KEY, code);
+  const payload: PendingInvitePayload = { code, savedAt: Date.now() };
+  await AsyncStorage.setItem(PENDING_INVITE_CODE_KEY, JSON.stringify(payload));
 }
 
 export async function getPendingInviteCode(): Promise<string | null> {
-  return AsyncStorage.getItem(PENDING_INVITE_CODE_KEY);
+  const raw = await AsyncStorage.getItem(PENDING_INVITE_CODE_KEY);
+  if (!raw) return null;
+  const parsed = parsePendingInviteRaw(raw);
+  return parsed?.code ?? null;
+}
+
+/** Code plus when it was stored (for TTL-based clearing). */
+export async function getPendingInviteWithStoredAt(): Promise<PendingInvitePayload | null> {
+  const raw = await AsyncStorage.getItem(PENDING_INVITE_CODE_KEY);
+  if (!raw) return null;
+  return parsePendingInviteRaw(raw);
 }
 
 export async function clearPendingInviteCode(): Promise<void> {

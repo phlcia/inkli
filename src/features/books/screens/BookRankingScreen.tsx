@@ -24,6 +24,7 @@ import BookComparisonModal from '../components/BookComparisonModal';
 import DateRangePickerModal from '../../../components/ui/DateRangePickerModal';
 import GenreLabelPicker from '../../../components/books/GenreLabelPicker';
 import { supabase } from '../../../config/supabase';
+import { trackEvent } from '../../../services/analytics';
 import { SearchStackParamList } from '../../../navigation/SearchStackNavigator';
 import goodIcon from '../../../../assets/good.png';
 import midIcon from '../../../../assets/mid.png';
@@ -572,6 +573,9 @@ export default function BookRankingScreen() {
     
     setShowComparison(false);
     setRankingCompleted(true);
+    if (userId) {
+      void trackEvent(userId, 'ranking_completed', { user_book_id: userBookId });
+    }
     
     // Ensure dates and notes are saved after ranking completes
     // This is important because saveFinalRank only updates rank_score
