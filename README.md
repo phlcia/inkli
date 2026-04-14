@@ -64,6 +64,7 @@ src/
 │   ├── books/               — detail, ranking screens + components
 │   ├── home/                — activity feed (HomeScreen)
 │   ├── leaderboard/         — LeaderboardScreen
+│   ├── moderation/          — content reporting sheet
 │   ├── onboarding/          — quiz, invite gate
 │   ├── profile/             — own + other users' profiles
 │   ├── recommendations/     — rec lists + friends-liked lists
@@ -109,6 +110,7 @@ src/
 │   ├── enrichment.ts
 │   ├── grok.ts
 │   ├── invites.ts
+│   ├── moderation.ts
 │   ├── notifications.ts
 │   ├── quiz.ts
 │   ├── recommendations.ts
@@ -120,7 +122,7 @@ src/
 │   └── users.ts
 └── types/                   — shared TypeScript interfaces
 supabase/
-├── functions/               — 18 Deno Edge Functions
+├── functions/               — 23 Deno Edge Functions
 ├── schema.sql               — consolidated schema snapshot
 └── migrate_*.sql            — incremental migrations
 ```
@@ -225,6 +227,11 @@ Deep-linked invite URLs (`/invite/:code`) are intercepted at app launch and stor
 - Unblock
 - Mute users — excluded from feed and notifications
 - `account_type` (`public` | `private`) controls content visibility
+
+**Content reporting**
+- Report users, comments, or shelf entries (`ReportSheet`) via `reportContent` in `services/moderation.ts`
+- Calls `report-content` edge function; rate-limited; self-reporting blocked; idempotent (returns `already_reported` flag)
+- Reports stored in `content_reports` with status: `pending` → `reviewed` / `actioned` / `dismissed`; auto-escalation logic runs on insert
 
 ### Search and discovery
 
@@ -507,6 +514,11 @@ Filter usage in the shelf view is tracked to `filter_events`:
 | `getFollowersList(userId)` / `getFollowingList(userId)` | Arrays of `UserSummary` with profiles |
 | `getFollowerCount(userId)` / `getFollowingCount(userId)` | Counts |
 
+### `services/moderation.ts`
+| Function | Description |
+|---|---|
+| `reportContent(params)` | Call `report-content` edge function; returns `{ already_reported, error? }` |
+
 ### `services/users.ts`
 | Function | Description |
 |---|---|
@@ -588,6 +600,9 @@ All functions are in `supabase/functions/`. They run as Deno services.
 | `resolve-username` | POST | Look up email address for a username (used by sign-in) |
 | `spend-invite-point` | POST | Deduct one point and insert a row into `user_unlocked_features` |
 | `create-invite-link` | POST | Create a single-use, 24h invite link and increment sent count |
+| `send-push` | POST | Send push notification via Expo Push API; invoked by DB webhook on `notifications` INSERT; stores ticket IDs in `push_send_tickets` |
+| `push-receipts` | POST | Poll Expo push receipts for stored ticket IDs; deletes dead/unregistered tokens from `push_tokens`; intended to run on a schedule after `send-push` |
+| `report-content` | POST | Store a content report (user / comment / user_book); rate-limited; self-reports blocked; auto-escalation on insert |
 
 ---
 
@@ -617,6 +632,9 @@ Main tables and their purpose. Full DDL is in `supabase/schema.sql`.
 | `user_invites` | Per-invite records: `inviter_user_id`, `invitee_user_id`, `accepted_at` |
 | `user_unlocked_features` | Per-user unlocked feature keys |
 | `filter_events` | Shelf filter usage analytics |
+| `push_tokens` | Expo push tokens per user/device; managed by `registerPushToken` |
+| `push_send_tickets` | Expo ticket IDs written by `send-push`; polled by `push-receipts` for delivery confirmation |
+| `content_reports` | User-submitted reports: `target_type`, `target_id`, `reason`, `status` (`pending`/`reviewed`/`actioned`/`dismissed`) |
 
 Key RLS helper functions: `can_view_profile`, `can_view_content`, `is_blocked_between`, `is_muted_between`, `should_notify`.
 
