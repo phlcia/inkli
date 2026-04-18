@@ -191,6 +191,23 @@ SELECT cron.schedule(
       AND accepted_by IS NOT NULL$$
 );
 
+-- Weekly streak: recalc all profiles so missed weeks drop to 0 without user_books activity
+DO $$
+DECLARE
+  jid bigint;
+BEGIN
+  SELECT jobid INTO jid FROM cron.job WHERE jobname = 'weekly-streak-refresh';
+  IF jid IS NOT NULL THEN
+    PERFORM cron.unschedule(jid);
+  END IF;
+END $$;
+
+SELECT cron.schedule(
+  'weekly-streak-refresh',
+  '5 0 * * 1',
+  $$SELECT public.backfill_all_weekly_streaks()$$
+);
+
 -- User follows table
 CREATE TABLE IF NOT EXISTS user_follows (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
