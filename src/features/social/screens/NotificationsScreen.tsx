@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   FlatList,
   Image,
@@ -51,6 +51,9 @@ export default function NotificationsScreen() {
     loading: boolean;
   }>>({});
 
+  const followStatesRef = useRef(followStates);
+  followStatesRef.current = followStates;
+
   const refreshFollowStates = useCallback(async (items: NotificationItem[]) => {
     if (!user) return;
     const actorIds = Array.from(
@@ -61,7 +64,6 @@ export default function NotificationsScreen() {
       )
     );
     if (actorIds.length === 0) {
-      setFollowStates({});
       return;
     }
 
@@ -83,25 +85,53 @@ export default function NotificationsScreen() {
         .in('requested_id', actorIds),
     ]);
 
-    const accountTypeById = new Map<string, 'public' | 'private'>();
-    (profilesResult.data || []).forEach((row: any) => {
-      accountTypeById.set(row.user_id, row.account_type || 'public');
-    });
+    const profilesOk = !profilesResult.error;
+    const followingOk = !followingResult.error;
+    const pendingOk = !pendingResult.error;
 
-    const followingIds = new Set(
-      (followingResult.data || []).map((row: any) => row.following_id)
-    );
-    const requestedIds = new Set(
-      (pendingResult.data || []).map((row: any) => row.requested_id)
-    );
+    if (!profilesOk || !followingOk || !pendingOk) {
+      console.warn('refreshFollowStates partial failure', {
+        profiles: profilesResult.error,
+        following: followingResult.error,
+        pending: pendingResult.error,
+      });
+    }
+
+    const accountTypeById = new Map<string, 'public' | 'private'>();
+    if (profilesOk) {
+      (profilesResult.data || []).forEach((row: any) => {
+        accountTypeById.set(row.user_id, row.account_type || 'public');
+      });
+    }
+
+    const followingIds = followingOk
+      ? new Set(
+          (followingResult.data || []).map((row: any) => row.following_id)
+        )
+      : null;
+
+    const requestedIds = pendingOk
+      ? new Set(
+          (pendingResult.data || []).map((row: any) => row.requested_id)
+        )
+      : null;
 
     setFollowStates((prev) => {
       const next: typeof prev = { ...prev };
       actorIds.forEach((actorId) => {
+        const p = prev[actorId];
         next[actorId] = {
-          isFollowing: followingIds.has(actorId),
-          isRequested: requestedIds.has(actorId),
-          accountType: accountTypeById.get(actorId) || 'public',
+          isFollowing:
+            followingOk && followingIds
+              ? followingIds.has(actorId)
+              : (p?.isFollowing ?? false),
+          isRequested:
+            pendingOk && requestedIds
+              ? requestedIds.has(actorId)
+              : (p?.isRequested ?? false),
+          accountType: profilesOk
+            ? accountTypeById.get(actorId) || 'public'
+            : (p?.accountType ?? 'public'),
           loading: false,
         };
       });
@@ -116,9 +146,9 @@ export default function NotificationsScreen() {
 
       try {
         const result = await fetchNotifications(user.id);
+        await refreshFollowStates(result.notifications);
         setNotifications(result.notifications);
         setLastSeenAt(result.lastSeenAt);
-        await refreshFollowStates(result.notifications);
         if (markSeen) {
           await updateNotificationsLastSeen(user.id);
         }
@@ -370,7 +400,7 @@ export default function NotificationsScreen() {
         },
       }));
       try {
-        const current = followStates[item.actorId];
+        const current = followStatesRef.current[item.actorId];
         if (current?.isFollowing) {
           const { error } = await unfollowUser(user.id, item.actorId);
           if (!error) {
