@@ -97,7 +97,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (error) throw error;
       email = data?.email ?? '';
       if (!email) {
-        throw new Error('No account found with that username');
+        throw new Error('User not found');
       }
     }
 

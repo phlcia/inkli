@@ -60,9 +60,9 @@ Deno.serve(async (req: Request) => {
 
     if (!profile?.user_id) {
       return new Response(
-        JSON.stringify({ error: 'Username not found' }),
+        JSON.stringify({ email: null }),
         {
-          status: 404,
+          status: 200,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         }
       )
@@ -79,9 +79,9 @@ Deno.serve(async (req: Request) => {
     const email = userData?.user?.email ?? ''
     if (!email) {
       return new Response(
-        JSON.stringify({ error: 'Email not found for username' }),
+        JSON.stringify({ email: null }),
         {
-          status: 404,
+          status: 200,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         }
       )
