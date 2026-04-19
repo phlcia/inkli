@@ -7,7 +7,7 @@ SELECT cron.schedule(
   'push-receipts-every-5min',
   '*/5 * * * *',
   $$SELECT net.http_post(
-    url := 'https://YOUR_PROJECT_REF.supabase.co/functions/v1/push-receipts',
+    url := 'https://xmsjvvogdqfxvxmctyex.supabase.co/functions/v1/push-receipts',
     headers := jsonb_build_object(
       'Content-Type', 'application/json',
       'Authorization', 'Bearer ' || current_setting('app.settings.service_role_key', true)
