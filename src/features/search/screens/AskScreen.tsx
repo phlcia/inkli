@@ -8,14 +8,12 @@ import {
   ActivityIndicator,
   Image,
   ScrollView,
-  FlatList,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { colors, typography } from '../../../config/theme';
 import { SearchStackParamList } from '../../../navigation/SearchStackNavigator';
 import { useAuth } from '../../../contexts/AuthContext';
@@ -430,15 +428,16 @@ export default function AskScreen() {
   const isEmpty = messages.length === 0;
 
   return (
-    <View style={styles.container}>
-
-      <KeyboardAwareScrollView
-        ref={scrollRef as any}
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={0}
+    >
+      <ScrollView
+        ref={scrollRef}
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
-        extraScrollHeight={20}
-        enableOnAndroid
         showsVerticalScrollIndicator={false}
       >
         {isEmpty ? (
@@ -451,12 +450,11 @@ export default function AskScreen() {
             </View>
           </View>
         ) : (
-          <FlatList
-            data={messages}
-            renderItem={renderMessage}
-            keyExtractor={(item) => item.id}
-            scrollEnabled={false}
-          />
+          messages.map((item) => (
+            <React.Fragment key={item.id}>
+              {renderMessage({ item })}
+            </React.Fragment>
+          ))
         )}
         {isLoading ? (
           <View style={styles.assistantBubbleWrap}>
@@ -466,12 +464,8 @@ export default function AskScreen() {
             </View>
           </View>
         ) : null}
-      </KeyboardAwareScrollView>
+      </ScrollView>
 
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={0}
-      >
       <View style={styles.inputRow}>
         <TextInput
           style={styles.input}
@@ -496,8 +490,7 @@ export default function AskScreen() {
           <Text style={styles.sendButtonText}>Send</Text>
         </TouchableOpacity>
       </View>
-      </KeyboardAvoidingView>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
