@@ -8,6 +8,8 @@ import {
   ActivityIndicator,
   Image,
   Alert,
+  Linking,
+  AppState,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Contacts from 'expo-contacts';
@@ -38,7 +40,7 @@ export interface ContactEntry {
   phone: string; // normalized E.164
 }
 
-type ScreenStatus = 'requesting' | 'loading' | 'denied' | 'done';
+type ScreenStatus = 'requesting' | 'prompt' | 'loading' | 'denied' | 'done';
 
 export default function DiscoverFriendsScreen({ onSkip }: DiscoverFriendsScreenProps) {
   const { user } = useAuth();
@@ -49,6 +51,7 @@ export default function DiscoverFriendsScreen({ onSkip }: DiscoverFriendsScreenP
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set());
   const [allContacts, setAllContacts] = useState<ContactEntry[]>([]);
   const [saving, setSaving] = useState(false);
+  const [awaitingSettingsReturn, setAwaitingSettingsReturn] = useState(false);
 
   const loadAndMatch = useCallback(async () => {
     setScreenStatus('loading');
@@ -120,14 +123,46 @@ export default function DiscoverFriendsScreen({ onSkip }: DiscoverFriendsScreenP
 
   useEffect(() => {
     (async () => {
-      const { status } = await Contacts.requestPermissionsAsync();
+      const { status } = await Contacts.getPermissionsAsync();
       if (status === 'granted') {
         await loadAndMatch();
-      } else {
+      } else if (status === 'denied') {
         setScreenStatus('denied');
+      } else {
+        setScreenStatus('prompt');
       }
     })();
   }, [loadAndMatch]);
+
+  useEffect(() => {
+    if (!awaitingSettingsReturn) return;
+
+    const subscription = AppState.addEventListener('change', async (nextState) => {
+      if (nextState === 'active') {
+        setAwaitingSettingsReturn(false);
+        const { status } = await Contacts.getPermissionsAsync();
+        if (status === 'granted') {
+          await loadAndMatch();
+        }
+      }
+    });
+
+    return () => subscription.remove();
+  }, [awaitingSettingsReturn, loadAndMatch]);
+
+  const handleRequestPermission = async () => {
+    const { status } = await Contacts.requestPermissionsAsync();
+    if (status === 'granted') {
+      await loadAndMatch();
+    } else {
+      setScreenStatus('denied');
+    }
+  };
+
+  const handleOpenSettings = () => {
+    setAwaitingSettingsReturn(true);
+    Linking.openSettings();
+  };
 
   const toggleUser = (userId: string) => {
     setSelectedUserIds((prev) => {
@@ -189,10 +224,32 @@ export default function DiscoverFriendsScreen({ onSkip }: DiscoverFriendsScreenP
       >
         <Text style={styles.title}>discover friends</Text>
 
-        {screenStatus === 'denied' ? (
-          <Text style={styles.subtitle}>
-            Allow contacts access to see which of your friends are already on Inkli!
-          </Text>
+        {screenStatus === 'prompt' ? (
+          <>
+            <Text style={styles.subtitle}>
+              See which of your contacts are already on Inkli!
+            </Text>
+            <TouchableOpacity
+              style={styles.allowButton}
+              onPress={handleRequestPermission}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.allowButtonText}>Allow Contacts Access</Text>
+            </TouchableOpacity>
+          </>
+        ) : screenStatus === 'denied' ? (
+          <>
+            <Text style={styles.subtitle}>
+              Allow contacts access in Settings to see which of your friends are on Inkli.
+            </Text>
+            <TouchableOpacity
+              style={styles.allowButton}
+              onPress={handleOpenSettings}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.allowButtonText}>Open Settings</Text>
+            </TouchableOpacity>
+          </>
         ) : matchedUsers.length === 0 ? (
           <Text style={styles.subtitle}>
             None of your contacts are on Inkli yet... but you can change that!
@@ -412,5 +469,19 @@ const styles = StyleSheet.create({
     color: colors.brownText,
     opacity: 0.5,
     textDecorationLine: 'underline',
+  },
+  allowButton: {
+    backgroundColor: colors.primaryBlue,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  allowButtonText: {
+    fontFamily: typography.button,
+    fontSize: 17,
+    color: colors.white,
+    fontWeight: '600',
   },
 });
