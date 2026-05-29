@@ -11,14 +11,16 @@ export type NotificationType =
   | 'follow_request'
   | 'follow_accept'
   | 'follow_reject'
-  | 'invite_accepted';
+  | 'invite_accepted'
+  | 'reading_nudge'
+  | 'recommendations_ready';
 
 export type NotificationItem = {
   id: string;
   type: NotificationType;
   createdAt: string;
-  actorId: string;
-  actorName: string;
+  actorId: string | null;
+  actorName: string | null;
   actorAvatarUrl: string | null;
   userBookId?: string;
   bookTitle?: string;

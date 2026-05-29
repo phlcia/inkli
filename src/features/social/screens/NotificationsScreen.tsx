@@ -59,8 +59,14 @@ export default function NotificationsScreen() {
     const actorIds = Array.from(
       new Set(
         items
-          .filter((item) => item.type !== 'follow_request')
+          .filter(
+            (item) =>
+              item.type === 'follow' ||
+              item.type === 'like' ||
+              item.type === 'comment'
+          )
           .map((item) => item.actorId)
+          .filter((id): id is string => id !== null)
       )
     );
     if (actorIds.length === 0) {
@@ -245,6 +251,17 @@ export default function NotificationsScreen() {
 
     if (item.type === 'invite_accepted') {
       navigation.navigate('InviteHub');
+      return;
+    }
+
+    if (item.type === 'recommendations_ready') {
+      navigation.navigate('Recommendations');
+      return;
+    }
+
+    if (item.type === 'reading_nudge') {
+      navigation.getParent()?.navigate('Search');
+      return;
     }
   };
 
@@ -332,6 +349,20 @@ export default function NotificationsScreen() {
             {timestamp}
           </Text>
         );
+      case 'reading_nudge':
+        return (
+          <Text style={styles.actionText} onTextLayout={onLayout}>
+            You haven't made reading progress in a while — keep going!
+            {timestamp}
+          </Text>
+        );
+      case 'recommendations_ready':
+        return (
+          <Text style={styles.actionText} onTextLayout={onLayout}>
+            Your personalised book recommendations are ready
+            {timestamp}
+          </Text>
+        );
       default:
         return null;
     }
@@ -339,9 +370,15 @@ export default function NotificationsScreen() {
 
   const renderItem = ({ item }: { item: NotificationItem }) => {
     const isSingleLine = singleLineIds.has(item.id);
-    const followState = followStates[item.actorId];
+    const actorId = item.actorId ?? '';
+    const followState = followStates[actorId];
     const showFollowAction =
       item.type !== 'follow_request' &&
+      item.type !== 'follow_accept' &&
+      item.type !== 'follow_reject' &&
+      item.type !== 'invite_accepted' &&
+      item.type !== 'reading_nudge' &&
+      item.type !== 'recommendations_ready' &&
       item.type !== 'like' &&
       item.type !== 'comment';
     const handleAccept = async () => {
@@ -389,8 +426,8 @@ export default function NotificationsScreen() {
       if (!user) return;
       setFollowStates((prev) => ({
         ...prev,
-        [item.actorId]: {
-          ...(prev[item.actorId] || {
+        [actorId]: {
+          ...(prev[actorId] || {
             isFollowing: false,
             isRequested: false,
             accountType: 'public',
@@ -400,14 +437,17 @@ export default function NotificationsScreen() {
         },
       }));
       try {
-        const current = followStatesRef.current[item.actorId];
+        const current = followStatesRef.current[actorId];
         if (current?.isFollowing) {
-          const { error } = await unfollowUser(user.id, item.actorId);
+          const { error } = await unfollowUser(user.id, actorId);
+          if (error) {
+            console.error('[NotificationsScreen] unfollowUser failed:', error);
+          }
           if (!error) {
             setFollowStates((prev) => ({
               ...prev,
-              [item.actorId]: {
-                ...(prev[item.actorId] || {
+              [actorId]: {
+                ...(prev[actorId] || {
                   isFollowing: false,
                   isRequested: false,
                   accountType: 'public',
@@ -422,12 +462,15 @@ export default function NotificationsScreen() {
         }
 
         if (current?.isRequested) {
-          const { error } = await cancelFollowRequest(user.id, item.actorId);
+          const { error } = await cancelFollowRequest(user.id, actorId);
+          if (error) {
+            console.error('[NotificationsScreen] cancelFollowRequest failed:', error);
+          }
           if (!error) {
             setFollowStates((prev) => ({
               ...prev,
-              [item.actorId]: {
-                ...(prev[item.actorId] || {
+              [actorId]: {
+                ...(prev[actorId] || {
                   isFollowing: false,
                   isRequested: false,
                   accountType: 'public',
@@ -441,13 +484,16 @@ export default function NotificationsScreen() {
           return;
         }
 
-        const { action, error } = await followUser(user.id, item.actorId);
+        const { action, error } = await followUser(user.id, actorId);
+        if (error) {
+          console.error('[NotificationsScreen] followUser failed:', error);
+        }
         if (!error) {
           if (action === 'following') {
             setFollowStates((prev) => ({
               ...prev,
-              [item.actorId]: {
-                ...(prev[item.actorId] || {
+              [actorId]: {
+                ...(prev[actorId] || {
                   isFollowing: false,
                   isRequested: false,
                   accountType: 'public',
@@ -461,8 +507,8 @@ export default function NotificationsScreen() {
           } else {
             setFollowStates((prev) => ({
               ...prev,
-              [item.actorId]: {
-                ...(prev[item.actorId] || {
+              [actorId]: {
+                ...(prev[actorId] || {
                   isFollowing: false,
                   isRequested: false,
                   accountType: 'public',
@@ -479,8 +525,8 @@ export default function NotificationsScreen() {
       } finally {
         setFollowStates((prev) => ({
           ...prev,
-          [item.actorId]: {
-            ...(prev[item.actorId] || {
+          [actorId]: {
+            ...(prev[actorId] || {
               isFollowing: false,
               isRequested: false,
               accountType: 'public',
@@ -509,7 +555,17 @@ export default function NotificationsScreen() {
         ]}
         android_ripple={{ color: 'rgba(0, 0, 0, 0.04)' }}
       >
-        {item.actorAvatarUrl ? (
+        {item.type === 'recommendations_ready' ? (
+          <Image
+            source={require('../../../../assets/shelf.png')}
+            style={styles.systemNotificationIcon}
+          />
+        ) : item.type === 'reading_nudge' ? (
+          <Image
+            source={require('../../../../assets/search.png')}
+            style={styles.systemNotificationIcon}
+          />
+        ) : item.actorAvatarUrl ? (
           <Image
             source={{ uri: item.actorAvatarUrl }}
             style={styles.avatar}
@@ -518,7 +574,7 @@ export default function NotificationsScreen() {
         ) : (
           <View style={styles.avatarFallback}>
             <Text style={styles.avatarFallbackText}>
-              {item.actorName.charAt(0).toUpperCase()}
+              {(item.actorName ?? '').charAt(0).toUpperCase()}
             </Text>
           </View>
         )}
@@ -670,7 +726,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     flex: 1,
     textAlign: 'center',
-    fontSize: 24,
+    fontSize: 32,
     fontFamily: typography.logo,
     color: colors.primaryBlue,
   },
@@ -701,15 +757,21 @@ const styles = StyleSheet.create({
     height: 50,
     borderRadius: 25,
     marginRight: 14,
-    backgroundColor: colors.creamBackground,
+    backgroundColor: colors.primaryBlue,
     justifyContent: 'center',
     alignItems: 'center',
   },
   avatarFallbackText: {
     fontSize: 18,
     fontFamily: typography.body,
-    color: colors.brownText,
+    color: colors.white,
     fontWeight: '600',
+  },
+  systemNotificationIcon: {
+    width: 50,
+    height: 50,
+    marginRight: 14,
+    tintColor: colors.primaryBlue,
   },
   cardContent: {
     flex: 1,

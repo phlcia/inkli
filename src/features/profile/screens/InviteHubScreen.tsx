@@ -70,7 +70,7 @@ export default function InviteHubScreen() {
         >
           <Text style={styles.backButtonText}>←</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Invite & unlock</Text>
+        <Text style={styles.headerTitle}>Invite Hub</Text>
         <View style={styles.headerSpacer} />
       </View>
       <ScrollView
@@ -202,7 +202,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     flex: 1,
     textAlign: 'center',
-    fontSize: 24,
+    fontSize: 32,
     fontFamily: typography.logo,
     color: colors.primaryBlue,
   },
@@ -311,7 +311,6 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   comingSoonRow: {
-    paddingVertical: 16,
     paddingHorizontal: 12,
     alignItems: 'center',
   },

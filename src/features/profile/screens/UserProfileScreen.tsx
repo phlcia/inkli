@@ -603,7 +603,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   logo: {
-    fontSize: 24,
+    fontSize: 32,
     fontFamily: typography.logo,
     color: colors.primaryBlue,
   },
