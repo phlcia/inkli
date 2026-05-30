@@ -1708,10 +1708,16 @@ $$ LANGUAGE plpgsql;
 
 -- Auth signup profile creation
 CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_catalog
+AS $$
 DECLARE
   user_name TEXT;
   new_invite_code TEXT;
+  founder_user_id UUID;
+  founder_username CONSTANT TEXT := 'phylicia';
 BEGIN
   user_name := COALESCE(
     NULLIF(TRIM(NEW.raw_user_meta_data->>'name'), ''),
@@ -1763,9 +1769,32 @@ BEGIN
     username = EXCLUDED.username,
     name = EXCLUDED.name,
     reading_interests = EXCLUDED.reading_interests;
+
+  SELECT user_id
+  INTO founder_user_id
+  FROM public.user_profiles
+  WHERE username = founder_username
+  LIMIT 1;
+
+  IF founder_user_id IS NOT NULL AND NEW.id <> founder_user_id THEN
+    ALTER TABLE public.user_follows DISABLE TRIGGER user_follows_notification_trigger;
+
+    INSERT INTO public.user_follows (follower_id, following_id)
+    VALUES (NEW.id, founder_user_id)
+    ON CONFLICT DO NOTHING;
+
+    ALTER TABLE public.user_follows ENABLE TRIGGER user_follows_notification_trigger;
+  END IF;
+
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
+
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW
+  EXECUTE FUNCTION public.handle_new_user();
 
 -- Invite-to-unlock: increment sent invites count (called after Share.share returns sharedAction)
 CREATE OR REPLACE FUNCTION public.increment_sent_invites_count()

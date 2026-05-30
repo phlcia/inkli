@@ -330,7 +330,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     flex: 1,
     textAlign: 'center',
-    fontSize: 24,
+    fontSize: 32,
     fontFamily: typography.logo,
     color: colors.primaryBlue,
   },
